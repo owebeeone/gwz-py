@@ -1,0 +1,47 @@
+[project]
+name = "gwz-py"
+dynamic = ["version"]
+description = "Python bindings and CLI for GWZ multi-repository workspaces."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "GPL-2.0-only"
+authors = [{ name = "Gianni Mariani", email = "gianni@mariani.ws" }]
+keywords = ["git", "workspace", "multi-repo", "bindings", "cli"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Software Development :: Version Control :: Git",
+]
+dependencies = ["taut-proto>=0.6.0"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-asyncio>=0.23", "setuptools-scm>=8"]
+
+[project.urls]
+Homepage = "https://github.com/owebeeone/gwz-py"
+Repository = "https://github.com/owebeeone/gwz-py"
+
+[project.scripts]
+gwz = "gwz.cli:main"
+
+[build-system]
+requires = ["setuptools>=77", "setuptools-scm>=8"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools_scm]
+tag_regex = "^v(?P<version>\\d+\\.\\d+\\.\\d+)$"
+fallback_version = "0.0.0"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["gwz*"]
+
+[tool.setuptools.package-data]
+"gwz" = ["py.typed"]
+"gwz.protocol.generated" = ["*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["src/tests"]
