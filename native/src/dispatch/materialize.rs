@@ -13,6 +13,9 @@ pub(crate) fn call(
 ) -> PyResult<Vec<u8>> {
     match method {
         "materialize" => call_materialize(method, request_message, response_message, request_bytes),
+        "clone_workspace" => {
+            call_clone_workspace(method, request_message, response_message, request_bytes)
+        }
         "snapshot" => call_snapshot(method, request_message, response_message, request_bytes),
         "tag" => call_tag(method, request_message, response_message, request_bytes),
         "capture" => call_capture(method, request_message, response_message, request_bytes),
@@ -46,6 +49,32 @@ fn call_materialize(
         })?;
     recorder.finish(&response.response)?;
     codec::encode_message("encode MaterializeResponse", || response.to_cbor())
+}
+
+fn call_clone_workspace(
+    method: &str,
+    request_message: &str,
+    response_message: &str,
+    request_bytes: &[u8],
+) -> PyResult<Vec<u8>> {
+    codec::require_request(method, request_message, "CloneWorkspaceRequest")?;
+    codec::require_response(method, response_message, "CloneWorkspaceResponse")?;
+
+    let request = codec::decode_message(request_bytes, "decode CloneWorkspaceRequest", |cbor| {
+        gwz_core::CloneWorkspaceRequest::from_cbor(cbor)
+    })?;
+    let request_id = request.meta.request_id.clone();
+    let (response, recorder) =
+        shims::backend_with_events(&request_id, |backend, operation_id, events| {
+            gwz_core::workspace_ops::handle_clone_workspace_request(
+                backend,
+                request,
+                operation_id,
+                events,
+            )
+        })?;
+    recorder.finish(&response.response)?;
+    codec::encode_message("encode CloneWorkspaceResponse", || response.to_cbor())
 }
 
 fn call_snapshot(

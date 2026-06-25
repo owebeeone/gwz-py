@@ -478,9 +478,9 @@ Steps:
    Write scope: `src/gwz/client.py` and the Phase 0 client helper module, if
    created.
    Completed path:
-   - Added `init_from_sources_stream`, `pull_head_stream`,
-     `pull_snapshot_stream`, and `push_stream`; `materialize_stream` already
-     existed.
+   - Added `clone_workspace_stream`, `init_from_sources_stream`,
+     `pull_head_stream`, `pull_snapshot_stream`, and `push_stream`;
+     `materialize_stream` already existed.
    - Kept branch/stash as request/response methods.
    - All stream helpers use the shared private `_stream_call`.
    - `_stream_call` uses `submit` when available and falls back to synchronous
@@ -541,56 +541,74 @@ Steps:
 2. CLI Agent B implements read/workspace commands.
    Write scope: `src/gwz/cli_read.py`, `src/tests/test_cli_read.py`.
    Commands: `status`, `ls`, `init`, `repo add`, `repo create`, `repo sync`.
-   Work:
-   - Register commands through CLI Agent A helpers.
-   - Reuse shared rendering and exit-code logic.
-   Verification: fake bridge CLI smoke tests.
+   Completed path:
+   - Registered commands through CLI Agent A helpers.
+   - Reused shared rendering and exit-code logic.
+   - Added semantic validation for conflicting status, ls, and `repo sync`
+     selection options.
+   Verification: fake client CLI smoke tests and `python run_tests.py`.
 
 3. CLI Agent C implements mutation commands.
    Write scope: `src/gwz/cli_mutation.py`, `src/tests/test_cli_mutation.py`.
    Commands: `materialize`, `snapshot`, `tag`, `capture`, `stage`, `commit`,
    `pull`, `push`.
-   Required edge cases:
-   - `materialize --switch`.
-   - `snapshot --branch[=<name>]`.
-   Verification: parser and fake bridge request tests.
+   Completed path:
+   - Registered service-backed mutation commands through shared helpers.
+   - Added `materialize --switch`.
+   - Added `snapshot --branch[=<name>]`.
+   - Added `add` as a stage alias for Rust CLI compatibility.
+   - Kept `snapshot --list` explicitly unimplemented because there is no Python
+     client method yet.
+   Verification: parser and fake client request tests plus `python run_tests.py`.
 
 4. CLI Agent D implements `branch` and `stash`.
    Write scope: `src/gwz/cli_branch_stash.py`,
    `src/tests/test_cli_branch_stash.py`.
-   Work:
+   Completed path:
    - `branch --list/--create/--delete/--merge`.
    - `branch --create --from --switch`.
    - `stash push/list/apply/pop/drop`.
-   Verification: request construction tests and JSON rendering tests.
+   - Added Rust-compatible validation for conflicting branch/stash options.
+   Verification: request construction tests and `python run_tests.py`.
 
 5. CLI Agent E implements `forall`.
    Write scope: `src/gwz/cli_local.py`, `src/tests/test_cli_local.py`.
-   Work:
-   - Use `client.ls()` to resolve members.
-   - Use generated `ExecRequest`/`ExecResponse` as local data only.
-   - Execute child processes in Python.
-   - Respect partial behavior and output banners.
-   Verification: temp command tests with fake members.
+   Completed path:
+   - Uses `client.ls()` to resolve members.
+   - Uses generated `ExecResponse` as local response data.
+   - Executes child processes in Python.
+   - Respects partial behavior and output banners.
+   - Supports both `forall [projects...] -- <cmd>` and
+     `forall [projects...] -c <string>`.
+   Verification: temp command tests with fake members and `python run_tests.py`.
 
-6. CLI Agent E implements or defers `clone`.
+6. CLI Agent E implements `clone`.
    Write scope: `src/gwz/cli_local.py`, `src/tests/test_cli_local.py`,
-   release decision notes if deferred.
-   Options:
-   - Named non-service native bridge extension.
-   - Python-local Git clone followed by `materialize("lock")`.
-   - Rust binary dispatch in packaging mode that includes the binary.
-   Output: one chosen implementation path or a Phase 7 known limitation that
-   explicitly blocks declaring full Rust CLI parity.
-   Verification: clone workflow test or explicit skipped test.
+   native dispatch files, and native operation tests.
+   Completed path:
+   - `gwz-core` exposes `clone_workspace` as a generated service method with
+     `CloneWorkspaceRequest`, `CloneWorkspaceResponse`, and
+     `ActionKind.clone_workspace`.
+   - The native handler performs the root repository clone with progress events
+     and then materializes locked members through the existing materialize
+     implementation using the same event sequence.
+   - The Python client exposes `clone_workspace` and `clone_workspace_stream`.
+   - Python `gwz clone` derives the default target from the repository URL,
+     rejects `--dry-run`, uses the streaming path in human mode, and keeps JSON
+     mode as a single typed response.
+   Verification: clone CLI tests, native clone streaming test, `cargo test -p
+   gwz-core --lib`, `cargo test -p gwz --lib`, and `python run_tests.py`.
 
 7. Test Agent creates CLI parity fixtures.
    Write scope: `src/tests/fixtures/cli_parity/*`,
    `src/tests/test_cli_parity.py`.
-   Work:
-   - Compare parser behavior against Rust CLI for representative commands.
-   - Compare JSON shape where Python/Rust output should match.
-   - Keep human output tests focused to avoid brittle formatting lock-in.
+   Completed path:
+   - Added representative parser accept/reject fixtures covering the current
+     command surface.
+   - Kept command-family request construction tests focused on handler behavior
+     to avoid brittle human-output lock-in.
+   - JSON shape parity remains limited to shared dataclass rendering until the
+     package chooses final `gwz` command release mode.
    Verification: `python run_tests.py` and optional Rust CLI parity command.
 
 Phase gate:

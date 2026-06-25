@@ -7,9 +7,10 @@ from pathlib import Path
 import pytest
 
 from gwz.errors import GwzBridgeError
-from gwz.protocol.generated import AggregateStatus, EventKind, OperationEvent
+from gwz.protocol.generated import ActionKind, AggregateStatus, EventKind, OperationEvent
 
 from native_helpers import (
+    commit_file,
     create_workspace_with_member,
     git,
     init_bare_repo,
@@ -91,6 +92,57 @@ def test_native_stream_yields_before_operation_result_is_ready(tmp_path: Path, m
     assert events[0].kind is EventKind.operation_started
     assert events[-1].kind is EventKind.operation_finished
     assert not result_ready_after_first_event
+
+
+def test_native_clone_workspace_streams_root_and_member_events(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    client = native_client(source)
+    asyncio.run(client.create_workspace(workspace_id="ws_native_clone"))
+    asyncio.run(client.create_repo("repos/app", member_id="mem_app", source_id="src_app"))
+    member_repo = source / "repos" / "app"
+    commit = commit_file(member_repo, "README.md", "one\n", "initial")
+
+    member_remote = tmp_path / "member.git"
+    init_bare_repo(member_remote)
+    git(member_repo, "remote", "add", "origin", str(member_remote))
+    git(member_repo, "push", "origin", "HEAD:refs/heads/main")
+    asyncio.run(client.repo_sync("repos/app"))
+    asyncio.run(client.capture(paths=["repos/app"]))
+
+    git(source, "config", "user.name", "GWZ Test")
+    git(source, "config", "user.email", "gwz@example.invalid")
+    git(source, "add", "gwz.conf")
+    git(source, "commit", "-m", "workspace")
+
+    target = tmp_path / "clone"
+    clone_client = native_client(tmp_path)
+    events = asyncio.run(
+        collect(
+            clone_client.clone_workspace_stream(
+                str(source),
+                target,
+                workspace_id="ws_native_clone",
+            )
+        )
+    )
+    result = asyncio.run(clone_client.operation_result(events[0].operation_id))
+
+    assert events[0].kind is EventKind.operation_started
+    assert events[-1].kind is EventKind.operation_finished
+    assert [event.sequence for event in events] == list(range(len(events)))
+    assert any(
+        event.kind is EventKind.member_started and event.member_path == str(target)
+        for event in events
+    )
+    assert any(
+        event.kind is EventKind.member_started and event.member_path == "repos/app"
+        for event in events
+    )
+    assert result.action is ActionKind.clone_workspace
+    assert result.aggregate_status is AggregateStatus.ok
+    assert (target / "gwz.conf" / "gwz.lock.yml").is_file()
+    assert git(target / "repos" / "app", "rev-parse", "HEAD") == commit
 
 
 def test_native_operation_lookup_reports_missing_id(tmp_path: Path) -> None:

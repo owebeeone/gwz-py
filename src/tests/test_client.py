@@ -13,6 +13,8 @@ from gwz.protocol.generated import (
     BranchOp,
     BranchRequest,
     BranchResponse,
+    CloneWorkspaceRequest,
+    CloneWorkspaceResponse,
     InitFromSourcesResponse,
     LsResponse,
     MaterializeRequest,
@@ -41,6 +43,7 @@ RESPONSE_TYPES = {
     cls.__name__: cls
     for cls in (
         BranchResponse,
+        CloneWorkspaceResponse,
         InitFromSourcesResponse,
         LsResponse,
         MaterializeResponse,
@@ -202,6 +205,22 @@ def test_branch_create_does_not_inject_head_start_ref() -> None:
     assert request.start_ref is None
 
 
+def test_clone_workspace_builds_taut_request() -> None:
+    bridge = FakeBridge()
+    client = Client(root=Path("/tmp/workspace"), bridge=bridge)
+
+    response = asyncio.run(client.clone_workspace("git@example.invalid:org/ws.git", "work/ws"))
+
+    assert isinstance(response, CloneWorkspaceResponse)
+    method, request_message, response_message, request = bridge.calls[0]
+    assert method == "clone_workspace"
+    assert request_message == "CloneWorkspaceRequest"
+    assert response_message == "CloneWorkspaceResponse"
+    assert isinstance(request, CloneWorkspaceRequest)
+    assert request.url == "git@example.invalid:org/ws.git"
+    assert request.target == "work/ws"
+
+
 def test_materialize_branch_switch_uses_branch_target() -> None:
     bridge = FakeBridge()
     client = Client(root=Path("/tmp/workspace"), bridge=bridge)
@@ -242,6 +261,7 @@ def test_materialize_stream_subscribes_by_operation_id() -> None:
 
 def test_stream_helpers_subscribe_by_operation_id() -> None:
     stream_calls = [
+        ("clone_workspace", lambda client: client.clone_workspace_stream("file:///tmp/source", "workspace")),
         ("init_from_sources", lambda client: client.init_from_sources_stream(["file:///tmp/source"])),
         ("pull_head", lambda client: client.pull_head_stream()),
         ("pull_snapshot", lambda client: client.pull_snapshot_stream("snap_one")),
@@ -279,6 +299,7 @@ def test_public_operations_are_async() -> None:
         "add_existing_repo",
         "branch",
         "capture",
+        "clone_workspace",
         "commit",
         "create_repo",
         "create_workspace",

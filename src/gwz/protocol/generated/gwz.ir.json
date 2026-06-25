@@ -98,7 +98,8 @@
         "forall": 15,
         "repo_sync": 16,
         "stash": 17,
-        "branch": 18
+        "branch": 18,
+        "clone_workspace": 19
       }
     },
     {
@@ -3384,6 +3385,47 @@
       ]
     },
     {
+      "name": "CloneWorkspaceRequest",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "meta",
+          "tag": 1,
+          "type": {
+            "k": "msg",
+            "name": "RequestMeta"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "url",
+          "tag": 2,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "target",
+          "tag": 3,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
       "name": "AddExistingRepoRequest",
       "reserved_tags": [],
       "reserved_names": [],
@@ -4430,6 +4472,25 @@
       ]
     },
     {
+      "name": "CloneWorkspaceResponse",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "response",
+          "tag": 1,
+          "type": {
+            "k": "msg",
+            "name": "ResponseEnvelope"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
       "name": "AddExistingRepoResponse",
       "reserved_tags": [],
       "reserved_names": [],
@@ -4844,6 +4905,29 @@
               "type": {
                 "k": "msg",
                 "name": "InitFromSourcesResponse"
+              }
+            }
+          ]
+        },
+        {
+          "name": "clone_workspace",
+          "role": "in",
+          "shape": "unary",
+          "params": [
+            {
+              "name": "request",
+              "type": {
+                "k": "msg",
+                "name": "CloneWorkspaceRequest"
+              }
+            }
+          ],
+          "out": [
+            {
+              "slot": "value",
+              "type": {
+                "k": "msg",
+                "name": "CloneWorkspaceResponse"
               }
             }
           ]

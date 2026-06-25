@@ -21,6 +21,8 @@ from .protocol.generated import (
     BranchResponse,
     CaptureRequest,
     CaptureResponse,
+    CloneWorkspaceRequest,
+    CloneWorkspaceResponse,
     CommitRequest,
     CommitResponse,
     CreateRepoRequest,
@@ -252,6 +254,32 @@ class Client:
             workspace_id=workspace_id,
         )
         return self._stream_call("init_from_sources", request, InitFromSourcesResponse)
+
+    async def clone_workspace(
+        self,
+        url: str,
+        target: str | Path,
+        **meta: Any,
+    ) -> CloneWorkspaceResponse:
+        request = CloneWorkspaceRequest(
+            meta=self.meta(**meta),
+            url=url,
+            target=str(target),
+        )
+        return await self._call("clone_workspace", request, CloneWorkspaceResponse)
+
+    def clone_workspace_stream(
+        self,
+        url: str,
+        target: str | Path,
+        **meta: Any,
+    ) -> AsyncIterator[OperationEvent]:
+        request = CloneWorkspaceRequest(
+            meta=self.meta(**meta),
+            url=url,
+            target=str(target),
+        )
+        return self._stream_call("clone_workspace", request, CloneWorkspaceResponse)
 
     async def add_existing_repo(
         self,

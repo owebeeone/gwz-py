@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .client import Client
+from .client_helpers import SUCCESS_AGGREGATE_STATUS_NAMES
 from .protocol.generated import SyncBehavior
 
 CommandHandler = Callable[["CommandContext"], Awaitable[Any]]
@@ -153,6 +154,16 @@ def meta_kwargs(args: argparse.Namespace) -> dict[str, Any]:
 
 def exit_code_for_error(error: BaseException) -> int:
     return 2 if isinstance(error, CliUsageError) else 1
+
+
+def exit_code_for_response(response: Any) -> int:
+    envelope = getattr(response, "response", None)
+    meta = getattr(envelope, "meta", None)
+    aggregate = getattr(meta, "aggregate_status", None)
+    if aggregate is None:
+        return 0
+    name = getattr(aggregate, "name", str(aggregate))
+    return 0 if name in SUCCESS_AGGREGATE_STATUS_NAMES else 1
 
 
 def positive_int(value: str) -> int:

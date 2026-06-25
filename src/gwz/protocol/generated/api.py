@@ -23,6 +23,7 @@ class ActionKind(Enum):
     repo_sync = 16
     stash = 17
     branch = 18
+    clone_workspace = 19
 
 class TagOp(Enum):
     create = 0
@@ -586,6 +587,12 @@ class InitFromSourcesRequest:
     workspace_id: str | None
 
 @dataclass(slots=True)
+class CloneWorkspaceRequest:
+    meta: RequestMeta
+    url: str
+    target: str
+
+@dataclass(slots=True)
 class AddExistingRepoRequest:
     meta: RequestMeta
     repository_path: str
@@ -729,6 +736,10 @@ class CreateWorkspaceResponse:
 
 @dataclass(slots=True)
 class InitFromSourcesResponse:
+    response: ResponseEnvelope
+
+@dataclass(slots=True)
+class CloneWorkspaceResponse:
     response: ResponseEnvelope
 
 @dataclass(slots=True)

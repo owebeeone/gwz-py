@@ -1,0 +1,33 @@
+{
+  "accept": [
+    ["status", "--no-combined"],
+    ["ls", "--unmaterialized"],
+    ["init", "https://example.invalid/repo.git"],
+    ["repo", "add", "../repo"],
+    ["repo", "create", "repos/app"],
+    ["repo", "sync", "repos/app"],
+    ["materialize", "--switch", "feature"],
+    ["snapshot", "snap_1", "--branch", "main"],
+    ["tag", "--push", "v1"],
+    ["capture"],
+    ["stage", "-A", "src/file.py"],
+    ["commit", "-m", "message"],
+    ["pull", "--snapshot", "snap_1"],
+    ["push"],
+    ["branch", "--create", "feature", "--from", "main", "--switch"],
+    ["stash", "push", "-u", "-m", "work"],
+    ["forall", "repos/app", "--", "echo", "{@}"],
+    ["clone", "https://example.invalid/workspace.git"]
+  ],
+  "parse_reject": [
+    ["repo"],
+    ["commit"],
+    ["stash", "drop"]
+  ],
+  "semantic_reject": [
+    ["--all", "--member", "mem_app", "status"],
+    ["branch", "--switch"],
+    ["stash", "push", "-u", "-a"],
+    ["forall"]
+  ]
+}

@@ -20,7 +20,7 @@ pub(crate) fn call(
         | "repo_sync" | "status" | "ls" => {
             read::call(method, request_message, response_message, request_bytes)
         }
-        "materialize" | "snapshot" | "tag" | "capture" => {
+        "materialize" | "clone_workspace" | "snapshot" | "tag" | "capture" => {
             materialize::call(method, request_message, response_message, request_bytes)
         }
         "commit" | "stage" | "pull_head" | "pull_snapshot" | "push" => {
@@ -45,6 +45,9 @@ pub(crate) fn submit(
         }
         "materialize" => {
             submit_materialize(method, request_message, response_message, request_bytes)
+        }
+        "clone_workspace" => {
+            submit_clone_workspace(method, request_message, response_message, request_bytes)
         }
         "pull_head" => submit_pull_head(method, request_message, response_message, request_bytes),
         "pull_snapshot" => {
@@ -96,6 +99,28 @@ fn submit_materialize(
         &request.meta,
         gwz_core::ActionKind::Materialize,
         |response| gwz_core::MaterializeResponse { response }.to_cbor(),
+    )
+}
+
+fn submit_clone_workspace(
+    method: &str,
+    request_message: &str,
+    response_message: &str,
+    request_bytes: &[u8],
+) -> PyResult<Vec<u8>> {
+    codec::require_request(method, request_message, "CloneWorkspaceRequest")?;
+    codec::require_response(method, response_message, "CloneWorkspaceResponse")?;
+    let request = codec::decode_message(request_bytes, "decode CloneWorkspaceRequest", |cbor| {
+        gwz_core::CloneWorkspaceRequest::from_cbor(cbor)
+    })?;
+    submit_accepted(
+        method,
+        request_message,
+        response_message,
+        request_bytes,
+        &request.meta,
+        gwz_core::ActionKind::CloneWorkspace,
+        |response| gwz_core::CloneWorkspaceResponse { response }.to_cbor(),
     )
 }
 
