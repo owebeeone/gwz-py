@@ -1,6 +1,6 @@
-# GWZ Python Package Plan
+# GWZ Python Package Design
 
-Status: active implementation plan
+Status: active design
 
 This plan supersedes the earlier GWS-named design and filename. The repository
 remains `gwz-py`, the PyPI distribution is `gwz-py`, the import package is
@@ -39,7 +39,9 @@ requirements:
   name=...)` and a convenience `client.switch(...)`.
 - `snapshot --branch[=<name>]` is `SnapshotSourceKind.current` for bare
   `--branch` and `SnapshotSourceKind.branch` with `branch=<name>` for named
-  branch snapshots. The Python API should expose both forms.
+  branch snapshots. Bare `--branch` is not the same as omitting `source`: it
+  validates that selected members are attached, non-unborn, and on a coherent
+  branch set.
 - `repo_sync(member_path)` is just `RequestMeta.selection.paths`. It refreshes
   manifest metadata from materialized local repositories; it does not fetch,
   push, check out branches, or rewrite the lock.
@@ -101,6 +103,9 @@ gwz-py/
     tests/
 ```
 
+Tests live under `src/tests`, matching `pyproject.toml` test discovery. Do not add
+package-internal `gwz.tests` modules unless the packaging strategy changes.
+
 Recommended package metadata:
 
 | Artifact | Name |
@@ -149,6 +154,13 @@ The generated Python files provide dataclasses and typed client/server stubs.
 The packaged IR JSON lets the runtime bridge encode and decode with
 `taut.wire.codec` without importing a local `gwz-core` checkout.
 
+Only the generated dataclasses and packaged IR are runtime sources of truth for
+`gwz-py`. If taut continues to generate `client.py` and `server.py`, the Python
+package must either adapt `CoreBridge` to that generated transport ABI or
+configure regeneration so only `api.py` and `gwz.ir.json` are emitted. The
+handwritten `CoreBridge` must not silently coexist with an incompatible generated
+transport contract.
+
 Generation is a source-control gate:
 
 ```text
@@ -164,6 +176,15 @@ The generated API must stay current with the service declared in
 `repo_sync`, `stash`, `branch`, `events.subscribe`, and `operation.result`.
 `ExecRequest` and `ExecResponse` remain generated protocol data only because
 taut module splitting is not available yet; they are not service methods.
+
+`RequestMeta.schema_version` and any bridge protocol fingerprint must come from
+one generated/core-owned source, not from independent hardcoded Python literals.
+If `gwz-core` does not yet expose one canonical schema-version literal, Phase 0
+must resolve that core/schema coordination item before Python treats the version
+string as an enforceable drift guard. The native extension should expose enough
+protocol metadata for Python to fail fast if packaged `gwz.ir.json` does not
+match the linked `gwz-core` protocol; until the version literal is canonical, the
+packaged IR fingerprint is the enforceable drift guard.
 
 ## Public Python API
 
@@ -217,16 +238,19 @@ Ergonomic helpers should cover current CLI/core edge cases:
   `SnapshotSourceKind.branch`.
 - `await client.branch(op="merge", source_ref="refs/heads/topic")` encodes the
   source ref into `BranchRequest.start_ref`.
+- Branch create should let `gwz-core` own default start-ref behavior unless a
+  Python helper explicitly documents a stronger CLI compatibility reason.
 - `await client.repo_sync("member/path")` encodes the member path into
   `RequestMeta.selection.paths`.
 
-Operations that emit progress should expose async generators such as
-`init_from_sources_stream`, `materialize_stream`, `pull_snapshot_stream`, and
+Operations that emit member progress should expose async generators for the
+handlers that actually accept an `EventSink`: `init_from_sources_stream`,
+`materialize_stream`, `pull_head_stream`, `pull_snapshot_stream`, and
 `push_stream`. A streaming helper submits the operation, reads
 `ResponseMeta.operation_id`, subscribes through `events.subscribe`, and can read
-the final record through `operation.result`. Stash push/apply/pop and branch
-merge should use the same operation-id event path if `gwz-core` emits member
-events for those handlers.
+the final record through `operation.result`. Branch, stash, snapshot, tag,
+capture, commit, stage, status, ls, create, and repo-sync methods are
+request/response APIs unless `gwz-core` later adds event-sink support for them.
 
 Branch and stash are no longer future design items. `gwz-core` now exposes
 `BranchRequest`/`BranchResponse` and `StashRequest`/`StashResponse` in the taut
@@ -236,7 +260,8 @@ separate Python behavior.
 
 ## Bridge Contract
 
-The Python bridge interface is intentionally message-first:
+The Python bridge interface is intentionally message-first for role-in service
+methods:
 
 ```python
 class CoreBridge:
@@ -264,16 +289,28 @@ The native implementation should be a PyO3/maturin extension named
 metadata for `GwzCore` service calls, dispatch into `gwz-core`, and return
 encoded taut response bytes. Event streaming is not method/request based:
 Python subscribes to `events.subscribe` with an `operation_id`, and reads final
-records with `operation.result`.
+records with `operation.result`. These two role-out methods use scalar
+`operation_id` parameters rather than request dataclasses.
+
+The initial native bridge ABI is CBOR, not ad hoc JSON: Python encodes generated
+dataclasses through `to_wire` and `taut.wire.codec` into bytes, and Rust decodes
+with the `gwz-core` generated CBOR/runtime support. A transitional JSON ABI is
+allowed only if it uses taut's IR-driven JSON codec on both sides; naive
+`json.dumps` is not acceptable because integer and enum wire rules would drift.
 
 This avoids a function-per-operation FFI surface. Schema evolution stays in the
-taut contract, not in duplicated Python/Rust method signatures. Non-service CLI
-workflows such as `clone` and `forall` are explicit exceptions and must be kept
-outside `CoreBridge.call`.
+taut contract, not in duplicated Python method signatures. The Rust extension
+still owns a method-name dispatch table because `gwz-core` exposes individual
+handlers, not a reusable public router. That Rust table should mirror the current
+`gwz-cli` behavior or, preferably, move toward a shared `gwz-core` dispatch API
+so the CLI and Python extension do not maintain parallel routing logic.
+Non-service CLI workflows such as `clone` and `forall` are explicit exceptions
+and must be kept outside `CoreBridge.call`.
 
 The Rust side may run blocking `gwz-core` handlers internally, but the extension
-must move blocking work off the Python event loop and deliver streaming events
-back through async-safe queues.
+must move blocking work off the Python event loop, release the GIL around
+blocking Rust handlers through PyO3's thread APIs, and deliver streaming events
+back through bounded async-safe queues.
 
 ## CLI Strategy
 
@@ -294,7 +331,9 @@ Two commands are intentionally special:
   the lock, but the taut service has no `CloneWorkspaceRequest`. The Python CLI
   must either use a named native bridge extension for this workflow, implement
   the local Git clone step before calling `materialize("lock")`, or dispatch to
-  the Rust binary in packaging modes that include it.
+  the Rust binary in packaging modes that include it. First release must either
+  implement `gwz clone` through one of these paths or list it as a known CLI
+  limitation.
 
 Late in release hardening, choose one of two packaging modes:
 
@@ -317,8 +356,19 @@ Expose a small Python hierarchy:
 | `GwzBridgeError` | Bridge transport or native extension failure. |
 | `GwzCoreLoadError` | Native extension cannot be imported or initialized. |
 
-When possible, exceptions should preserve request id, operation id, aggregate
-status, member errors, and the original protocol response.
+By default, high-level client methods raise `GwzOperationError` for rejected,
+failed, partial, dirty, or conflicted aggregate statuses. That exception must
+preserve request id, operation id, aggregate status, member errors, and the
+original protocol response so callers can still inspect the typed response.
+Stream helpers should drain all events, read the final `operation.result`, and
+then apply the same raise-with-response policy. Lower-level bridge/test helpers
+may expose raw responses directly.
+
+Avoid a public-name collision between the generated protocol data class
+`gwz.protocol.generated.GwzError` and the Python exception base class
+`gwz.errors.GwzError`. The package should not star-export both into the same
+namespace; if an ergonomic alias is needed, prefer a data-name such as
+`GwzErrorDetail`.
 
 ## Testing Strategy
 
@@ -344,9 +394,8 @@ status, member errors, and the original protocol response.
 4. Add the PyO3 native extension skeleton and a single bridge call for `ls`.
 5. Expand bridge coverage to `status`, `create_workspace`, `repo_sync`, and
    `init_from_sources`.
-6. Add operation-id event subscription and result lookup for `materialize`,
-   `pull_snapshot`, `push`, and any stash or branch handlers that emit member
-   events.
+6. Add operation-id event subscription and result lookup for
+   `init_from_sources`, `materialize`, `pull_head`, `pull_snapshot`, and `push`.
 7. Cover all current `GwzCore` service methods, explicitly including
    `repo_sync`, `branch`, and `stash`.
 8. Expand the Python CLI to match core `gwz-cli` command parsing and rendering,
@@ -360,9 +409,8 @@ status, member errors, and the original protocol response.
 ## Open Decisions
 
 - Whether release wheels use setuptools plus an optional prebuilt extension or
-  switch fully to maturin once `gwz._gwz_core` lands.
-- Exact bridge wire ABI: Python-encoded CBOR into Rust, Rust-encoded CBOR out, or
-  a transitional JSON ABI while the extension is being built.
+  switch fully to maturin. This must be decided before native extension work
+  begins; later packaging work should only refine wheel/platform strategy.
 - Whether `gwz clone` is implemented through a named non-service bridge
   extension, Python-local Git clone followed by `materialize("lock")`, or Rust
   binary dispatch.
@@ -371,3 +419,12 @@ status, member errors, and the original protocol response.
   versions.
 - Whether final release wheels bundle the Rust CLI, keep the Python CLI, or
   publish both with an environment-controlled dispatch choice.
+
+## Plan Cross-Reference
+
+`GwzPyPlan.md` breaks these milestones into implementation phases. Phase 0 locks
+the scaffold and protocol boundary, Phase 1 owns codec/transport/error-model
+work, Phase 2 commits the native build backend and first bridge call, Phase 3
+expands native service coverage, Phase 4 implements operation-id events/results,
+Phase 5 builds CLI parity, Phase 6 handles packaging/CI/release mode, and Phase
+7 hardens for PyPI.
