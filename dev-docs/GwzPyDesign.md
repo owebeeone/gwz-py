@@ -97,8 +97,6 @@ gwz-py/
         generated/
           __init__.py
           api.py
-          client.py
-          server.py
           gwz.ir.json
     tests/
 ```
@@ -142,24 +140,17 @@ coordinated stash bundles, pull, push, and operation events.
 ## Taut Protocol Use
 
 `scripts/regen_protocol.py` regenerates Python protocol files from
-`../gwz-core/protocol/gwz.taut.py` using `tautc`. It writes:
+`../gwz-core/protocol/gwz.taut.py` using `tautc --api-only`. It writes:
 
 - `src/gwz/protocol/generated/api.py`
-- `src/gwz/protocol/generated/client.py`
-- `src/gwz/protocol/generated/server.py`
 - `src/gwz/protocol/generated/__init__.py`
 - `src/gwz/protocol/generated/gwz.ir.json`
 
-The generated Python files provide dataclasses and typed client/server stubs.
-The packaged IR JSON lets the runtime bridge encode and decode with
-`taut.wire.codec` without importing a local `gwz-core` checkout.
-
-Only the generated dataclasses and packaged IR are runtime sources of truth for
-`gwz-py`. If taut continues to generate `client.py` and `server.py`, the Python
-package must either adapt `CoreBridge` to that generated transport ABI or
-configure regeneration so only `api.py` and `gwz.ir.json` are emitted. The
-handwritten `CoreBridge` must not silently coexist with an incompatible generated
-transport contract.
+The generated Python API provides dataclasses and enum types. The packaged IR
+JSON lets the runtime bridge encode and decode with `taut.wire.codec` without
+importing a local `gwz-core` checkout. Generated taut `client.py` and `server.py`
+transport stubs are intentionally not emitted into the runtime package; the
+handwritten `CoreBridge` is the only Python transport boundary.
 
 Generation is a source-control gate:
 
@@ -311,6 +302,11 @@ The Rust side may run blocking `gwz-core` handlers internally, but the extension
 must move blocking work off the Python event loop, release the GIL around
 blocking Rust handlers through PyO3's thread APIs, and deliver streaming events
 back through bounded async-safe queues.
+
+The committed native build path is maturin-centered. The initial PyO3 extension
+is `gwz._gwz_core`; it exposes `health()`, `version()`, and a CBOR byte-oriented
+`call()` implementation for `ls`. Later phases expand the Rust method dispatch
+table and operation event/result runtime.
 
 ## CLI Strategy
 

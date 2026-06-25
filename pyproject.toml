@@ -18,7 +18,7 @@ classifiers = [
 dependencies = ["taut-proto>=0.6.0"]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "pytest-asyncio>=0.23", "setuptools-scm>=8"]
+dev = ["maturin>=1.13,<2", "pytest>=8", "pytest-asyncio>=0.23", "setuptools-scm>=8"]
 
 [project.urls]
 Homepage = "https://github.com/owebeeone/gwz-py"
@@ -28,8 +28,13 @@ Repository = "https://github.com/owebeeone/gwz-py"
 gwz = "gwz.cli:main"
 
 [build-system]
-requires = ["setuptools>=77", "setuptools-scm>=8"]
-build-backend = "setuptools.build_meta"
+requires = ["maturin>=1.13,<2"]
+build-backend = "maturin"
+
+[tool.maturin]
+python-source = "src"
+module-name = "gwz._gwz_core"
+features = ["pyo3/extension-module"]
 
 [tool.setuptools_scm]
 tag_regex = "^v(?P<version>\\d+\\.\\d+\\.\\d+)$"

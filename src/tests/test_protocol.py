@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from gwz.protocol import schema
 from gwz.protocol.codec import to_wire
+from gwz.protocol import generated
 from gwz.protocol.generated import RequestMeta, StatusMode, StatusRequest
 
 
@@ -12,6 +15,16 @@ def test_packaged_ir_contains_gwz_core_service() -> None:
     methods = {method.name for method in loaded.services["GwzCore"].methods}
     assert {"repo_sync", "branch", "stash", "events.subscribe", "operation.result"} <= methods
     assert "forall" not in methods
+
+
+def test_generated_runtime_artifacts_are_api_only() -> None:
+    generated_dir = Path(generated.__file__).parent
+
+    assert {path.name for path in generated_dir.iterdir() if path.is_file()} == {
+        "__init__.py",
+        "api.py",
+        "gwz.ir.json",
+    }
 
 
 def test_generated_dataclasses_convert_to_wire_dicts() -> None:

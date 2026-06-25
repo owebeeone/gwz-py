@@ -14,7 +14,9 @@ from gwz.protocol.generated import (
     BranchRequest,
     BranchResponse,
     LsResponse,
+    MaterializeRequest,
     MaterializeResponse,
+    MaterializeTargetKind,
     OperationResult,
     RepoSyncRequest,
     RepoSyncResponse,
@@ -137,6 +139,19 @@ def test_repo_sync_member_path_uses_selection() -> None:
     assert request.meta.selection.paths == ["packages/app"]
 
 
+def test_repo_sync_explicit_paths_use_selection() -> None:
+    bridge = FakeBridge()
+    client = Client(root=Path("/tmp/workspace"), bridge=bridge)
+
+    asyncio.run(client.repo_sync(paths=("packages/app", "libs/core")))
+
+    method, _, _, request = bridge.calls[0]
+    assert method == "repo_sync"
+    assert isinstance(request, RepoSyncRequest)
+    assert request.meta.selection is not None
+    assert request.meta.selection.paths == ["packages/app", "libs/core"]
+
+
 def test_snapshot_branch_source_is_explicit() -> None:
     bridge = FakeBridge()
     client = Client(root=Path("/tmp/workspace"), bridge=bridge)
@@ -165,6 +180,44 @@ def test_branch_merge_source_maps_to_start_ref() -> None:
     assert request.start_ref == "refs/heads/topic"
 
 
+def test_branch_create_does_not_inject_head_start_ref() -> None:
+    bridge = FakeBridge()
+    client = Client(root=Path("/tmp/workspace"), bridge=bridge)
+
+    asyncio.run(client.branch("feature/new", op="create"))
+
+    method, _, _, request = bridge.calls[0]
+    assert method == "branch"
+    assert isinstance(request, BranchRequest)
+    assert request.op is BranchOp.create
+    assert request.name == "feature/new"
+    assert request.start_ref is None
+
+
+def test_materialize_branch_switch_uses_branch_target() -> None:
+    bridge = FakeBridge()
+    client = Client(root=Path("/tmp/workspace"), bridge=bridge)
+
+    asyncio.run(client.switch("feature/new"))
+
+    method, _, _, request = bridge.calls[0]
+    assert method == "materialize"
+    assert isinstance(request, MaterializeRequest)
+    assert request.target.kind is MaterializeTargetKind.branch
+    assert request.target.name == "feature/new"
+    assert request.target.commit is None
+
+
+def test_events_subscribe_delegates_by_operation_id() -> None:
+    bridge = FakeBridge()
+    client = Client(root=Path("/tmp/workspace"), bridge=bridge)
+
+    event_stream = client.events_subscribe("op_manual")
+
+    assert event_stream.__aiter__() is event_stream
+    assert bridge.subscriptions == ["op_manual"]
+
+
 def test_materialize_stream_subscribes_by_operation_id() -> None:
     bridge = FakeBridge()
     client = Client(root=Path("/tmp/workspace"), bridge=bridge)
@@ -186,6 +239,10 @@ def test_operation_result_delegates_to_bridge() -> None:
     result = asyncio.run(client.operation_result("op_test"))
 
     assert result.operation_id == "op_test"
+
+
+def test_forall_is_not_a_client_service_method() -> None:
+    assert not hasattr(Client, "forall")
 
 
 def test_public_operations_are_async() -> None:

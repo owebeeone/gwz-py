@@ -43,9 +43,9 @@ The baseline is not complete:
 - Streaming is scaffolded but not backed by a native operation runtime.
 - CLI parity with Rust `gwz-cli` is incomplete.
 - Packaging has not chosen Python CLI, Rust binary dispatch, or both.
-- Generated `client.py`/`server.py` currently exist beside the handwritten bridge;
-  Phase 0 must make their role explicit so two incompatible transport ABIs do not
-  survive.
+- Generated transport stubs are excluded from the runtime package with
+  `tautc --api-only`; the handwritten `CoreBridge` is the only Python transport
+  boundary.
 
 ## Agent Roles
 
@@ -97,14 +97,10 @@ Steps:
 2. Protocol Agent resolves generated transport artifacts.
    Write scope: `scripts/regen_protocol.py`, `src/gwz/protocol/generated/*`,
    `src/tests/test_protocol.py`.
-   Work:
-   - Preferred path: configure regeneration to emit runtime `api.py` and
-     `gwz.ir.json` only.
-   - Acceptable fallback: keep generated `client.py`/`server.py` as reference
-     artifacts only and add tests/docs proving `CoreBridge` is the sole runtime
-     transport ABI.
-   - Do not leave generated transport stubs and handwritten `CoreBridge` as two
-     competing runtime contracts.
+   Completed path:
+   - Regeneration uses `tautc --api-only`.
+   - Runtime generated artifacts are `api.py`, `__init__.py`, and `gwz.ir.json`.
+   - Generated `client.py`/`server.py` are not packaged beside `CoreBridge`.
    Verification: protocol tests assert the chosen generated artifact set.
 
 3. Client Agent verifies the facade covers all current `GwzCore` service methods:
@@ -134,7 +130,7 @@ Steps:
 5. Docs Agent keeps `GwzPyDesign.md` and this plan in sync.
    Write scope: `dev-docs/*`, `README.md`.
    Output: no stale GWS names and no stale generic stream ABI.
-   Verification: `rg "Gws|gws-core|event_message|def stream" dev-docs src/gwz`.
+   Verification: `rg "Gws|gws-core|event_message|def stream" dev-docs src/gwz -g '!GwzPyPlan.md'`.
 
 Phase gate:
 
@@ -268,47 +264,45 @@ Steps:
 
 1. Packaging Agent commits the native build backend and dependency model.
    Write scope: `pyproject.toml`, native `Cargo.toml` files, README install notes.
-   Work:
-   - Decide setuptools-extension integration versus a maturin-centered build now;
-     Phase 6 may refine wheel/platform strategy but must not reopen the backend.
-   - Keep source distribution usable without prebuilt wheels if possible.
-   - Declare `gwz-core` with a development path dependency and a release
-     override path such as git+tag.
-   - Record the Rust toolchain floor, including edition-2024/rustc requirements.
-   - Record git2/openssl or ssh/https system dependency implications for wheels.
-   - Document local build command.
+   Completed path:
+   - The committed backend is maturin-centered.
+   - `Cargo.toml` declares `gwz-core` as a sibling development path dependency.
+   - Rust floor follows `gwz-core`: edition 2024 and Rust 1.95 or newer.
+   - README records local `maturin develop` and git2/OpenSSL/SSH build notes.
+   - Phase 6 may refine wheel/platform strategy but must not reopen the backend.
    Verification: package metadata validation.
 
 2. Bridge Agent creates the PyO3 module skeleton.
    Write scope: native extension directory only.
-   Work:
-   - Export module as `gwz._gwz_core`.
-   - Implement a temporary `health()` or version function for smoke tests.
-   - Do not dispatch workspace operations yet.
+   Completed path:
+   - Exports module as `gwz._gwz_core`.
+   - Implements `health()` and `version()` smoke functions.
+   - Native `call` detaches from the GIL around blocking Rust dispatch.
    Verification: import smoke test.
 
 3. Bridge Agent implements `call` for `ls` only.
    Write scope: native extension dispatch module.
-   Work:
-   - Accept method name, request message, response message, and CBOR request
+   Completed path:
+   - Accepts method name, request message, response message, and CBOR request
      bytes.
-   - Decode `LsRequest` through the `gwz-core` generated CBOR/runtime support.
-   - Call `gwz-core` `handle_ls`.
-   - Encode `LsResponse` as CBOR bytes.
-   - Return protocol errors as structured bridge errors.
+   - Decodes `LsRequest` through the `gwz-core` generated CBOR/runtime support.
+   - Calls `gwz-core` `handle_ls`.
+   - Encodes `LsResponse` as CBOR bytes.
+   - Returns unsupported method/message and protocol decode failures as Python
+     exceptions that the bridge maps to `GwzBridgeError`/`GwzProtocolError`.
    Verification: native fixture test for `ls`.
 
 4. Test Agent adds native opt-in tests.
    Write scope: `src/tests/test_native_bridge.py`, test fixtures.
-   Work:
-   - Skip cleanly when extension is not built.
-   - Exercise import and `ls` against a minimal workspace fixture.
-   - Keep fake bridge tests as default fast coverage.
+   Completed path:
+   - Skips cleanly when extension is not built.
+   - Exercises import and `ls` against a minimal workspace fixture.
+   - Keeps fake bridge tests as default fast coverage.
    Verification: default `python run_tests.py` and opt-in native test command.
 
 5. Packaging Agent adds build instructions.
    Write scope: `README.md`, `dev-docs/GwzPyPlan.md` if needed.
-   Work:
+   Completed path:
    - Local editable Python install.
    - Local native extension build.
    - Troubleshooting for missing `gwz._gwz_core`.

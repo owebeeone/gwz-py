@@ -1,14 +1,18 @@
 from __future__ import annotations
 
-import dataclasses
 import inspect
-import uuid
 from collections.abc import AsyncIterator, Iterable, Sequence
 from pathlib import Path
 from typing import Any
 
 from .bridge import CoreBridge, NativeCoreBridge
-from .errors import GwzOperationError
+from .client_helpers import (
+    enum_value as _enum_value,
+    materialize_target as _target,
+    raise_for_response,
+    request_id as _request_id,
+    sources as _sources,
+)
 from .protocol.generated import (
     AddExistingRepoRequest,
     AddExistingRepoResponse,
@@ -24,6 +28,7 @@ from .protocol.generated import (
     CreateWorkspaceRequest,
     CreateWorkspaceResponse,
     DestructiveBehavior,
+    GwzError as GwzErrorDetail,
     InitFromSourcesRequest,
     InitFromSourcesResponse,
     LsRequest,
@@ -70,32 +75,6 @@ from .protocol.generated import (
 )
 
 SCHEMA_VERSION = "gwz.protocol/v0"
-
-
-def _request_id() -> str:
-    return f"req_{uuid.uuid4().hex}"
-
-
-def _enum_value(enum_type: type[Any], value: Any) -> Any:
-    if value is None or isinstance(value, enum_type):
-        return value
-    return enum_type[value]
-
-
-def _target(kind: str | MaterializeTargetKind, name: str | None = None, commit: str | None = None) -> MaterializeTarget:
-    if isinstance(kind, str):
-        kind = MaterializeTargetKind[kind]
-    return MaterializeTarget(kind=kind, name=name, commit=commit)
-
-
-def _sources(sources: Sequence[str | SourceUrl]) -> list[SourceUrl]:
-    result: list[SourceUrl] = []
-    for source in sources:
-        if isinstance(source, SourceUrl):
-            result.append(source)
-        else:
-            result.append(SourceUrl(url=str(source), path=None, remote_name=None, branch=None))
-    return result
 
 
 class Client:
@@ -199,7 +178,7 @@ class Client:
 
     async def _call(self, method: str, request: Any, response_type: type[Any]) -> Any:
         result = await self.bridge.call(method, type(request).__name__, response_type.__name__, request)
-        self._raise_for_response(result)
+        raise_for_response(result)
         return result
 
     async def _stream_call(
@@ -214,24 +193,7 @@ class Client:
             return
         async for event in self.bridge.subscribe_events(operation_id):
             yield event
-
-    def _raise_for_response(self, response: Any) -> None:
-        envelope = getattr(response, "response", None)
-        meta = getattr(envelope, "meta", None)
-        aggregate = getattr(meta, "aggregate_status", None)
-        if aggregate is None:
-            return
-        name = getattr(aggregate, "name", str(aggregate))
-        if name in {"accepted", "ok", "noop"}:
-            return
-        message = getattr(meta, "message", None) or f"gwz operation returned {name}"
-        raise GwzOperationError(
-            message=message,
-            response=response,
-            aggregate_status=aggregate,
-            operation_id=getattr(meta, "operation_id", None),
-            request_id=getattr(meta, "request_id", None),
-        )
+        await self.operation_result(operation_id)
 
     async def create_workspace(
         self,
@@ -481,8 +443,6 @@ class Client:
     ) -> BranchResponse:
         branch_op = _enum_value(BranchOp, op)
         effective_start_ref = source_ref if source_ref is not None else start_ref
-        if branch_op is BranchOp.create and effective_start_ref is None:
-            effective_start_ref = "HEAD"
         request = BranchRequest(
             meta=self.meta(**meta),
             op=branch_op,
@@ -492,11 +452,15 @@ class Client:
         )
         return await self._call("branch", request, BranchResponse)
 
-    def events(self, operation_id: str) -> AsyncIterator[OperationEvent]:
+    def events_subscribe(self, operation_id: str) -> AsyncIterator[OperationEvent]:
         return self.bridge.subscribe_events(operation_id)
+
+    def events(self, operation_id: str) -> AsyncIterator[OperationEvent]:
+        return self.events_subscribe(operation_id)
 
     async def operation_result(self, operation_id: str) -> OperationResult:
         result = await self.bridge.operation_result(operation_id)
+        raise_for_response(result)
         return result
 
 
@@ -505,4 +469,4 @@ async def status(root: str | Path | None = None, **kwargs: Any) -> StatusRespons
         return await client.status(**kwargs)
 
 
-__all__ = ["Client", "SCHEMA_VERSION", "status"]
+__all__ = ["Client", "GwzErrorDetail", "SCHEMA_VERSION", "status"]

@@ -23,6 +23,7 @@ ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_SCHEMA = ROOT.parent / "gwz-core" / "protocol" / "gwz.taut.py"
 DEFAULT_OUT = ROOT / "src" / "gwz" / "protocol" / "generated"
 IR_NAME = "gwz.ir.json"
+PYTHON_INIT = "from .api import *  # noqa: F401,F403\n"
 
 
 def fail(message: str) -> None:
@@ -64,6 +65,7 @@ def generate_python(schema: Path, temp: Path) -> Path:
             str(temp),
             "-l",
             "python",
+            "--api-only",
         ]
     )
     if result.returncode != 0:
@@ -87,6 +89,10 @@ def export_ir(schema: Path, path: Path) -> None:
     result = run([sys.executable, "-c", code, str(schema), str(path)])
     if result.returncode != 0:
         fail("taut IR export failed")
+
+
+def ensure_python_package(generated: Path) -> None:
+    (generated / "__init__.py").write_text(PYTHON_INIT, encoding="utf-8")
 
 
 def same_tree(source: Path, dest: Path) -> bool:
@@ -120,6 +126,7 @@ def main() -> int:
     temp_root = Path(tempfile.mkdtemp(prefix="gwz-py-protocol-"))
     try:
         generated = generate_python(schema, temp_root)
+        ensure_python_package(generated)
         export_ir(schema, generated / IR_NAME)
         if args.check:
             if not args.out.exists() or not same_tree(generated, args.out):

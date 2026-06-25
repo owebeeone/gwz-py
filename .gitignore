@@ -7,3 +7,5 @@ __pycache__/
 .venv/
 build/
 dist/
+target/
+src/gwz/_gwz_core*.so
