@@ -34,9 +34,17 @@ fn call_materialize(
     })?;
     let request_id = request.meta.request_id.clone();
     let start = current_dir()?;
-    let response = shims::backend_with_events(&request_id, |backend, operation_id, events| {
-        gwz_core::workspace_ops::handle_materialize(backend, &start, request, operation_id, events)
-    })?;
+    let (response, recorder) =
+        shims::backend_with_events(&request_id, |backend, operation_id, events| {
+            gwz_core::workspace_ops::handle_materialize(
+                backend,
+                &start,
+                request,
+                operation_id,
+                events,
+            )
+        })?;
+    recorder.finish(&response.response)?;
     codec::encode_message("encode MaterializeResponse", || response.to_cbor())
 }
 

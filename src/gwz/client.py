@@ -229,6 +229,25 @@ class Client:
         )
         return await self._call("init_from_sources", request, InitFromSourcesResponse)
 
+    def init_from_sources_stream(
+        self,
+        sources: Sequence[str | SourceUrl],
+        *,
+        workspace_root: str | Path | None = None,
+        target: MaterializeTarget | None = None,
+        workspace_id: str | None = None,
+        **meta: Any,
+    ) -> AsyncIterator[OperationEvent]:
+        root = Path(workspace_root).resolve() if workspace_root is not None else self.root
+        request = InitFromSourcesRequest(
+            meta=self.meta(root=root, **meta),
+            workspace_root=str(root or ""),
+            sources=_sources(sources),
+            target=target,
+            workspace_id=workspace_id,
+        )
+        return self._stream_call("init_from_sources", request, InitFromSourcesResponse)
+
     async def add_existing_repo(
         self,
         repository_path: str | Path,
@@ -393,9 +412,17 @@ class Client:
         request = PullHeadRequest(meta=self.meta(**meta))
         return await self._call("pull_head", request, PullHeadResponse)
 
+    def pull_head_stream(self, **meta: Any) -> AsyncIterator[OperationEvent]:
+        request = PullHeadRequest(meta=self.meta(**meta))
+        return self._stream_call("pull_head", request, PullHeadResponse)
+
     async def pull_snapshot(self, snapshot_id: str, **meta: Any) -> PullSnapshotResponse:
         request = PullSnapshotRequest(meta=self.meta(**meta), snapshot_id=snapshot_id)
         return await self._call("pull_snapshot", request, PullSnapshotResponse)
+
+    def pull_snapshot_stream(self, snapshot_id: str, **meta: Any) -> AsyncIterator[OperationEvent]:
+        request = PullSnapshotRequest(meta=self.meta(**meta), snapshot_id=snapshot_id)
+        return self._stream_call("pull_snapshot", request, PullSnapshotResponse)
 
     async def push(
         self,
@@ -406,6 +433,16 @@ class Client:
     ) -> PushResponse:
         request = PushRequest(meta=self.meta(**meta), remote=remote, refspec=refspec)
         return await self._call("push", request, PushResponse)
+
+    def push_stream(
+        self,
+        *,
+        remote: str | None = None,
+        refspec: str | None = None,
+        **meta: Any,
+    ) -> AsyncIterator[OperationEvent]:
+        request = PushRequest(meta=self.meta(**meta), remote=remote, refspec=refspec)
+        return self._stream_call("push", request, PushResponse)
 
     async def stash(
         self,

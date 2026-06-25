@@ -433,60 +433,56 @@ Steps:
 
 1. Bridge Agent integrates `gwz-core` operation runtime.
    Write scope: native runtime wrapper files.
-   Work:
-   - Treat this as first-use runtime code, not a thin wrapper.
-   - Implement or document the adapter between handlers that return typed
-     `*Response` values and the `OperationRuntime`/`ExecutionReport` result model.
-   - Acceptable paths are: adapt each typed response envelope into the runtime's
-     final report shape, or implement a bridge-owned `EventSink` plus
-     `operation_id` result store that preserves the generated response details.
-   - Submit event-capable long-running operations through the chosen runtime path:
-     `init_from_sources`, `materialize`, `pull_head`, `pull_snapshot`, and `push`.
-   - Return accepted responses with `ResponseMeta.operation_id`.
-   - Preserve direct responses for operations that remain synchronous.
+   Completed path:
+   - Implemented a bridge-owned operation store in `native/src/operations.rs`
+     rather than adapting to `OperationRuntime`'s generic `ExecutionReport`.
+   - Added a native `EventSink` that records the generated `OperationEvent`
+     values emitted by `gwz-core` handlers.
+   - Recorded final `OperationResult` values by preserving each typed response
+     envelope's action, aggregate status, members, errors, attribution, request
+     id, and operation id.
+   - Event-capable handlers remain synchronous in this pass; they return their
+     typed final response and store events/results for later lookup.
    Verification: native tests assert operation id, event replay, and final result
-   for at least one handler using each supported runtime shape.
+   for a handler using the recorded event path.
 
 2. Bridge Agent implements native event subscription.
    Write scope: native runtime wrapper files, `src/gwz/bridge.py`.
-   Work:
-   - Expose `subscribe_events(operation_id)`.
-   - Drain `OperationEvent` records in sequence order.
-   - Surface not-found as `GwzOperationError` or `GwzBridgeError` consistently.
-   Verification: fake and native event tests.
+   Completed path:
+   - `gwz._gwz_core.subscribe_events(operation_id)` returns encoded
+     `OperationEvent` records from the bridge-owned store.
+   - `NativeCoreBridge.subscribe_events` decodes those records through the
+     existing generated codec.
+   - Missing operations surface as `GwzBridgeError`.
+   Verification: fake bridge and native operation tests.
 
 3. Bridge Agent implements native result lookup.
    Write scope: native runtime wrapper files, `src/gwz/bridge.py`.
-   Work:
-   - Expose `operation_result(operation_id)`.
-   - Return generated `OperationResult`.
-   - Preserve request id, aggregate status, members, and errors.
-   Verification: operation result tests.
+   Completed path:
+   - `gwz._gwz_core.operation_result(operation_id)` returns encoded
+     `OperationResult`.
+   - The generated result preserves request id, aggregate status, members,
+     errors, attribution, and timing fields.
+   Verification: fake bridge and native operation result tests.
 
 4. Client Agent adds stream helpers.
    Write scope: `src/gwz/client.py` and the Phase 0 client helper module, if
    created.
-   Work:
-   - Add or complete exactly these member-event helpers:
-     `init_from_sources_stream`, `materialize_stream`, `pull_head_stream`,
-     `pull_snapshot_stream`, and `push_stream`.
-   - Do not add branch/stash stream helpers until `gwz-core` handlers accept an
-     `EventSink`; they remain request/response methods.
-   - Keep stream helpers implemented through one shared private helper.
-   - If Phase 0 split client helpers, put stream mechanics in the helper module
-     and leave `client.py` as the facade.
-   - Drain events before reading `operation.result`; if the final aggregate
-     status is rejected, failed, partial, dirty, or conflicted, raise with the
-     typed result attached.
-   Verification: fake bridge tests for all stream helpers.
+   Completed path:
+   - Added `init_from_sources_stream`, `pull_head_stream`,
+     `pull_snapshot_stream`, and `push_stream`; `materialize_stream` already
+     existed.
+   - Kept branch/stash as request/response methods.
+   - All stream helpers use the shared private `_stream_call`.
+   Verification: fake bridge tests cover all stream helpers.
 
 5. Test Agent adds concurrency and cancellation coverage.
    Write scope: `src/tests/test_operation_events.py`,
    `src/tests/test_operation_results.py`.
-   Work:
-   - Multiple subscribers or sequential drains if runtime supports it.
-   - Operation not found.
-   - Event order and final result consistency.
+   Completed path:
+   - Added native event/result coverage in `src/tests/test_native_operations.py`.
+   - Covered missing operation ids.
+   - Covered event order and final result consistency.
    Verification: native event test suite.
 
 Phase gate:

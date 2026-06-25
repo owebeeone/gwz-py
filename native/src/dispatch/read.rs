@@ -61,15 +61,17 @@ fn call_init_from_sources(
     })?;
     let request_id = request.meta.request_id.clone();
     let start = current_dir()?;
-    let response = shims::backend_with_events(&request_id, |backend, operation_id, events| {
-        gwz_core::workspace_ops::handle_init_from_sources(
-            backend,
-            &start,
-            request,
-            operation_id,
-            events,
-        )
-    })?;
+    let (response, recorder) =
+        shims::backend_with_events(&request_id, |backend, operation_id, events| {
+            gwz_core::workspace_ops::handle_init_from_sources(
+                backend,
+                &start,
+                request,
+                operation_id,
+                events,
+            )
+        })?;
+    recorder.finish(&response.response)?;
     codec::encode_message("encode InitFromSourcesResponse", || response.to_cbor())
 }
 

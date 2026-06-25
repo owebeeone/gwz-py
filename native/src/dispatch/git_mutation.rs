@@ -76,15 +76,17 @@ fn call_pull_head(
     })?;
     let request_id = request.meta.request_id.clone();
     let start = current_dir()?;
-    let response = shims::backend_with_events(&request_id, |backend, operation_id, events| {
-        gwz_core::workspace_ops::handle_pull_head_with_events(
-            backend,
-            &start,
-            request,
-            operation_id,
-            events,
-        )
-    })?;
+    let (response, recorder) =
+        shims::backend_with_events(&request_id, |backend, operation_id, events| {
+            gwz_core::workspace_ops::handle_pull_head_with_events(
+                backend,
+                &start,
+                request,
+                operation_id,
+                events,
+            )
+        })?;
+    recorder.finish(&response.response)?;
     codec::encode_message("encode PullHeadResponse", || response.to_cbor())
 }
 
@@ -102,15 +104,17 @@ fn call_pull_snapshot(
     })?;
     let request_id = request.meta.request_id.clone();
     let start = current_dir()?;
-    let response = shims::backend_with_events(&request_id, |backend, operation_id, events| {
-        gwz_core::workspace_ops::handle_pull_snapshot(
-            backend,
-            &start,
-            request,
-            operation_id,
-            events,
-        )
-    })?;
+    let (response, recorder) =
+        shims::backend_with_events(&request_id, |backend, operation_id, events| {
+            gwz_core::workspace_ops::handle_pull_snapshot(
+                backend,
+                &start,
+                request,
+                operation_id,
+                events,
+            )
+        })?;
+    recorder.finish(&response.response)?;
     codec::encode_message("encode PullSnapshotResponse", || response.to_cbor())
 }
 
@@ -128,15 +132,17 @@ fn call_push(
     })?;
     let request_id = request.meta.request_id.clone();
     let start = current_dir()?;
-    let response = shims::backend_with_events(&request_id, |backend, operation_id, events| {
-        gwz_core::workspace_ops::handle_push_with_events(
-            backend,
-            &start,
-            request,
-            operation_id,
-            events,
-        )
-    })?;
+    let (response, recorder) =
+        shims::backend_with_events(&request_id, |backend, operation_id, events| {
+            gwz_core::workspace_ops::handle_push_with_events(
+                backend,
+                &start,
+                request,
+                operation_id,
+                events,
+            )
+        })?;
+    recorder.finish(&response.response)?;
     codec::encode_message("encode PushResponse", || response.to_cbor())
 }
 

@@ -1,9 +1,9 @@
-use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 
 mod codec;
 mod dispatch;
 mod error;
+mod operations;
 mod shims;
 
 #[pyfunction]
@@ -33,17 +33,17 @@ fn call(
 }
 
 #[pyfunction]
-fn subscribe_events(_operation_id: &str) -> PyResult<Vec<Vec<u8>>> {
-    Err(PyRuntimeError::new_err(
-        "gwz._gwz_core event subscription is not implemented yet",
-    ))
+fn subscribe_events(operation_id: &str) -> PyResult<Vec<Vec<u8>>> {
+    operations::events(operation_id)?
+        .into_iter()
+        .map(|event| codec::encode_message("encode OperationEvent", || event.to_cbor()))
+        .collect()
 }
 
 #[pyfunction]
-fn operation_result(_operation_id: &str) -> PyResult<Vec<u8>> {
-    Err(PyRuntimeError::new_err(
-        "gwz._gwz_core operation result lookup is not implemented yet",
-    ))
+fn operation_result(operation_id: &str) -> PyResult<Vec<u8>> {
+    let result = operations::result(operation_id)?;
+    codec::encode_message("encode OperationResult", || result.to_cbor())
 }
 
 #[pymodule]

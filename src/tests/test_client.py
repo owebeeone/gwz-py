@@ -13,11 +13,15 @@ from gwz.protocol.generated import (
     BranchOp,
     BranchRequest,
     BranchResponse,
+    InitFromSourcesResponse,
     LsResponse,
     MaterializeRequest,
     MaterializeResponse,
     MaterializeTargetKind,
     OperationResult,
+    PullHeadResponse,
+    PullSnapshotResponse,
+    PushResponse,
     RepoSyncRequest,
     RepoSyncResponse,
     ResponseEnvelope,
@@ -37,8 +41,12 @@ RESPONSE_TYPES = {
     cls.__name__: cls
     for cls in (
         BranchResponse,
+        InitFromSourcesResponse,
         LsResponse,
         MaterializeResponse,
+        PullHeadResponse,
+        PullSnapshotResponse,
+        PushResponse,
         RepoSyncResponse,
         SnapshotResponse,
         StashResponse,
@@ -230,6 +238,27 @@ def test_materialize_stream_subscribes_by_operation_id() -> None:
 
     assert bridge.calls[0][0] == "materialize"
     assert bridge.subscriptions == ["op_test"]
+
+
+def test_stream_helpers_subscribe_by_operation_id() -> None:
+    stream_calls = [
+        ("init_from_sources", lambda client: client.init_from_sources_stream(["file:///tmp/source"])),
+        ("pull_head", lambda client: client.pull_head_stream()),
+        ("pull_snapshot", lambda client: client.pull_snapshot_stream("snap_one")),
+        ("push", lambda client: client.push_stream(remote="origin")),
+    ]
+    for method, stream in stream_calls:
+        bridge = FakeBridge()
+        client = Client(root=Path("/tmp/workspace"), bridge=bridge)
+
+        async def drain() -> None:
+            async for _event in stream(client):
+                pass
+
+        asyncio.run(drain())
+
+        assert bridge.calls[0][0] == method
+        assert bridge.subscriptions == ["op_test"]
 
 
 def test_operation_result_delegates_to_bridge() -> None:
