@@ -18,6 +18,9 @@ class GwzCoreClient:
     async def create_repo(self, request: CreateRepoRequest) -> CreateRepoResponse:
         return await self._t.call("create_repo", CreateRepoResponse, request=request)
 
+    async def repo_sync(self, request: RepoSyncRequest) -> RepoSyncResponse:
+        return await self._t.call("repo_sync", RepoSyncResponse, request=request)
+
     async def materialize(self, request: MaterializeRequest) -> MaterializeResponse:
         return await self._t.call("materialize", MaterializeResponse, request=request)
 
@@ -50,6 +53,12 @@ class GwzCoreClient:
 
     async def push(self, request: PushRequest) -> PushResponse:
         return await self._t.call("push", PushResponse, request=request)
+
+    async def stash(self, request: StashRequest) -> StashResponse:
+        return await self._t.call("stash", StashResponse, request=request)
+
+    async def branch(self, request: BranchRequest) -> BranchResponse:
+        return await self._t.call("branch", BranchResponse, request=request)
 
     def events_subscribe(self, operation_id: str):  # log stream
         return self._t.subscribe("events.subscribe", operation_id=operation_id)

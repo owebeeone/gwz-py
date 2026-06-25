@@ -9,6 +9,9 @@ def test_packaged_ir_contains_gwz_core_service() -> None:
     loaded = schema()
     assert "GwzCore" in loaded.services
     assert "StatusRequest" in loaded.messages
+    methods = {method.name for method in loaded.services["GwzCore"].methods}
+    assert {"repo_sync", "branch", "stash", "events.subscribe", "operation.result"} <= methods
+    assert "forall" not in methods
 
 
 def test_generated_dataclasses_convert_to_wire_dicts() -> None:

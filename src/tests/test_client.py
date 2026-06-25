@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import inspect
 import asyncio
+import inspect
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
@@ -10,13 +10,48 @@ from gwz import Client
 from gwz.protocol.generated import (
     ActionKind,
     AggregateStatus,
+    BranchOp,
+    BranchRequest,
+    BranchResponse,
     LsResponse,
+    MaterializeResponse,
+    OperationResult,
+    RepoSyncRequest,
+    RepoSyncResponse,
     ResponseEnvelope,
     ResponseMeta,
+    SnapshotRequest,
+    SnapshotResponse,
+    SnapshotSourceKind,
+    StashResponse,
     StatusMode,
     StatusRequest,
     StatusResponse,
+    TagResponse,
 )
+
+
+RESPONSE_TYPES = {
+    cls.__name__: cls
+    for cls in (
+        BranchResponse,
+        LsResponse,
+        MaterializeResponse,
+        RepoSyncResponse,
+        SnapshotResponse,
+        StashResponse,
+        StatusResponse,
+        TagResponse,
+    )
+}
+
+RESPONSE_EXTRAS = {
+    BranchResponse: {"repos": None},
+    LsResponse: {"members": []},
+    StashResponse: {"bundles": None},
+    StatusResponse: {"workspace_git_status": None},
+    TagResponse: {"tags": None},
+}
 
 
 def ok_response(response_type: type[Any]) -> Any:
@@ -34,29 +69,41 @@ def ok_response(response_type: type[Any]) -> Any:
             members=[],
             errors=[],
         ),
-        **({"workspace_git_status": None} if response_type is StatusResponse else {}),
-        **({"members": []} if response_type is LsResponse else {}),
+        **RESPONSE_EXTRAS.get(response_type, {}),
     )
 
 
 class FakeBridge:
     def __init__(self) -> None:
         self.calls: list[tuple[str, str, str, Any]] = []
+        self.subscriptions: list[str] = []
 
     async def call(self, method: str, request_message: str, response_message: str, request: Any) -> Any:
         self.calls.append((method, request_message, response_message, request))
-        response_type = StatusResponse if response_message == "StatusResponse" else LsResponse
+        response_type = RESPONSE_TYPES[response_message]
         return ok_response(response_type)
 
-    async def stream(
-        self,
-        method: str,
-        request_message: str,
-        event_message: str,
-        request: Any,
-    ) -> AsyncIterator[Any]:
-        if False:
-            yield None
+    def subscribe_events(self, operation_id: str) -> AsyncIterator[Any]:
+        self.subscriptions.append(operation_id)
+
+        async def _empty() -> AsyncIterator[Any]:
+            if False:
+                yield None
+
+        return _empty()
+
+    async def operation_result(self, operation_id: str) -> OperationResult:
+        return OperationResult(
+            operation_id=operation_id,
+            request_id="req_test",
+            action=ActionKind.status,
+            aggregate_status=AggregateStatus.ok,
+            started_at_ms=0,
+            finished_at_ms=1,
+            members=[],
+            errors=[],
+            attribution=None,
+        )
 
 
 def test_status_builds_taut_request() -> None:
@@ -77,9 +124,74 @@ def test_status_builds_taut_request() -> None:
     assert request.meta.workspace.root == str(Path("/tmp/workspace").resolve())
 
 
+def test_repo_sync_member_path_uses_selection() -> None:
+    bridge = FakeBridge()
+    client = Client(root=Path("/tmp/workspace"), bridge=bridge)
+
+    asyncio.run(client.repo_sync("packages/app"))
+
+    method, _, _, request = bridge.calls[0]
+    assert method == "repo_sync"
+    assert isinstance(request, RepoSyncRequest)
+    assert request.meta.selection is not None
+    assert request.meta.selection.paths == ["packages/app"]
+
+
+def test_snapshot_branch_source_is_explicit() -> None:
+    bridge = FakeBridge()
+    client = Client(root=Path("/tmp/workspace"), bridge=bridge)
+
+    asyncio.run(client.snapshot("release-cut", branch="release/1"))
+
+    method, _, _, request = bridge.calls[0]
+    assert method == "snapshot"
+    assert isinstance(request, SnapshotRequest)
+    assert request.source is not None
+    assert request.source.kind is SnapshotSourceKind.branch
+    assert request.source.branch == "release/1"
+
+
+def test_branch_merge_source_maps_to_start_ref() -> None:
+    bridge = FakeBridge()
+    client = Client(root=Path("/tmp/workspace"), bridge=bridge)
+
+    asyncio.run(client.branch(op="merge", source_ref="refs/heads/topic"))
+
+    method, _, _, request = bridge.calls[0]
+    assert method == "branch"
+    assert isinstance(request, BranchRequest)
+    assert request.op is BranchOp.merge
+    assert request.name is None
+    assert request.start_ref == "refs/heads/topic"
+
+
+def test_materialize_stream_subscribes_by_operation_id() -> None:
+    bridge = FakeBridge()
+    client = Client(root=Path("/tmp/workspace"), bridge=bridge)
+
+    async def drain() -> None:
+        async for _event in client.materialize_stream("lock"):
+            pass
+
+    asyncio.run(drain())
+
+    assert bridge.calls[0][0] == "materialize"
+    assert bridge.subscriptions == ["op_test"]
+
+
+def test_operation_result_delegates_to_bridge() -> None:
+    bridge = FakeBridge()
+    client = Client(root=Path("/tmp/workspace"), bridge=bridge)
+
+    result = asyncio.run(client.operation_result("op_test"))
+
+    assert result.operation_id == "op_test"
+
+
 def test_public_operations_are_async() -> None:
     async_methods = [
         "add_existing_repo",
+        "branch",
         "capture",
         "commit",
         "create_repo",
@@ -87,12 +199,16 @@ def test_public_operations_are_async() -> None:
         "init_from_sources",
         "ls",
         "materialize",
+        "operation_result",
         "pull_head",
         "pull_snapshot",
         "push",
+        "repo_sync",
         "snapshot",
         "stage",
+        "stash",
         "status",
+        "switch",
         "tag",
     ]
     for name in async_methods:

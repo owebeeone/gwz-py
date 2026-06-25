@@ -17,14 +17,11 @@ class CoreBridge(Protocol):
     ) -> Any:
         """Run one GWZ core operation and return a generated response object."""
 
-    def stream(
-        self,
-        method: str,
-        request_message: str,
-        event_message: str,
-        request: Any,
-    ) -> AsyncIterator[Any]:
-        """Run or subscribe to one operation and yield generated event objects."""
+    def subscribe_events(self, operation_id: str) -> AsyncIterator[Any]:
+        """Yield generated OperationEvent objects for a submitted operation."""
+
+    async def operation_result(self, operation_id: str) -> Any:
+        """Return the generated OperationResult for a submitted operation."""
 
 
 class NativeCoreBridge:
@@ -55,13 +52,7 @@ class NativeCoreBridge:
             request,
         )
 
-    def stream(
-        self,
-        method: str,
-        request_message: str,
-        event_message: str,
-        request: Any,
-    ) -> AsyncIterator[Any]:
+    def subscribe_events(self, operation_id: str) -> AsyncIterator[Any]:
         async def _missing() -> AsyncIterator[Any]:
             raise GwzCoreLoadError(
                 "gwz._gwz_core streaming bridge is not implemented in this scaffold"
@@ -69,3 +60,6 @@ class NativeCoreBridge:
             yield None
 
         return _missing()
+
+    async def operation_result(self, operation_id: str) -> Any:
+        return await asyncio.to_thread(self._native.operation_result, operation_id)

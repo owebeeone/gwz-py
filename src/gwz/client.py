@@ -12,6 +12,9 @@ from .errors import GwzOperationError
 from .protocol.generated import (
     AddExistingRepoRequest,
     AddExistingRepoResponse,
+    BranchOp,
+    BranchRequest,
+    BranchResponse,
     CaptureRequest,
     CaptureResponse,
     CommitRequest,
@@ -32,6 +35,7 @@ from .protocol.generated import (
     OperationAttribution,
     OperationEvent,
     OperationPolicy,
+    OperationResult,
     PartialBehavior,
     PullHeadRequest,
     PullHeadResponse,
@@ -39,8 +43,12 @@ from .protocol.generated import (
     PullSnapshotResponse,
     PushRequest,
     PushResponse,
+    RepoSyncRequest,
+    RepoSyncResponse,
     RequestMeta,
     Selection,
+    SnapshotSource,
+    SnapshotSourceKind,
     SnapshotRequest,
     SnapshotResponse,
     SourceUrl,
@@ -50,6 +58,9 @@ from .protocol.generated import (
     StatusPathStyle,
     StatusRequest,
     StatusResponse,
+    StashOp,
+    StashRequest,
+    StashResponse,
     SyncBehavior,
     TagOp,
     TagRequest,
@@ -191,8 +202,18 @@ class Client:
         self._raise_for_response(result)
         return result
 
-    def _stream(self, method: str, request: Any) -> AsyncIterator[OperationEvent]:
-        return self.bridge.stream(method, type(request).__name__, "OperationEvent", request)
+    async def _stream_call(
+        self,
+        method: str,
+        request: Any,
+        response_type: type[Any],
+    ) -> AsyncIterator[OperationEvent]:
+        response = await self._call(method, request, response_type)
+        operation_id = getattr(getattr(response.response, "meta", None), "operation_id", None)
+        if operation_id is None:
+            return
+        async for event in self.bridge.subscribe_events(operation_id):
+            yield event
 
     def _raise_for_response(self, response: Any) -> None:
         envelope = getattr(response, "response", None)
@@ -282,6 +303,14 @@ class Client:
         )
         return await self._call("create_repo", request, CreateRepoResponse)
 
+    async def repo_sync(self, member_path: str | None = None, **meta: Any) -> RepoSyncResponse:
+        if member_path is not None:
+            if any(key in meta for key in ("all_members", "member_ids", "paths")):
+                raise ValueError("repo_sync member_path cannot be combined with explicit selection")
+            meta["paths"] = [member_path]
+        request = RepoSyncRequest(meta=self.meta(**meta))
+        return await self._call("repo_sync", request, RepoSyncResponse)
+
     async def status(
         self,
         *,
@@ -329,10 +358,27 @@ class Client:
     ) -> AsyncIterator[OperationEvent]:
         materialize_target = target if isinstance(target, MaterializeTarget) else _target(target, name, commit)
         request = MaterializeRequest(meta=self.meta(**meta), target=materialize_target)
-        return self._stream("materialize", request)
+        return self._stream_call("materialize", request, MaterializeResponse)
 
-    async def snapshot(self, snapshot_id: str, **meta: Any) -> SnapshotResponse:
-        request = SnapshotRequest(meta=self.meta(**meta), snapshot_id=snapshot_id)
+    async def switch(self, branch: str, **meta: Any) -> MaterializeResponse:
+        return await self.materialize("branch", name=branch, **meta)
+
+    async def snapshot(
+        self,
+        snapshot_id: str,
+        *,
+        source: SnapshotSource | None = None,
+        branch: str | None = None,
+        current_branch: bool = False,
+        **meta: Any,
+    ) -> SnapshotResponse:
+        if source is not None and (branch is not None or current_branch):
+            raise ValueError("snapshot source cannot be combined with branch/current_branch")
+        if branch is not None:
+            source = SnapshotSource(kind=SnapshotSourceKind.branch, branch=branch)
+        elif current_branch:
+            source = SnapshotSource(kind=SnapshotSourceKind.current, branch=None)
+        request = SnapshotRequest(meta=self.meta(**meta), snapshot_id=snapshot_id, source=source)
         return await self._call("snapshot", request, SnapshotResponse)
 
     async def tag(
@@ -398,6 +444,60 @@ class Client:
     ) -> PushResponse:
         request = PushRequest(meta=self.meta(**meta), remote=remote, refspec=refspec)
         return await self._call("push", request, PushResponse)
+
+    async def stash(
+        self,
+        *,
+        op: StashOp | str = StashOp.list,
+        stash_id: str | None = None,
+        message: str | None = None,
+        include_untracked: bool | None = None,
+        include_ignored: bool | None = None,
+        expanded: bool | None = None,
+        preserve_index: bool | None = None,
+        **meta: Any,
+    ) -> StashResponse:
+        request = StashRequest(
+            meta=self.meta(**meta),
+            op=_enum_value(StashOp, op),
+            stash_id=stash_id,
+            message=message,
+            include_untracked=include_untracked,
+            include_ignored=include_ignored,
+            expanded=expanded,
+            preserve_index=preserve_index,
+        )
+        return await self._call("stash", request, StashResponse)
+
+    async def branch(
+        self,
+        name: str | None = None,
+        *,
+        op: BranchOp | str = BranchOp.list,
+        start_ref: str | None = None,
+        source_ref: str | None = None,
+        switch_after_create: bool | None = None,
+        **meta: Any,
+    ) -> BranchResponse:
+        branch_op = _enum_value(BranchOp, op)
+        effective_start_ref = source_ref if source_ref is not None else start_ref
+        if branch_op is BranchOp.create and effective_start_ref is None:
+            effective_start_ref = "HEAD"
+        request = BranchRequest(
+            meta=self.meta(**meta),
+            op=branch_op,
+            name=name,
+            start_ref=effective_start_ref,
+            switch_after_create=switch_after_create,
+        )
+        return await self._call("branch", request, BranchResponse)
+
+    def events(self, operation_id: str) -> AsyncIterator[OperationEvent]:
+        return self.bridge.subscribe_events(operation_id)
+
+    async def operation_result(self, operation_id: str) -> OperationResult:
+        result = await self.bridge.operation_result(operation_id)
+        return result
 
 
 async def status(root: str | Path | None = None, **kwargs: Any) -> StatusResponse:

@@ -95,7 +95,10 @@
         "commit": 12,
         "stage": 13,
         "ls": 14,
-        "forall": 15
+        "forall": 15,
+        "repo_sync": 16,
+        "stash": 17,
+        "branch": 18
       }
     },
     {
@@ -106,6 +109,68 @@
         "fetch": 2,
         "push": 3,
         "delete": 4
+      }
+    },
+    {
+      "name": "StashOp",
+      "members": {
+        "push": 0,
+        "list": 1,
+        "apply": 2,
+        "pop": 3,
+        "drop": 4
+      }
+    },
+    {
+      "name": "StashParticipation",
+      "members": {
+        "stashed": 0,
+        "empty": 1,
+        "skipped": 2
+      }
+    },
+    {
+      "name": "StashPushLifecycle",
+      "members": {
+        "unattempted": 0,
+        "saving": 1,
+        "saved": 2,
+        "empty": 3,
+        "failed": 4
+      }
+    },
+    {
+      "name": "StashRestoreState",
+      "members": {
+        "pending": 0,
+        "applied": 1,
+        "popped": 2,
+        "dropped": 3,
+        "noop": 4,
+        "missing": 5
+      }
+    },
+    {
+      "name": "BranchOp",
+      "members": {
+        "list": 0,
+        "create": 1,
+        "delete": 2,
+        "merge": 3
+      }
+    },
+    {
+      "name": "BranchActionResult",
+      "members": {
+        "listed": 0,
+        "created": 1,
+        "exists": 2,
+        "deleted": 3,
+        "switched": 4,
+        "noop": 5,
+        "skipped": 6,
+        "merged": 7,
+        "conflicted": 8
       }
     },
     {
@@ -157,7 +222,15 @@
         "head": 1,
         "snapshot": 2,
         "tag": 3,
-        "commit": 4
+        "commit": 4,
+        "branch": 5
+      }
+    },
+    {
+      "name": "SnapshotSourceKind",
+      "members": {
+        "current": 0,
+        "branch": 1
       }
     },
     {
@@ -300,7 +373,13 @@
         "attribution_denied": 26,
         "permission_denied": 27,
         "io_error": 28,
-        "internal_error": 29
+        "internal_error": 29,
+        "branch_detached_head": 30,
+        "branch_unborn_head": 31,
+        "branch_mixed": 32,
+        "stash_not_found": 33,
+        "stash_incomplete": 34,
+        "stash_conflict": 35
       }
     }
   ],
@@ -1142,6 +1221,36 @@
         {
           "name": "commit",
           "tag": 3,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "SnapshotSource",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "kind",
+          "tag": 1,
+          "type": {
+            "k": "enum",
+            "name": "SnapshotSourceKind"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "branch",
+          "tag": 2,
           "type": {
             "k": "scalar",
             "scalar": "str"
@@ -2066,6 +2175,638 @@
       ]
     },
     {
+      "name": "StashDirtySummary",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "staged",
+          "tag": 1,
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "unstaged",
+          "tag": 2,
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "untracked",
+          "tag": 3,
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "ignored",
+          "tag": 4,
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "StashErrorDetail",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "code",
+          "tag": 1,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "message",
+          "tag": 2,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "StashWarning",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "code",
+          "tag": 1,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "message",
+          "tag": 2,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "member_id",
+          "tag": 3,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "StashDrift",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "code",
+          "tag": 1,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "message",
+          "tag": 2,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "member_id",
+          "tag": 3,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "StashBundleMember",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "member_id",
+          "tag": 1,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "path",
+          "tag": 2,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "participation",
+          "tag": 3,
+          "type": {
+            "k": "enum",
+            "name": "StashParticipation"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "push_lifecycle",
+          "tag": 4,
+          "type": {
+            "k": "enum",
+            "name": "StashPushLifecycle"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "restore_state",
+          "tag": 5,
+          "type": {
+            "k": "enum",
+            "name": "StashRestoreState"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "branch_before",
+          "tag": 6,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "head_before",
+          "tag": 7,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "full_stash_message",
+          "tag": 8,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "dirty_summary",
+          "tag": 9,
+          "type": {
+            "k": "msg",
+            "name": "StashDirtySummary"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "native_stash_object_id",
+          "tag": 10,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "native_stash_display_ref",
+          "tag": 11,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "error",
+          "tag": 12,
+          "type": {
+            "k": "msg",
+            "name": "StashErrorDetail"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "StashBundle",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "schema",
+          "tag": 1,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "workspace_id",
+          "tag": 2,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "stash_id",
+          "tag": 3,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "created_at",
+          "tag": 4,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "message_suffix",
+          "tag": 5,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "include_untracked",
+          "tag": 6,
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "include_ignored",
+          "tag": 7,
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "members",
+          "tag": 8,
+          "type": {
+            "k": "list",
+            "elem": {
+              "k": "msg",
+              "name": "StashBundleMember"
+            }
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "warnings",
+          "tag": 9,
+          "type": {
+            "k": "list",
+            "elem": {
+              "k": "msg",
+              "name": "StashWarning"
+            }
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "drift",
+          "tag": 10,
+          "type": {
+            "k": "list",
+            "elem": {
+              "k": "msg",
+              "name": "StashDrift"
+            }
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "selected_members",
+          "tag": 11,
+          "type": {
+            "k": "list",
+            "elem": {
+              "k": "scalar",
+              "scalar": "str"
+            }
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "BranchRepoSummary",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "member_id",
+          "tag": 1,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "member_path",
+          "tag": 2,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "source_kind",
+          "tag": 3,
+          "type": {
+            "k": "enum",
+            "name": "SourceKind"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "result",
+          "tag": 4,
+          "type": {
+            "k": "enum",
+            "name": "BranchActionResult"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "branch",
+          "tag": 5,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "current_branch",
+          "tag": 6,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "detached",
+          "tag": 7,
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "unborn",
+          "tag": 8,
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "head",
+          "tag": 9,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "upstream",
+          "tag": 10,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "ahead",
+          "tag": 11,
+          "type": {
+            "k": "scalar",
+            "scalar": "int"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "behind",
+          "tag": 12,
+          "type": {
+            "k": "scalar",
+            "scalar": "int"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "source_ref",
+          "tag": 13,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "target_branch",
+          "tag": 14,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "resulting_commit",
+          "tag": 15,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "conflict_paths",
+          "tag": 16,
+          "type": {
+            "k": "list",
+            "elem": {
+              "k": "scalar",
+              "scalar": "str"
+            }
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
       "name": "PlannedChange",
       "reserved_tags": [],
       "reserved_names": [],
@@ -2769,6 +3510,25 @@
       ]
     },
     {
+      "name": "RepoSyncRequest",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "meta",
+          "tag": 1,
+          "type": {
+            "k": "msg",
+            "name": "RequestMeta"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
       "name": "MaterializeRequest",
       "reserved_tags": [],
       "reserved_names": [],
@@ -3168,6 +3928,17 @@
           "optional": false,
           "transient": false,
           "merge": null
+        },
+        {
+          "name": "source",
+          "tag": 3,
+          "type": {
+            "k": "msg",
+            "name": "SnapshotSource"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
         }
       ]
     },
@@ -3462,6 +4233,165 @@
       ]
     },
     {
+      "name": "StashRequest",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "meta",
+          "tag": 1,
+          "type": {
+            "k": "msg",
+            "name": "RequestMeta"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "op",
+          "tag": 2,
+          "type": {
+            "k": "enum",
+            "name": "StashOp"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "stash_id",
+          "tag": 3,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "message",
+          "tag": 4,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "include_untracked",
+          "tag": 5,
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "include_ignored",
+          "tag": 6,
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "expanded",
+          "tag": 7,
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "preserve_index",
+          "tag": 8,
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "BranchRequest",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "meta",
+          "tag": 1,
+          "type": {
+            "k": "msg",
+            "name": "RequestMeta"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "op",
+          "tag": 2,
+          "type": {
+            "k": "enum",
+            "name": "BranchOp"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "name",
+          "tag": 3,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "start_ref",
+          "tag": 4,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "switch_after_create",
+          "tag": 5,
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
       "name": "CreateWorkspaceResponse",
       "reserved_tags": [],
       "reserved_names": [],
@@ -3520,6 +4450,25 @@
     },
     {
       "name": "CreateRepoResponse",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "response",
+          "tag": 1,
+          "type": {
+            "k": "msg",
+            "name": "ResponseEnvelope"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "RepoSyncResponse",
       "reserved_tags": [],
       "reserved_names": [],
       "next_id": null,
@@ -3781,6 +4730,72 @@
           "merge": null
         }
       ]
+    },
+    {
+      "name": "StashResponse",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "response",
+          "tag": 1,
+          "type": {
+            "k": "msg",
+            "name": "ResponseEnvelope"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "bundles",
+          "tag": 2,
+          "type": {
+            "k": "list",
+            "elem": {
+              "k": "msg",
+              "name": "StashBundle"
+            }
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "BranchResponse",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "response",
+          "tag": 1,
+          "type": {
+            "k": "msg",
+            "name": "ResponseEnvelope"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "repos",
+          "tag": 2,
+          "type": {
+            "k": "list",
+            "elem": {
+              "k": "msg",
+              "name": "BranchRepoSummary"
+            }
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        }
+      ]
     }
   ],
   "services": [
@@ -3875,6 +4890,29 @@
               "type": {
                 "k": "msg",
                 "name": "CreateRepoResponse"
+              }
+            }
+          ]
+        },
+        {
+          "name": "repo_sync",
+          "role": "in",
+          "shape": "unary",
+          "params": [
+            {
+              "name": "request",
+              "type": {
+                "k": "msg",
+                "name": "RepoSyncRequest"
+              }
+            }
+          ],
+          "out": [
+            {
+              "slot": "value",
+              "type": {
+                "k": "msg",
+                "name": "RepoSyncResponse"
               }
             }
           ]
@@ -4128,6 +5166,52 @@
               "type": {
                 "k": "msg",
                 "name": "PushResponse"
+              }
+            }
+          ]
+        },
+        {
+          "name": "stash",
+          "role": "in",
+          "shape": "unary",
+          "params": [
+            {
+              "name": "request",
+              "type": {
+                "k": "msg",
+                "name": "StashRequest"
+              }
+            }
+          ],
+          "out": [
+            {
+              "slot": "value",
+              "type": {
+                "k": "msg",
+                "name": "StashResponse"
+              }
+            }
+          ]
+        },
+        {
+          "name": "branch",
+          "role": "in",
+          "shape": "unary",
+          "params": [
+            {
+              "name": "request",
+              "type": {
+                "k": "msg",
+                "name": "BranchRequest"
+              }
+            }
+          ],
+          "out": [
+            {
+              "slot": "value",
+              "type": {
+                "k": "msg",
+                "name": "BranchResponse"
               }
             }
           ]

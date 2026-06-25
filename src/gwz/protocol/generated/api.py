@@ -20,6 +20,9 @@ class ActionKind(Enum):
     stage = 13
     ls = 14
     forall = 15
+    repo_sync = 16
+    stash = 17
+    branch = 18
 
 class TagOp(Enum):
     create = 0
@@ -27,6 +30,50 @@ class TagOp(Enum):
     fetch = 2
     push = 3
     delete = 4
+
+class StashOp(Enum):
+    push = 0
+    list = 1
+    apply = 2
+    pop = 3
+    drop = 4
+
+class StashParticipation(Enum):
+    stashed = 0
+    empty = 1
+    skipped = 2
+
+class StashPushLifecycle(Enum):
+    unattempted = 0
+    saving = 1
+    saved = 2
+    empty = 3
+    failed = 4
+
+class StashRestoreState(Enum):
+    pending = 0
+    applied = 1
+    popped = 2
+    dropped = 3
+    noop = 4
+    missing = 5
+
+class BranchOp(Enum):
+    list = 0
+    create = 1
+    delete = 2
+    merge = 3
+
+class BranchActionResult(Enum):
+    listed = 0
+    created = 1
+    exists = 2
+    deleted = 3
+    switched = 4
+    noop = 5
+    skipped = 6
+    merged = 7
+    conflicted = 8
 
 class ExecMode(Enum):
     argv = 0
@@ -64,6 +111,11 @@ class MaterializeTargetKind(Enum):
     snapshot = 2
     tag = 3
     commit = 4
+    branch = 5
+
+class SnapshotSourceKind(Enum):
+    current = 0
+    branch = 1
 
 class SyncBehavior(Enum):
     fetch_only = 0
@@ -171,6 +223,12 @@ class GwzErrorCode(Enum):
     permission_denied = 27
     io_error = 28
     internal_error = 29
+    branch_detached_head = 30
+    branch_unborn_head = 31
+    branch_mixed = 32
+    stash_not_found = 33
+    stash_incomplete = 34
+    stash_conflict = 35
 
 @dataclass(slots=True)
 class WorkspaceRef:
@@ -281,6 +339,11 @@ class MaterializeTarget:
     commit: str | None
 
 @dataclass(slots=True)
+class SnapshotSource:
+    kind: SnapshotSourceKind
+    branch: str | None
+
+@dataclass(slots=True)
 class ResolvedMemberState:
     member_id: str
     path: str
@@ -384,6 +447,78 @@ class WorkspaceGitStatus:
     root_file_changes: list[WorkspaceRootFileChange]
 
 @dataclass(slots=True)
+class StashDirtySummary:
+    staged: bool
+    unstaged: bool
+    untracked: bool
+    ignored: bool
+
+@dataclass(slots=True)
+class StashErrorDetail:
+    code: str
+    message: str
+
+@dataclass(slots=True)
+class StashWarning:
+    code: str
+    message: str
+    member_id: str | None
+
+@dataclass(slots=True)
+class StashDrift:
+    code: str
+    message: str
+    member_id: str
+
+@dataclass(slots=True)
+class StashBundleMember:
+    member_id: str
+    path: str
+    participation: StashParticipation
+    push_lifecycle: StashPushLifecycle
+    restore_state: StashRestoreState
+    branch_before: str | None
+    head_before: str | None
+    full_stash_message: str
+    dirty_summary: StashDirtySummary
+    native_stash_object_id: str | None
+    native_stash_display_ref: str | None
+    error: StashErrorDetail | None
+
+@dataclass(slots=True)
+class StashBundle:
+    schema: str
+    workspace_id: str
+    stash_id: str
+    created_at: str
+    message_suffix: str
+    include_untracked: bool
+    include_ignored: bool
+    members: list[StashBundleMember]
+    warnings: list[StashWarning]
+    drift: list[StashDrift]
+    selected_members: list[str]
+
+@dataclass(slots=True)
+class BranchRepoSummary:
+    member_id: str
+    member_path: str
+    source_kind: SourceKind
+    result: BranchActionResult
+    branch: str | None
+    current_branch: str | None
+    detached: bool
+    unborn: bool
+    head: str | None
+    upstream: str | None
+    ahead: int | None
+    behind: int | None
+    source_ref: str | None
+    target_branch: str | None
+    resulting_commit: str | None
+    conflict_paths: list[str]
+
+@dataclass(slots=True)
 class PlannedChange:
     action: PlannedAction
     from_ref: str | None
@@ -467,6 +602,10 @@ class CreateRepoRequest:
     source_id: str | None
 
 @dataclass(slots=True)
+class RepoSyncRequest:
+    meta: RequestMeta
+
+@dataclass(slots=True)
 class MaterializeRequest:
     meta: RequestMeta
     target: MaterializeTarget
@@ -521,6 +660,7 @@ class ExecResponse:
 class SnapshotRequest:
     meta: RequestMeta
     snapshot_id: str
+    source: SnapshotSource | None
 
 @dataclass(slots=True)
 class TagRequest:
@@ -565,6 +705,25 @@ class PushRequest:
     refspec: str | None
 
 @dataclass(slots=True)
+class StashRequest:
+    meta: RequestMeta
+    op: StashOp
+    stash_id: str | None
+    message: str | None
+    include_untracked: bool | None
+    include_ignored: bool | None
+    expanded: bool | None
+    preserve_index: bool | None
+
+@dataclass(slots=True)
+class BranchRequest:
+    meta: RequestMeta
+    op: BranchOp
+    name: str | None
+    start_ref: str | None
+    switch_after_create: bool | None
+
+@dataclass(slots=True)
 class CreateWorkspaceResponse:
     response: ResponseEnvelope
 
@@ -578,6 +737,10 @@ class AddExistingRepoResponse:
 
 @dataclass(slots=True)
 class CreateRepoResponse:
+    response: ResponseEnvelope
+
+@dataclass(slots=True)
+class RepoSyncResponse:
     response: ResponseEnvelope
 
 @dataclass(slots=True)
@@ -626,4 +789,14 @@ class PullSnapshotResponse:
 @dataclass(slots=True)
 class PushResponse:
     response: ResponseEnvelope
+
+@dataclass(slots=True)
+class StashResponse:
+    response: ResponseEnvelope
+    bundles: list[StashBundle] | None
+
+@dataclass(slots=True)
+class BranchResponse:
+    response: ResponseEnvelope
+    repos: list[BranchRepoSummary] | None
 
