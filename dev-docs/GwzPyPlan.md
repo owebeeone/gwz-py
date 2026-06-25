@@ -352,47 +352,60 @@ Steps:
    `src/tests/test_native_read.py`.
    Methods: `create_workspace`, `init_from_sources`, `add_existing_repo`,
    `create_repo`, `repo_sync`, `status`, `ls`.
-   Verification: fixture tests for each method with dry-run where useful.
+   Completed path:
+   - Wired each read/workspace method through the message-based native dispatcher.
+   - Centralized `Git2Backend` and `NullSink` construction in native shims.
+   - Covered `create_workspace`, empty `status`, `create_repo`, member `status`,
+     `repo_sync` dry-run, `add_existing_repo`, and `init_from_sources` dry-run in
+     `src/tests/test_native_read.py`.
+   Verification: native read tests, `cargo check`, and `python run_tests.py`.
 
 3. Bridge Agent B implements materialization and capture calls.
    Write scope: native `dispatch/materialize` module,
    `src/tests/test_native_materialize.py`.
    Methods: `materialize`, `snapshot`, `tag`, `capture`.
-   Required edge cases:
-   - `MaterializeTargetKind.branch`.
-   - `SnapshotSourceKind.current`.
-   - `SnapshotSourceKind.branch`.
-   Verification: fixture tests for lock/snapshot/tag/branch targets.
+   Completed path:
+   - Wired all four methods through the message-based native dispatcher.
+   - Shared typed native decode/encode helpers through `native/src/codec.rs`.
+   - Covered lock materialize dry-run, current-branch snapshot, named-branch
+     snapshot, actual branch materialize, tag create/list/delete, and capture of
+     an observed commit.
+   Verification: native materialize tests, `cargo check`, and
+   `python run_tests.py`.
 
 4. Bridge Agent C implements Git mutation calls.
    Write scope: native `dispatch/git_mutation` module,
    `src/tests/test_native_git_mutation.py`.
    Methods: `commit`, `stage`, `pull_head`, `pull_snapshot`, `push`.
-   Work:
-   - Preserve attribution and policy fields.
-   - Prefer dry-run or local fixture remotes for tests.
-   Verification: mutation tests isolated in temporary repos.
+   Completed path:
+   - Wired all five methods through the message-based native dispatcher.
+   - Used event-capable native shims with `NullSink` for pull/push methods until
+     Phase 4 operation event storage lands.
+   - Covered stage, commit, pull-head dry-run, pull-snapshot restore, push
+     dry-run, and push to a local bare remote.
+   Verification: native git mutation tests, `cargo check`, and
+   `python run_tests.py`.
 
 5. Bridge Agent D implements branch and stash calls.
    Write scope: native `dispatch/branch_stash` module,
    `src/tests/test_native_branch_stash.py`.
    Methods: `branch`, `stash`.
-   Required edge cases:
-   - `BranchOp.merge` source is `start_ref`.
-   - Branch create default start point is owned by `gwz-core`; Python passes no
-     `start_ref` unless the caller supplies one.
-   - Stash push/list/apply/pop/drop preserve generated response shape.
-   Verification: temporary multi-member workspace tests.
+   Completed path:
+   - Wired both methods through the message-based native dispatcher.
+   - Covered branch create/list and branch merge using Python `source_ref`, which
+     maps to generated `start_ref`.
+   - Covered stash push/list/apply/pop/drop and decoded `bundles` response data.
+   Verification: native branch/stash tests, `cargo check`, and
+   `python run_tests.py`.
 
 6. Test Agent builds a shared native fixture harness.
-   Write scope: `src/tests/fixtures/*`, `src/tests/conftest.py`.
-   Work:
-   - Workspace factory.
-   - Member repo factory.
-   - Optional local bare remote factory.
-   - Test skip markers for native extension availability.
-   Verification: all per-family native test files can use the shared fixtures
-   without duplicating workspace setup.
+   Write scope: `src/tests/native_helpers.py`.
+   Completed path:
+   - Added shared native extension skip/load helper.
+   - Added workspace/member repo factory.
+   - Added commit, git command, local bare remote, and bare ref helpers.
+   Verification: all per-family native test files use shared helpers without
+   duplicating workspace setup.
 
 Phase gate:
 

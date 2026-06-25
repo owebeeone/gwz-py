@@ -35,3 +35,20 @@ pub(crate) fn encode_cbor(value: &gwz_core::Cbor) -> Vec<u8> {
 pub(crate) fn catch_protocol<T>(context: &'static str, f: impl FnOnce() -> T) -> PyResult<T> {
     catch_unwind(AssertUnwindSafe(f)).map_err(|_| error::protocol(format!("{context} failed")))
 }
+
+pub(crate) fn decode_message<T>(
+    data: &[u8],
+    context: &'static str,
+    decode: impl FnOnce(&gwz_core::Cbor) -> T,
+) -> PyResult<T> {
+    let cbor = decode_cbor(data)?;
+    catch_protocol(context, || decode(&cbor))
+}
+
+pub(crate) fn encode_message(
+    context: &'static str,
+    encode: impl FnOnce() -> gwz_core::Cbor,
+) -> PyResult<Vec<u8>> {
+    let cbor = catch_protocol(context, encode)?;
+    Ok(encode_cbor(&cbor))
+}

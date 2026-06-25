@@ -8,6 +8,7 @@ import pytest
 from gwz import Client
 from gwz.bridge import NativeCoreBridge
 from gwz.errors import GwzBridgeError
+from gwz.protocol.generated import LsRequest, RequestMeta
 
 
 def native_module():
@@ -57,10 +58,21 @@ def test_native_bridge_ls(tmp_path: Path) -> None:
     assert not response.members[0].materialized
 
 
-def test_native_bridge_routes_unimplemented_methods_explicitly(tmp_path: Path) -> None:
+def test_native_bridge_routes_unsupported_methods_explicitly() -> None:
     native = native_module()
-    write_minimal_workspace(tmp_path)
-    client = Client(root=tmp_path, bridge=NativeCoreBridge(native=native))
+    bridge = NativeCoreBridge(native=native)
+    request = LsRequest(
+        meta=RequestMeta(
+            request_id="req_unsupported",
+            schema_version="gwz.protocol/v0",
+            workspace=None,
+            selection=None,
+            policy=None,
+            dry_run=None,
+            attribution=None,
+        ),
+        include_unmaterialized=True,
+    )
 
-    with pytest.raises(GwzBridgeError, match="not wired in gwz-py yet"):
-        asyncio.run(client.status())
+    with pytest.raises(GwzBridgeError, match="unsupported gwz-core method"):
+        asyncio.run(bridge.call("unsupported", "LsRequest", "LsResponse", request))

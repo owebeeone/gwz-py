@@ -13,12 +13,6 @@ pub(crate) fn unsupported_method(method: &str) -> PyErr {
     protocol(format!("unsupported gwz-core method: {method}"))
 }
 
-pub(crate) fn not_implemented(method: &str) -> PyErr {
-    runtime(format!(
-        "gwz-core method is not wired in gwz-py yet: {method}"
-    ))
-}
-
 pub(crate) fn unsupported<T>(method: &str) -> PyResult<T> {
     Err(unsupported_method(method))
 }
