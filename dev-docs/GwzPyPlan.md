@@ -16,8 +16,8 @@ Companion design: `dev-docs/GwzPyDesign.md`
 - Shared helpers are preferred over duplicated command-specific logic, especially
   for request metadata, response handling, rendering, and CLI selection flags.
 - The Python API never shells out to the Rust `gwz` CLI.
-- `clone` and `forall` are CLI workflows, not ordinary generated `GwzCore`
-  service methods.
+- `forall` remains CLI-local. `clone` is exposed through the generated
+  `clone_workspace` service method and wrapped by the Python CLI.
 - The native bridge ABI is CBOR by default. Any JSON bridge used during
   development must use taut's IR-driven JSON codec, never ad hoc `json.dumps`.
 - Every phase ends with `python run_tests.py`; native phases also run the relevant
@@ -42,7 +42,8 @@ The baseline is not complete:
 - Protocol wire encode/decode is only partial.
 - Streaming is scaffolded but not backed by a native operation runtime.
 - CLI parity with Rust `gwz-cli` is incomplete.
-- Packaging has not chosen Python CLI, Rust binary dispatch, or both.
+- Packaging uses the Python CLI as the installed `gwz` command; first-line PyPI
+  wheels do not bundle or dispatch to the Rust `gwz` binary.
 - Generated transport stubs are excluded from the runtime package with
   `tautc --api-only`; the handwritten `CoreBridge` is the only Python transport
   boundary.
@@ -509,7 +510,7 @@ Phase gate:
 ## Phase 5: Python CLI Parity
 
 Goal: make the installed `gwz` command a useful Python implementation of the Rust
-CLI surface while keeping the final packaging choice open.
+CLI surface.
 
 Parallel agents:
 
@@ -607,26 +608,26 @@ Steps:
      command surface.
    - Kept command-family request construction tests focused on handler behavior
      to avoid brittle human-output lock-in.
-   - JSON shape parity remains limited to shared dataclass rendering until the
-     package chooses final `gwz` command release mode.
+   - JSON shape parity remains limited to shared dataclass rendering while the
+     Python CLI is hardened as the release `gwz` command.
    Verification: `python run_tests.py` and optional Rust CLI parity command.
 
 Phase gate:
 
 - Python CLI can cover the current Rust CLI command surface or has explicit
   documented exceptions.
-- Request construction reuses `Client`; no command shells out to Rust CLI except
-  an intentional final packaging dispatch path.
+- Request construction reuses `Client`; release-mode commands do not shell out
+  to the Rust CLI.
 - After CLI Agent A lands, command-family agents do not edit parser internals,
   shared rendering, or shared exit-code mapping.
 - Shared CLI helpers prevent repeated global option and response handling logic.
 
 ## Phase 6: Packaging, CI, And Release Mode
 
-Goal: make the package publishable and choose the release behavior of the
-installed `gwz` command.
+Goal: make the package publishable with the Python CLI as the installed `gwz`
+command.
 
-Parallel agents before the release-mode decision:
+Parallel agents:
 
 - Packaging Agent
 - Bridge Agent
@@ -653,26 +654,32 @@ Steps:
 
 2. Packaging Agent adds CI.
    Write scope: `.github/workflows/*` if this repo owns CI.
-   Work:
-   - Protocol regen check.
-   - Packaged `gwz.ir.json` matches the `gwz-core` tag linked into the extension.
-   - Python unit tests.
-   - Native build/test matrix.
-   - Packaging smoke test.
-   Verification: local workflow command where available or documented dry run.
+   Completed path:
+   - Added `scripts/package_smoke.py` as the shared local/CI packaging smoke.
+   - The smoke builds a repaired wheel, installs it into a fresh virtualenv,
+     runs `gwz --help`, creates a local workspace fixture, exercises installed
+     `gwz clone`, verifies streamed clone lifecycle output and member
+     materialization, and runs `gwz status` in the clone.
+   - Added `.github/workflows/package-smoke.yml` to run the smoke on macOS with
+     sibling `gwz-core` checked out beside `gwz-py`.
+   Remaining work:
+   - Add protocol regen check.
+   - Verify packaged `gwz.ir.json` matches the `gwz-core` tag linked into the
+     extension.
+   - Add Python unit tests and native build/test matrix jobs.
+   Verification: `python scripts/package_smoke.py`.
 
 3. CLI Agent and Packaging Agent decide `gwz` command dispatch.
    Write scope: `src/gwz/cli.py`, packaging metadata, README.
-   Options:
-   - Python CLI only.
-   - Rust binary dispatch when bundled.
-   - Environment-controlled selection with Python fallback.
-   Criteria:
-   - CLI parity results.
-   - Wheel complexity.
-   - Startup cost.
-   - Maintenance burden.
-   Verification: console script smoke tests.
+   Completed path:
+   - The release `gwz` console script remains the Python CLI entry point
+     declared in `pyproject.toml`: `gwz = "gwz.cli:main"`.
+   - The Python CLI uses `gwz.Client` and the native `gwz-core` extension.
+   - First-line PyPI wheels do not bundle the Rust `gwz` binary.
+   - No environment-controlled Rust/Python dispatch mode is planned for the
+     initial release line.
+   Verification: `python scripts/package_smoke.py` installs the wheel into a
+   fresh virtualenv and exercises the packaged `gwz` command.
 
 4. Bridge Agent prepares wheel artifacts.
    Write scope: native build metadata.
@@ -689,8 +696,7 @@ Steps:
    - API examples.
    - CLI examples.
    - Native bridge troubleshooting.
-   Verification: documentation command snippets are current. Run this after the
-   CLI dispatch decision is settled so docs do not race packaging edits.
+   Verification: documentation command snippets are current.
 
 Phase gate:
 
@@ -774,8 +780,8 @@ The fastest safe schedule is:
 6. Run Phase 5 by landing CLI Agent A's shared parser/rendering layer first, then
    run the four command-family CLI agents plus the parity Test Agent.
 7. Run Phase 6 packaging and final CLI parity checks in parallel where scopes are
-   disjoint, then let Docs update README/release notes after the dispatch mode is
-   settled.
+   disjoint, keeping README/release notes aligned with the Python CLI release
+   mode.
 8. Run Phase 7 as release hardening.
 
 ## DRY And Maintainability Gates
