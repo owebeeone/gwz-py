@@ -335,23 +335,17 @@ Steps:
 
 1. Bridge Integration Agent creates the native dispatch layout.
    Write scope: central native registry plus shared native error/codec files only.
-   Work:
-   - Author the Rust method-name dispatch table for the native extension. This
-     mirrors the behavior of `gwz-cli`'s private dispatch, because `gwz-core`
-     exposes individual handlers rather than a public reusable router.
-   - Open a follow-up option for moving shared dispatch into `gwz-core` if keeping
-     parallel `gwz-cli` and `gwz-py` method matches becomes too costly.
-   - Create per-family dispatch modules under the native module root chosen in
-     Phase 2, for example `dispatch/read`, `dispatch/materialize`,
+   Completed path:
+   - Added a central native dispatch registry in `native/src/dispatch/mod.rs`.
+   - Split operation families into `dispatch/read`, `dispatch/materialize`,
      `dispatch/git_mutation`, and `dispatch/branch_stash`.
-   - Keep method-name routing in one central registry.
-   - Keep encode/decode and error mapping in shared helpers.
-   - Own the three handler-shape shims:
-     no-backend handlers, backend handlers, and backend-plus-`EventSink` handlers.
-   - Construct shared backend/event-sink plumbing once; family modules should not
-     duplicate `Git2Backend` construction or event-sink wiring.
-   - Leave operation-family modules empty or stubbed for other agents.
-   Verification: central registry compiles with stubs.
+   - Moved native `ls` into the read-family module and left the remaining service
+     methods as explicit "not wired in gwz-py yet" stubs.
+   - Added shared native codec, error, and handler-shape shim modules.
+   - Preserved the message-based Python FFI shape; no operation-specific Python
+     native calls were added.
+   Verification: `cargo check`, `python run_tests.py`, and the opt-in native
+   bridge tests pass.
 
 2. Bridge Agent A implements read and workspace setup calls.
    Write scope: native `dispatch/read` module,

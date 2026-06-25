@@ -79,7 +79,7 @@ class NativeCoreBridge:
         except GwzBridgeError:
             raise
         except Exception as exc:
-            raise GwzBridgeError(f"native bridge call failed for {method}") from exc
+            raise GwzBridgeError(f"native bridge call failed for {method}: {exc}") from exc
         return decode_message(response_message, _bytes(response_bytes, response_message))
 
     def subscribe_events(self, operation_id: str) -> AsyncIterator[Any]:
@@ -91,7 +91,9 @@ class NativeCoreBridge:
             except GwzBridgeError:
                 raise
             except Exception as exc:
-                raise GwzBridgeError(f"native event subscription failed for {operation_id}") from exc
+                raise GwzBridgeError(
+                    f"native event subscription failed for {operation_id}: {exc}"
+                ) from exc
             message_name = event_message_name()
             for item in event_bytes:
                 yield decode_message(message_name, _bytes(item, message_name))
@@ -104,7 +106,9 @@ class NativeCoreBridge:
         except GwzBridgeError:
             raise
         except Exception as exc:
-            raise GwzBridgeError(f"native operation result lookup failed for {operation_id}") from exc
+            raise GwzBridgeError(
+                f"native operation result lookup failed for {operation_id}: {exc}"
+            ) from exc
         return decode_message(result_message_name(), _bytes(result_bytes, result_message_name()))
 
 

@@ -7,6 +7,7 @@ import pytest
 
 from gwz import Client
 from gwz.bridge import NativeCoreBridge
+from gwz.errors import GwzBridgeError
 
 
 def native_module():
@@ -54,3 +55,12 @@ def test_native_bridge_ls(tmp_path: Path) -> None:
     assert [member.id for member in response.members] == ["mem_app"]
     assert response.members[0].path == "repos/app"
     assert not response.members[0].materialized
+
+
+def test_native_bridge_routes_unimplemented_methods_explicitly(tmp_path: Path) -> None:
+    native = native_module()
+    write_minimal_workspace(tmp_path)
+    client = Client(root=tmp_path, bridge=NativeCoreBridge(native=native))
+
+    with pytest.raises(GwzBridgeError, match="not wired in gwz-py yet"):
+        asyncio.run(client.status())
