@@ -9,7 +9,12 @@ import pytest
 from gwz.errors import GwzBridgeError
 from gwz.protocol.generated import AggregateStatus, EventKind, OperationEvent
 
-from native_helpers import create_workspace_with_member, git, init_bare_repo, native_client
+from native_helpers import (
+    create_workspace_with_member,
+    git,
+    init_bare_repo,
+    native_client,
+)
 
 
 async def collect(events: AsyncIterator[OperationEvent]) -> list[OperationEvent]:
@@ -57,6 +62,35 @@ def test_native_stream_helper_drains_events_and_result(tmp_path: Path) -> None:
     assert events
     assert events[0].kind is EventKind.operation_started
     assert events[-1].kind is EventKind.operation_finished
+
+
+def test_native_stream_yields_before_operation_result_is_ready(tmp_path: Path, monkeypatch) -> None:
+    repo, _ = create_workspace_with_member(tmp_path)
+    client = native_client(tmp_path)
+    remote = tmp_path / "origin.git"
+    init_bare_repo(remote)
+    monkeypatch.setenv("GWZ_PY_TEST_EVENT_DELAY_MS", "500")
+    git(repo, "remote", "add", "origin", str(remote))
+    asyncio.run(client.repo_sync("repos/app"))
+
+    async def observe() -> tuple[list[OperationEvent], bool]:
+        stream = client.push_stream(paths=["repos/app"])
+        iterator = stream.__aiter__()
+        first = await asyncio.wait_for(iterator.__anext__(), timeout=1.0)
+        result_task = asyncio.create_task(client.operation_result(first.operation_id))
+        await asyncio.sleep(0.1)
+        result_ready_after_first_event = result_task.done()
+        events = [first]
+        async for event in iterator:
+            events.append(event)
+        await result_task
+        return events, result_ready_after_first_event
+
+    events, result_ready_after_first_event = asyncio.run(observe())
+
+    assert events[0].kind is EventKind.operation_started
+    assert events[-1].kind is EventKind.operation_finished
+    assert not result_ready_after_first_event
 
 
 def test_native_operation_lookup_reports_missing_id(tmp_path: Path) -> None:

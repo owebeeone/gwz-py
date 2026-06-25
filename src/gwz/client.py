@@ -187,7 +187,12 @@ class Client:
         request: Any,
         response_type: type[Any],
     ) -> AsyncIterator[OperationEvent]:
-        response = await self._call(method, request, response_type)
+        submit = getattr(self.bridge, "submit", None)
+        if submit is None:
+            response = await self._call(method, request, response_type)
+        else:
+            response = await submit(method, type(request).__name__, response_type.__name__, request)
+            raise_for_response(response)
         operation_id = getattr(getattr(response.response, "meta", None), "operation_id", None)
         if operation_id is None:
             return

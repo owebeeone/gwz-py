@@ -441,18 +441,25 @@ Steps:
    - Recorded final `OperationResult` values by preserving each typed response
      envelope's action, aggregate status, members, errors, attribution, request
      id, and operation id.
-   - Event-capable handlers remain synchronous in this pass; they return their
-     typed final response and store events/results for later lookup.
-   Verification: native tests assert operation id, event replay, and final result
-   for a handler using the recorded event path.
+   - Direct API calls remain synchronous and return typed final responses.
+   - Stream helpers use native `submit`, which returns an accepted response
+     immediately and runs event-capable handlers on a background thread.
+   - Background handlers publish events into the operation store while running
+     and record the final `OperationResult` when complete.
+   Verification: native tests assert operation id, live event visibility, and
+   final result consistency for a handler using the recorded event path.
 
 2. Bridge Agent implements native event subscription.
    Write scope: native runtime wrapper files, `src/gwz/bridge.py`.
    Completed path:
    - `gwz._gwz_core.subscribe_events(operation_id)` returns encoded
      `OperationEvent` records from the bridge-owned store.
+   - `gwz._gwz_core.wait_events(operation_id, after_sequence, timeout_ms)`
+     blocks on the Rust operation store condition variable until new events,
+     operation completion, or timeout.
    - `NativeCoreBridge.subscribe_events` decodes those records through the
-     existing generated codec.
+     existing generated codec and awaits native event batches instead of
+     timer-polling in Python.
    - Missing operations surface as `GwzBridgeError`.
    Verification: fake bridge and native operation tests.
 
@@ -460,7 +467,9 @@ Steps:
    Write scope: native runtime wrapper files, `src/gwz/bridge.py`.
    Completed path:
    - `gwz._gwz_core.operation_result(operation_id)` returns encoded
-     `OperationResult`.
+     `OperationResult` and blocks until the result is ready.
+   - `gwz._gwz_core.try_operation_result(operation_id)` remains available for
+     callers that need a nonblocking result probe.
    - The generated result preserves request id, aggregate status, members,
      errors, attribution, and timing fields.
    Verification: fake bridge and native operation result tests.
@@ -474,6 +483,8 @@ Steps:
      existed.
    - Kept branch/stash as request/response methods.
    - All stream helpers use the shared private `_stream_call`.
+   - `_stream_call` uses `submit` when available and falls back to synchronous
+     `call` for fake or custom bridges.
    Verification: fake bridge tests cover all stream helpers.
 
 5. Test Agent adds concurrency and cancellation coverage.
@@ -483,6 +494,7 @@ Steps:
    - Added native event/result coverage in `src/tests/test_native_operations.py`.
    - Covered missing operation ids.
    - Covered event order and final result consistency.
+   - Covered an event being yielded while `operation_result` is still pending.
    Verification: native event test suite.
 
 Phase gate:
@@ -491,6 +503,8 @@ Phase gate:
 - Stream helpers use `operation_id`.
 - The stream-helper set matches the core handlers that accept an `EventSink`.
 - Operation result lookup works independently of event subscription.
+- Stream helpers can observe at least one event before final operation result
+  completion.
 
 ## Phase 5: Python CLI Parity
 

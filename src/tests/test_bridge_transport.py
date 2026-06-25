@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from gwz.bridge import NativeCoreBridge
+from gwz.bridge import NativeCoreBridge, _EVENT_WAIT_TIMEOUT_MS
 from gwz.errors import GwzBridgeError, GwzProtocolError
 from gwz.protocol.codec import decode_message, encode_message
 from gwz.protocol.generated import (
@@ -149,6 +149,32 @@ def test_native_bridge_decodes_event_and_result_bytes() -> None:
 
     assert result == operation_result()
     assert native.result_requests == ["op_transport"]
+
+
+def test_native_bridge_uses_wait_events_when_available() -> None:
+    class WaitingNative(FakeNative):
+        def __init__(self) -> None:
+            super().__init__()
+            self.waits: list[tuple[str, int, int]] = []
+
+        def wait_events(
+            self,
+            operation_id: str,
+            after_sequence: int,
+            timeout_ms: int,
+        ) -> tuple[list[bytes], bool]:
+            self.waits.append((operation_id, after_sequence, timeout_ms))
+            return [encode_message("OperationEvent", operation_event())], True
+
+    native = WaitingNative()
+    bridge = NativeCoreBridge(native=native)
+
+    async def collect() -> list[OperationEvent]:
+        return [event async for event in bridge.subscribe_events("op_transport")]
+
+    assert asyncio.run(collect()) == [operation_event()]
+    assert native.waits == [("op_transport", 0, _EVENT_WAIT_TIMEOUT_MS)]
+    assert native.subscriptions == []
 
 
 def test_native_bridge_maps_native_failures_to_bridge_error() -> None:
