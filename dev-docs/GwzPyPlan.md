@@ -525,17 +525,18 @@ Steps:
 1. CLI Agent A extracts shared CLI infrastructure before other CLI agents start.
    Write scope: `src/gwz/cli.py`, `src/gwz/cli_shared.py`,
    `src/gwz/cli_render.py`, `src/tests/test_cli_parser.py`.
-   Work:
-   - Invent the command registration structure; the current CLI is a small
+   Completed path:
+   - Invented the command registration structure; the current CLI was a small
      `if`/`elif` monolith, not an existing registry to refactor.
-   - Migrate existing status, ls, init, and materialize behavior into the new
+   - Migrated existing status, ls, init, and materialize behavior into the new
      shared parser/registration layer before command-family agents start.
-   - Global `--root`, selection flags, dry-run, policy flags, JSON mode.
-   - Shared response rendering interface.
-   - Shared error to exit-code mapping.
-   - Command registration helpers that command-family modules can call without
+   - Added global `--root`, selection flags, dry-run, policy flags, and JSON
+     mode.
+   - Added shared response rendering interface.
+   - Added shared error to exit-code mapping.
+   - Added command registration helpers that command-family modules can call without
      editing parser internals.
-   Verification: parser tests for global options.
+   Verification: parser tests for global options and `python run_tests.py`.
 
 2. CLI Agent B implements read/workspace commands.
    Write scope: `src/gwz/cli_read.py`, `src/tests/test_cli_read.py`.
