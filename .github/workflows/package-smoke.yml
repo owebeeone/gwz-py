@@ -1,4 +1,4 @@
-name: Package smoke
+name: CI
 
 on:
   pull_request:
@@ -7,8 +7,81 @@ on:
   workflow_dispatch:
 
 jobs:
+  validate:
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, ubuntu-24.04, windows-2022]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+
+    steps:
+      - name: Checkout gwz-py
+        uses: actions/checkout@v4
+        with:
+          path: gwz-py
+
+      - name: Checkout gwz-core
+        uses: actions/checkout@v4
+        with:
+          repository: owebeeone/gwz-core
+          path: gwz-core
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install macOS native build prerequisites
+        if: runner.os == 'macOS'
+        run: brew install openssl@3 pkg-config
+
+      - name: Install Linux native build prerequisites
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev
+
+      - name: Install Windows native build prerequisites
+        if: runner.os == 'Windows'
+        run: |
+          if (-not $env:VCPKG_INSTALLATION_ROOT) {
+            $env:VCPKG_INSTALLATION_ROOT = "C:\vcpkg"
+          }
+          "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "VCPKGRS_DYNAMIC=0" | Out-File -FilePath $env:GITHUB_ENV -Append
+          vcpkg install openssl:x64-windows-static
+
+      - name: Install Python dependencies
+        working-directory: gwz-py
+        run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]"
+
+      - name: Check protocol drift
+        working-directory: gwz-py
+        run: python scripts/check_protocol_drift.py
+
+      - name: Check generated protocol
+        working-directory: gwz-py
+        run: python scripts/regen_protocol.py --check
+
+      - name: Check native extension crate
+        working-directory: gwz-py
+        run: cargo check
+
+      - name: Run Python tests
+        working-directory: gwz-py
+        run: python run_tests.py
+
   package-smoke:
-    runs-on: macos-14
+    runs-on: ${{ matrix.os }}
+    needs: validate
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, windows-2022]
 
     steps:
       - name: Checkout gwz-py
@@ -31,7 +104,18 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install native build prerequisites
-        run: brew install openssl@3
+        if: runner.os == 'macOS'
+        run: brew install openssl@3 pkg-config
+
+      - name: Install Windows native build prerequisites
+        if: runner.os == 'Windows'
+        run: |
+          if (-not $env:VCPKG_INSTALLATION_ROOT) {
+            $env:VCPKG_INSTALLATION_ROOT = "C:\vcpkg"
+          }
+          "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "VCPKGRS_DYNAMIC=0" | Out-File -FilePath $env:GITHUB_ENV -Append
+          vcpkg install openssl:x64-windows-static
 
       - name: Install Python build tools
         run: python -m pip install --upgrade pip maturin

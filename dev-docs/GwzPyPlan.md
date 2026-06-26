@@ -660,14 +660,17 @@ Steps:
      runs `gwz --help`, creates a local workspace fixture, exercises installed
      `gwz clone`, verifies streamed clone lifecycle output and member
      materialization, and runs `gwz status` in the clone.
-   - Added `.github/workflows/package-smoke.yml` to run the smoke on macOS with
-     sibling `gwz-core` checked out beside `gwz-py`.
+   - Added `.github/workflows/package-smoke.yml` to run the package smoke on
+     macOS and Windows with sibling `gwz-core` checked out beside `gwz-py`.
+   - Added the validation job for protocol drift, protocol regeneration,
+     native `cargo check`, and `python run_tests.py`.
    Remaining work:
-   - Add protocol regen check.
    - Verify packaged `gwz.ir.json` matches the `gwz-core` tag linked into the
-     extension.
-   - Add Python unit tests and native build/test matrix jobs.
-   Verification: `python scripts/package_smoke.py`.
+     extension for release-tag builds, not only the sibling checkout.
+   - Add Linux package-smoke coverage once the Linux wheel repair/publish policy
+     is settled.
+   Verification: `python scripts/check_protocol_drift.py`,
+   `python run_tests.py`, `cargo check`, and `python scripts/package_smoke.py`.
 
 3. CLI Agent and Packaging Agent decide `gwz` command dispatch.
    Write scope: `src/gwz/cli.py`, packaging metadata, README.
@@ -687,6 +690,11 @@ Steps:
    - Platform tags.
    - Rust dependency pinning.
    - Audit packaged extension contents.
+   Completed path:
+   - `scripts/check_protocol_drift.py` compares checked-in packaged
+     `gwz.ir.json` against the schema exported from the linked sibling
+     `gwz-core` checkout.
+   - `scripts/package_smoke.py` runs the drift guard before building a wheel.
    Verification: wheel install in clean virtualenv.
 
 5. Docs Agent updates README and release notes.
@@ -702,9 +710,10 @@ Phase gate:
 
 - Fresh virtualenv can install the built wheel and import `gwz`.
 - Console script works.
-- The wheel build fails if packaged IR and linked `gwz-core` protocol fingerprint
+- The package smoke fails if packaged IR and linked sibling `gwz-core` schema
   disagree.
-- CI covers protocol, Python tests, native build, and packaging smoke tests.
+- CI covers protocol drift, protocol regeneration, Python tests, native build,
+  and packaging smoke tests.
 
 ## Phase 7: Hardening And Release Readiness
 
@@ -731,10 +740,13 @@ Steps:
 
 2. Test Agent runs multi-platform smoke checks.
    Write scope: test docs or CI matrix.
-   Work:
-   - macOS/Linux at minimum.
-   - Python 3.10 through current supported version.
-   - Optional Windows notes if not supported initially.
+   Completed path:
+   - Added macOS/Linux/Windows validation matrix in `.github/workflows/package-smoke.yml`.
+   - Validation covers Python 3.10 through 3.13.
+   - Added Windows installed-wheel package smoke.
+   Work remaining:
+   - Manual Windows SSH clone smoke in a real developer Windows environment when
+     the host is reachable.
    Verification: CI or documented manual results.
 
 3. Docs Agent validates public API examples.
@@ -747,12 +759,14 @@ Steps:
 
 4. Coordinator performs release checklist.
    Write scope: release checklist doc if needed.
-   Work:
+   Completed path:
+   - Added `dev-docs/GwzPyReleaseChecklist.md`.
+   Work remaining:
    - Versioning decision.
-   - License metadata.
-   - PyPI package name decision.
-   - Wheel contents.
-   - Known limitations.
+   - License metadata review.
+   - PyPI package name confirmation.
+   - Wheel contents audit.
+   - Known limitations finalization.
    Verification: dry-run publish or equivalent.
 
 Phase gate:

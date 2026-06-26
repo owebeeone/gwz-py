@@ -395,8 +395,8 @@ namespace; if an ergonomic alias is needed, prefer a data-name such as
 
 ## Open Decisions
 
-- The remaining platform wheel repair strategy beyond the current macOS repaired
-  wheel smoke.
+- The remaining platform wheel repair strategy beyond the current macOS
+  repaired-wheel smoke and Windows installed-wheel smoke.
 - Whether `gwz-py` releases are version-locked to `gwz-core` tags or consume a
   manifest that records separate `gwz-py`, `gwz-core`, and `taut-proto`
   versions.

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import platform
 import shutil
 import shlex
 import subprocess
@@ -21,6 +22,7 @@ def main() -> int:
     smoke_root = Path(tempfile.mkdtemp(prefix="gwz-py-package-smoke."))
     wheel_dir = args.wheel_dir or smoke_root / "wheelhouse"
     try:
+        run([sys.executable, "scripts/check_protocol_drift.py"], cwd=ROOT)
         wheel = args.wheel or build_wheel(wheel_dir, args.auditwheel)
         gwz = install_wheel(smoke_root, wheel)
         smoke_console_script(gwz)
@@ -50,9 +52,9 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--auditwheel",
-        default="repair",
+        default=None,
         choices=("repair", "check", "skip"),
-        help="maturin auditwheel mode for the release build.",
+        help="maturin auditwheel mode for the release build. Defaults to repair on macOS/Linux and omitted on Windows.",
     )
     parser.add_argument(
         "--keep-temp",
@@ -62,25 +64,29 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def build_wheel(wheel_dir: Path, auditwheel: str) -> Path:
+def build_wheel(wheel_dir: Path, auditwheel: str | None) -> Path:
     wheel_dir.mkdir(parents=True, exist_ok=True)
-    run(
-        [
-            sys.executable,
-            "-m",
-            "maturin",
-            "build",
-            "--release",
-            f"--auditwheel={auditwheel}",
-            "-o",
-            str(wheel_dir),
-        ],
-        cwd=ROOT,
-    )
+    auditwheel = auditwheel or default_auditwheel()
+    cmd = [
+        sys.executable,
+        "-m",
+        "maturin",
+        "build",
+        "--release",
+        "-o",
+        str(wheel_dir),
+    ]
+    if auditwheel is not None:
+        cmd.insert(5, f"--auditwheel={auditwheel}")
+    run(cmd, cwd=ROOT)
     wheels = sorted(wheel_dir.glob("gwz_py-*.whl"), key=lambda path: path.stat().st_mtime)
     if not wheels:
         raise RuntimeError(f"maturin produced no gwz_py wheel in {wheel_dir}")
     return wheels[-1]
+
+
+def default_auditwheel() -> str | None:
+    return None if platform.system() == "Windows" else "repair"
 
 
 def install_wheel(smoke_root: Path, wheel: Path) -> Path:
@@ -117,7 +123,7 @@ def smoke_clone(gwz: Path, smoke_root: Path) -> None:
     member_commit = git(member, "rev-parse", "HEAD", capture=True).stdout.strip()
 
     run(["git", "init", "--bare", str(member_remote)])
-    git(member, "remote", "add", "origin", str(member_remote))
+    git(member, "remote", "add", "origin", member_remote.as_uri())
     git(member, "push", "origin", "HEAD:refs/heads/main")
     run([str(gwz), "--root", str(source), "repo", "sync", "repos/app"])
     run([str(gwz), "--root", str(source), "capture"])
@@ -125,7 +131,7 @@ def smoke_clone(gwz: Path, smoke_root: Path) -> None:
     git(source, "add", "gwz.conf")
     git(source, "commit", "-m", "workspace")
 
-    clone = run([str(gwz), "clone", str(source), str(target)], capture=True)
+    clone = run([str(gwz), "clone", source.as_uri(), str(target)], capture=True)
     status = run([str(gwz), "--root", str(target), "status"], capture=True)
     require(clone.stdout.strip() == "ok", f"unexpected clone stdout: {clone.stdout!r}")
     require(status.stdout.strip() == "ok", f"unexpected status stdout: {status.stdout!r}")

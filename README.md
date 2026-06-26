@@ -34,10 +34,20 @@ events and materialized member state, then runs `gwz status` in the clone:
 python scripts/package_smoke.py
 ```
 
+Check that the packaged protocol IR still matches the sibling `gwz-core` schema:
+
+```sh
+python scripts/check_protocol_drift.py
+```
+
 The native crate requires Rust 1.95 or newer and links the sibling
 `../gwz-core` checkout during local development. `gwz-core` depends on `git2`
 with HTTPS and SSH support, so source builds may need platform OpenSSL, libgit2,
 and SSH build prerequisites when wheels are not available.
+
+CI validates macOS, Linux, and Windows. Windows source builds use the same
+native extension path as other platforms and need OpenSSL/libgit2 prerequisites
+available to Cargo, for example through `vcpkg` with `VCPKG_ROOT` set.
 
 If `gwz._gwz_core` is missing, pass a custom bridge in tests or run
 `python -m maturin develop` from this directory.
