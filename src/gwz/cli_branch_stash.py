@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 from typing import Any
 
-from .cli_shared import CliUsageError, CommandContext, CommandRegistry
+from .cli_shared import CliUsageError, CommandContext, CommandRegistry, global_options_parent
 from .protocol.generated import BranchOp, StashOp
 
 
@@ -70,23 +70,49 @@ async def handle_branch(context: CommandContext) -> Any:
 
 
 def configure_stash(parser: argparse.ArgumentParser) -> None:
+    nested_global = global_options_parent("_nested_")
     subparsers = parser.add_subparsers(dest="stash_command", required=True)
 
-    push = subparsers.add_parser("push", help="Push a coordinated stash")
+    push = subparsers.add_parser(
+        "push",
+        help="Push a coordinated stash",
+        parents=[nested_global],
+        conflict_handler="resolve",
+    )
     push.add_argument("-u", dest="include_untracked", action="store_true", help="Include untracked files")
     push.add_argument("-a", dest="include_ignored", action="store_true", help="Include ignored files")
     push.add_argument("-m", "--message", help="Message suffix")
 
-    list_ = subparsers.add_parser("list", help="List coordinated stashes")
+    list_ = subparsers.add_parser(
+        "list",
+        help="List coordinated stashes",
+        parents=[nested_global],
+        conflict_handler="resolve",
+    )
     list_.add_argument("--expanded", action="store_true", help="Include expanded bundle detail")
 
-    apply = subparsers.add_parser("apply", help="Apply a coordinated stash")
+    apply = subparsers.add_parser(
+        "apply",
+        help="Apply a coordinated stash",
+        parents=[nested_global],
+        conflict_handler="resolve",
+    )
     apply.add_argument("stash_id", nargs="?", help="Stash id; defaults to latest")
 
-    pop = subparsers.add_parser("pop", help="Pop a coordinated stash")
+    pop = subparsers.add_parser(
+        "pop",
+        help="Pop a coordinated stash",
+        parents=[nested_global],
+        conflict_handler="resolve",
+    )
     pop.add_argument("stash_id", nargs="?", help="Stash id; defaults to latest")
 
-    drop = subparsers.add_parser("drop", help="Drop a coordinated stash")
+    drop = subparsers.add_parser(
+        "drop",
+        help="Drop a coordinated stash",
+        parents=[nested_global],
+        conflict_handler="resolve",
+    )
     drop.add_argument("stash_id", help="Stash id")
 
 

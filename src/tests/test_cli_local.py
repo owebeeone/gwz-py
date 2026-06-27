@@ -24,6 +24,7 @@ from gwz.protocol.generated import (
     ResponseEnvelope,
     ResponseMeta,
     Severity,
+    TargetKind,
 )
 
 
@@ -136,6 +137,16 @@ def member(id_: str, path: str, root: Path) -> MemberEntry:
     )
 
 
+def root_member(root: Path) -> MemberEntry:
+    return MemberEntry(
+        id="@root",
+        path=".",
+        abspath=str(root),
+        materialized=True,
+        target_kind=TargetKind.root,
+    )
+
+
 def test_forall_invocation_parses_argv_and_shell_forms() -> None:
     assert _forall_invocation(["repos/app", "--", "echo", "{@}"]) == (
         ["repos/app"],
@@ -170,6 +181,35 @@ def test_forall_runs_filtered_member_command(tmp_path: Path) -> None:
     assert [result.path for result in response.results] == ["repos/app"]
     assert response.results[0].exit_code == 0
     assert client.calls == [("ls", (), {"include_unmaterialized": False, "targets": ["repos/app"]})]
+
+
+def test_forall_runs_positionally_selected_root_target(tmp_path: Path) -> None:
+    client = FakeClient(
+        [root_member(tmp_path), member("mem_app", "repos/app", tmp_path)],
+        tmp_path,
+    )
+
+    response = run_handler(
+        [
+            "forall",
+            "--no-banner",
+            "@root",
+            "--",
+            sys.executable,
+            "-c",
+            "import os, sys; "
+            "sys.exit(0 if os.environ['GWZ_TARGET_KIND'] == 'root' "
+            "and os.environ['GWZ_MEMBER_PATH'] == '.' else 7)",
+        ],
+        client,
+    )
+
+    assert response.response.meta.aggregate_status is AggregateStatus.ok
+    assert [result.path for result in response.results] == ["."]
+    assert response.results[0].exit_code == 0
+    assert client.calls == [
+        ("ls", (), {"include_unmaterialized": False, "targets": ["@root"]})
+    ]
 
 
 def test_forall_stops_on_failure_unless_partial(tmp_path: Path) -> None:

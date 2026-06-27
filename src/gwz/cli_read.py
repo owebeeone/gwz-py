@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 from typing import Any
 
-from .cli_shared import CliUsageError, CommandContext, CommandRegistry
+from .cli_shared import CliUsageError, CommandContext, CommandRegistry, global_options_parent
 
 
 def register_commands(registry: CommandRegistry) -> None:
@@ -97,15 +97,31 @@ async def handle_init(context: CommandContext) -> Any:
 
 
 def configure_repo(parser: argparse.ArgumentParser) -> None:
+    nested_global = global_options_parent("_nested_")
     subparsers = parser.add_subparsers(dest="repo_command", required=True)
 
-    add = subparsers.add_parser("add", help="Add an existing git repository as a member")
+    add = subparsers.add_parser(
+        "add",
+        help="Add an existing git repository as a member",
+        parents=[nested_global],
+        conflict_handler="resolve",
+    )
     add.add_argument("repo_path", help="Path to an existing local git repository")
 
-    create = subparsers.add_parser("create", help="Create a new repository member")
+    create = subparsers.add_parser(
+        "create",
+        help="Create a new repository member",
+        parents=[nested_global],
+        conflict_handler="resolve",
+    )
     create.add_argument("member_path", help="Workspace-relative path for the new repository member")
 
-    sync = subparsers.add_parser("sync", help="Refresh member metadata from local git config")
+    sync = subparsers.add_parser(
+        "sync",
+        help="Refresh member metadata from local git config",
+        parents=[nested_global],
+        conflict_handler="resolve",
+    )
     sync.add_argument("member_path", nargs="?", help="Workspace-relative member path to sync")
 
 

@@ -100,6 +100,52 @@ def test_all_accepts_specific_target_selection_and_exclusions() -> None:
     }
 
 
+def test_global_options_are_accepted_after_subcommands() -> None:
+    args = build_parser().parse_args(
+        ["ls", "--all", "--target", "@root", "--no-target", "@default"]
+    )
+
+    validate_args(args)
+    assert meta_kwargs(args) == {
+        "all_members": True,
+        "targets": ["@root"],
+        "exclude_targets": ["@default"],
+    }
+
+
+def test_global_options_merge_before_and_after_subcommands() -> None:
+    args = build_parser().parse_args(
+        ["--target", "@root", "push", "--target", "mem_app", "--remote", "origin"]
+    )
+
+    validate_args(args)
+    assert meta_kwargs(args) == {
+        "targets": ["@root", "mem_app"],
+        "remote": "origin",
+    }
+
+
+def test_global_options_are_accepted_after_nested_subcommands() -> None:
+    args = build_parser().parse_args(["repo", "sync", "--target", "@root"])
+
+    validate_args(args)
+    assert meta_kwargs(args) == {"targets": ["@root"]}
+
+
+def test_local_all_options_keep_command_specific_meaning() -> None:
+    stage_args = build_parser().parse_args(["stage", "--target", "@root", "--all"])
+    commit_args = build_parser().parse_args(
+        ["commit", "-m", "message", "--target", "@root", "--all"]
+    )
+
+    assert stage_args.all_members is False
+    assert stage_args.stage_all is True
+    assert meta_kwargs(stage_args) == {"targets": ["@root"]}
+    assert commit_args.all_members is False
+    assert commit_args.commit_all is True
+    assert meta_kwargs(commit_args) == {"targets": ["@root"]}
+
+
 def test_command_registry_allows_modules_to_attach_commands() -> None:
     async def handler(context: CommandContext) -> str:
         return str(context.args.flag)

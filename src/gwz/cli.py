@@ -10,9 +10,11 @@ from .cli_shared import (
     CliUsageError,
     CommandContext,
     CommandRegistry,
+    GwzArgumentParser,
     add_global_options,
     exit_code_for_error,
     exit_code_for_response,
+    global_options_parent,
     meta_kwargs,
     validate_args,
 )
@@ -21,7 +23,7 @@ from .errors import GwzError
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = GwzArgumentParser(
         prog="gwz",
         description="Manage GWZ multi-repository workspaces",
     )
@@ -29,7 +31,10 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
     registry = CommandRegistry()
     register_commands(registry)
-    registry.attach_to(subparsers)
+    registry.attach_to(
+        subparsers,
+        global_parent_factory=lambda: global_options_parent("_cmd_"),
+    )
     return parser
 
 

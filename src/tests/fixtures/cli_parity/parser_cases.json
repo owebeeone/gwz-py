@@ -6,7 +6,9 @@
     ["repo", "add", "../repo"],
     ["repo", "create", "repos/app"],
     ["repo", "sync", "repos/app"],
+    ["repo", "sync", "--target", "@root"],
     ["--all", "--member", "mem_app", "--no-target", "@root", "status"],
+    ["ls", "--all", "--no-target", "@root"],
     ["materialize", "--switch", "feature"],
     ["snapshot", "snap_1", "--branch", "main"],
     ["tag", "--push", "v1"],
@@ -15,9 +17,12 @@
     ["commit", "-m", "message"],
     ["pull", "--snapshot", "snap_1"],
     ["push"],
+    ["push", "--target", "@root"],
     ["branch", "--create", "feature", "--from", "main", "--switch"],
     ["stash", "push", "-u", "-m", "work"],
+    ["stash", "push", "--target", "@root", "-u"],
     ["forall", "repos/app", "--", "echo", "{@}"],
+    ["forall", "--all", "--no-target", "@root", "--", "echo", "{@}"],
     ["clone", "https://example.invalid/workspace.git"]
   ],
   "parse_reject": [
