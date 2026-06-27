@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build/install smoke test for the packaged gwz-py console script."""
+"""Build/install smoke test for the packaged gwz distribution."""
 
 from __future__ import annotations
 
@@ -17,6 +17,9 @@ from typing import Callable
 
 
 ROOT = Path(__file__).resolve().parents[1]
+DIST_NAME = "gwz"
+WHEEL_PREFIX = "gwz"
+CONSOLE_SCRIPT = "gwz-py"
 
 
 def main() -> int:
@@ -27,10 +30,10 @@ def main() -> int:
         run([sys.executable, "scripts/check_protocol_drift.py"], cwd=ROOT)
         wheel = args.wheel or build_wheel(wheel_dir, args.auditwheel)
         verify_wheel_version(wheel, args.expected_version)
-        python, gwz_py = install_wheel(smoke_root, wheel)
+        python, cli = install_wheel(smoke_root, wheel)
         smoke_installed_version(python, args.expected_version)
-        smoke_console_script(gwz_py)
-        smoke_clone(gwz_py, smoke_root)
+        smoke_console_script(cli)
+        smoke_clone(cli, smoke_root)
     except Exception:
         print(f"package_smoke: failed; preserving {smoke_root}", file=sys.stderr)
         raise
@@ -47,7 +50,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--wheel",
         type=Path,
-        help="Existing gwz-py wheel to install instead of building one.",
+        help="Existing gwz wheel to install instead of building one.",
     )
     parser.add_argument(
         "--wheel-dir",
@@ -90,9 +93,9 @@ def build_wheel(wheel_dir: Path, auditwheel: str | None) -> Path:
     if auditwheel is not None:
         cmd.insert(5, f"--auditwheel={auditwheel}")
     run(cmd, cwd=ROOT)
-    wheels = sorted(wheel_dir.glob("gwz_py-*.whl"), key=lambda path: path.stat().st_mtime)
+    wheels = sorted(wheel_dir.glob(f"{WHEEL_PREFIX}-*.whl"), key=lambda path: path.stat().st_mtime)
     if not wheels:
-        raise RuntimeError(f"maturin produced no gwz_py wheel in {wheel_dir}")
+        raise RuntimeError(f"maturin produced no {DIST_NAME} wheel in {wheel_dir}")
     return wheels[-1]
 
 
@@ -116,7 +119,7 @@ def verify_wheel_version(wheel: Path, expected_version: str | None) -> None:
     if expected_version is None:
         return
     require(
-        wheel.name.startswith(f"gwz_py-{expected_version}-"),
+        wheel.name.startswith(f"{WHEEL_PREFIX}-{expected_version}-"),
         f"wheel {wheel.name!r} does not use expected version {expected_version!r}",
     )
 
@@ -127,7 +130,7 @@ def install_wheel(smoke_root: Path, wheel: Path) -> tuple[Path, Path]:
     python = venv_executable(venv, "python")
     run([str(python), "-m", "pip", "install", "--upgrade", "pip"])
     run([str(python), "-m", "pip", "install", str(wheel)])
-    return python, venv_executable(venv, "gwz-py")
+    return python, venv_executable(venv, CONSOLE_SCRIPT)
 
 
 def smoke_installed_version(python: Path, expected_version: str | None) -> None:
@@ -139,30 +142,30 @@ def smoke_installed_version(python: Path, expected_version: str | None) -> None:
             "-c",
             (
                 "from importlib.metadata import version; "
-                "print(version('gwz-py'))"
+                f"print(version('{DIST_NAME}'))"
             ),
         ],
         capture=True,
     ).stdout.strip()
     require(
         installed == expected_version,
-        f"installed gwz-py version {installed!r}; expected {expected_version!r}",
+        f"installed {DIST_NAME} version {installed!r}; expected {expected_version!r}",
     )
 
 
-def smoke_console_script(gwz_py: Path) -> None:
-    help_text = run([str(gwz_py), "--help"], capture=True).stdout
+def smoke_console_script(cli: Path) -> None:
+    help_text = run([str(cli), "--help"], capture=True).stdout
     require("clone" in help_text, "gwz-py --help did not advertise clone")
 
 
-def smoke_clone(gwz_py: Path, smoke_root: Path) -> None:
+def smoke_clone(cli: Path, smoke_root: Path) -> None:
     source = smoke_root / "source"
     target = smoke_root / "clone"
     member_remote = smoke_root / "member.git"
     source.mkdir()
 
-    run([str(gwz_py), "--root", str(source), "init"])
-    run([str(gwz_py), "--root", str(source), "repo", "create", "repos/app"])
+    run([str(cli), "--root", str(source), "init"])
+    run([str(cli), "--root", str(source), "repo", "create", "repos/app"])
     git(source, "config", "user.name", "GWZ Smoke")
     git(source, "config", "user.email", "gwz-smoke@example.invalid")
 
@@ -177,14 +180,14 @@ def smoke_clone(gwz_py: Path, smoke_root: Path) -> None:
     run(["git", "init", "--bare", str(member_remote)])
     git(member, "remote", "add", "origin", member_remote.as_uri())
     git(member, "push", "origin", "HEAD:refs/heads/main")
-    run([str(gwz_py), "--root", str(source), "repo", "sync", "repos/app"])
-    run([str(gwz_py), "--root", str(source), "capture"])
+    run([str(cli), "--root", str(source), "repo", "sync", "repos/app"])
+    run([str(cli), "--root", str(source), "capture"])
 
     git(source, "add", "gwz.conf")
     git(source, "commit", "-m", "workspace")
 
-    clone = run([str(gwz_py), "clone", source.as_uri(), str(target)], capture=True)
-    status = run([str(gwz_py), "--root", str(target), "status"], capture=True)
+    clone = run([str(cli), "clone", source.as_uri(), str(target)], capture=True)
+    status = run([str(cli), "--root", str(target), "status"], capture=True)
     require(clone.stdout.strip() == "ok", f"unexpected clone stdout: {clone.stdout!r}")
     require(status.stdout.strip() == "ok", f"unexpected status stdout: {status.stdout!r}")
     require((target / "gwz.conf" / "gwz.lock.yml").is_file(), "clone did not include gwz lock")

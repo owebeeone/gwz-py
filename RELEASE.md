@@ -1,14 +1,15 @@
 # Releasing gwz-py
 
-gwz-py is the Python package for GWZ. It provides:
+gwz-py is the repository for the `gwz` Python distribution. It provides:
 
 - `import gwz` Python API bindings.
 - The installed Python CLI command `gwz-py`.
 - A PyO3 native extension, `gwz._gwz_core`, linked to **gwz-core**.
 
 gwz-py uses the same release tag string as gwz-core and gwz-cli: `vX.Y.Z`.
-The Python distribution version is `X.Y.Z`; the release script sets the Cargo
-package version to that value before building wheels.
+The PyPI distribution is `gwz`. The Python distribution version is `X.Y.Z`;
+the release script sets the Cargo package version to that value before building
+wheels.
 
 The only intentional dependency difference between branches is the `gwz-core`
 source:
@@ -66,7 +67,8 @@ need `--bootstrap-release`.
    - Sets the Cargo package version to `X.Y.Z`.
    - Pins `gwz-core` to git tag `vX.Y.Z`.
    - Checks the `Cargo.lock` gwz-core git pin.
-   - Verifies the installed console script is `gwz-py`.
+   - Verifies the PyPI distribution is `gwz` and the installed console script is
+     `gwz-py`.
    - Runs protocol drift checks, protocol regeneration checks, `cargo check`,
      `python run_tests.py`, and package smoke.
    - Builds and installs a wheel in a clean virtualenv.
@@ -99,7 +101,8 @@ The workflow:
 - Checks out `owebeeone/gwz-core` at the same tag beside it.
 - Verifies `Cargo.toml` version is `X.Y.Z`.
 - Verifies `Cargo.toml` and `Cargo.lock` pin gwz-core to tag `vX.Y.Z`.
-- Verifies `pyproject.toml` installs `gwz-py = "gwz.cli:main"`.
+- Verifies `pyproject.toml` publishes distribution `gwz` and installs
+  `gwz-py = "gwz.cli:main"`.
 - Runs protocol drift, protocol regeneration, `cargo check`, and Python tests.
 - Builds Linux amd64, Linux arm64, macOS amd64, macOS arm64, and Windows amd64
   wheels.
@@ -107,7 +110,7 @@ The workflow:
 - Smoke-tests each built wheel through the installed `gwz-py` command.
 - Publishes to PyPI using trusted publishing.
 
-Before the first public upload, configure the `gwz-py` PyPI project to trust the
+Before the first public upload, configure the `gwz` PyPI project to trust the
 GitHub Actions publisher for this repository and workflow.
 
 ## Routine Local Gates

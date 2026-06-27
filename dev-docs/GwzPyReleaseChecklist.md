@@ -4,7 +4,7 @@ Status: pre-release checklist
 
 ## Chosen Release Mode
 
-- PyPI distribution: `gwz-py`.
+- PyPI distribution: `gwz`.
 - Import package: `gwz`.
 - Installed command: `gwz-py`, backed by Python CLI entry point
   `gwz.cli:main`.
@@ -15,7 +15,7 @@ Status: pre-release checklist
 The local `release` branch pins `gwz-core` through a git tag. For the first
 release, use `python scripts/release.py vX.Y.Z --bootstrap-release` to create
 `release` from `main`. For later releases, use `python scripts/release.py
-vX.Y.Z` to merge `main` into `release`, set the `gwz-py` package version to
+vX.Y.Z` to merge `main` into `release`, set the `gwz` package version to
 `X.Y.Z`, pin `gwz-core` to tag `vX.Y.Z`, run the release gates, commit the
 reconciled branch, and create the matching tag.
 
@@ -49,7 +49,8 @@ run `gwz-py status` in the clone.
 - macOS/Linux repaired-wheel package smoke.
 - Windows installed-wheel package smoke.
 - Release-tag metadata guard that verifies `Cargo.toml`, `Cargo.lock`, and
-  `pyproject.toml` point at the shared release tag and `gwz-py` console script.
+  `pyproject.toml` point at the shared release tag, `gwz` distribution, and
+  `gwz-py` console script.
 
 ## Release Blockers
 
