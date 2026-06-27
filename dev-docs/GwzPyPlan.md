@@ -666,7 +666,7 @@ Steps:
    - Added the validation job for protocol drift, protocol regeneration,
      native `cargo check`, and `python run_tests.py`.
    - Added `.github/workflows/publish.yml` for release-tag builds on Linux,
-     macOS x86_64, macOS arm64, and Windows. The workflow checks out matching
+     Linux amd64, Linux arm64, macOS amd64, macOS arm64, and Windows amd64. The workflow checks out matching
      `gwz-py` and `gwz-core` tags, verifies the release metadata, builds wheels
      plus a Linux sdist, smoke-tests the built wheel, and publishes with PyPI
      trusted publishing.

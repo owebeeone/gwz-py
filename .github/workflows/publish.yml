@@ -14,6 +14,10 @@ permissions:
   contents: read
   id-token: write
 
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PIP_NO_CACHE_DIR: "1"
+
 jobs:
   resolve:
     runs-on: ubuntu-24.04
@@ -21,7 +25,7 @@ jobs:
       tag: ${{ steps.release-tag.outputs.tag }}
       version: ${{ steps.release-tag.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ github.event.release.tag_name || inputs.tag }}
           fetch-depth: 0
@@ -48,21 +52,29 @@ jobs:
       matrix:
         include:
           - os: ubuntu-24.04
-            artifact: linux-x86_64
+            artifact: linux-amd64
             auditwheel: "--auditwheel=repair"
-          - os: macos-13
-            artifact: macos-x86_64
+            build-sdist: true
+          - os: ubuntu-24.04-arm
+            artifact: linux-arm64
             auditwheel: "--auditwheel=repair"
+            build-sdist: false
+          - os: macos-15-intel
+            artifact: macos-amd64
+            auditwheel: "--auditwheel=repair"
+            build-sdist: false
           - os: macos-14
             artifact: macos-arm64
             auditwheel: "--auditwheel=repair"
+            build-sdist: false
           - os: windows-2022
-            artifact: windows-x86_64
+            artifact: windows-amd64
             auditwheel: ""
+            build-sdist: false
 
     steps:
       - name: Checkout gwz-py
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ needs.resolve.outputs.tag }}
           path: gwz-py
@@ -70,7 +82,7 @@ jobs:
           persist-credentials: false
 
       - name: Checkout matching gwz-core tag
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: owebeeone/gwz-core
           ref: ${{ needs.resolve.outputs.tag }}
@@ -78,7 +90,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.10"
 
@@ -173,7 +185,7 @@ jobs:
         run: python -m maturin build --release -o dist ${{ matrix.auditwheel }}
 
       - name: Build source distribution
-        if: runner.os == 'Linux'
+        if: matrix.build-sdist
         working-directory: gwz-py
         run: python -m maturin sdist -o dist
 
@@ -203,7 +215,7 @@ jobs:
           )
 
       - name: Upload distributions
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: dist-${{ matrix.artifact }}
           path: gwz-py/dist/*
@@ -216,7 +228,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Download distributions
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           pattern: dist-*
           path: dist
