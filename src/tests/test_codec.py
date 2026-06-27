@@ -94,10 +94,13 @@ def test_generated_registry_service_lookup_and_metadata() -> None:
     classes = generated_classes()
 
     assert classes["StatusRequest"] is generated.StatusRequest
+    assert classes["ListSnapshotsResponse"] is generated.ListSnapshotsResponse
     assert classes["BranchResponse"] is generated.BranchResponse
     assert classes["StashResponse"] is generated.StashResponse
     assert request_message_name("status") == "StatusRequest"
+    assert request_message_name("list_snapshots") == "ListSnapshotsRequest"
     assert response_message_name("status") == "StatusResponse"
+    assert response_message_name("list_snapshots") == "ListSnapshotsResponse"
     assert request_message_names()["branch"] == "BranchRequest"
     assert response_message_names()["stash"] == "StashResponse"
     assert event_message_name() == "OperationEvent"

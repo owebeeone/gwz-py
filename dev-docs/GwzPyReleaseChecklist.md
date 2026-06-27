@@ -48,8 +48,8 @@ streamed clone lifecycle output, verify materialized member state, and run
   that policy is settled.
 - Run manual Windows SSH clone smoke against an installed `gwz` in a real
   developer Windows environment when the host is reachable.
-- Finish the CLI parity gap review. Known candidate: `snapshot --list` is still
-  intentionally unimplemented in the Python CLI.
+- Finish the remaining CLI parity gap review after `snapshot --list` has moved
+  to the generated `list_snapshots` gwz-core API.
 - Set final version/tag ordering across `gwz-core`, `gwz-py`, and `taut-proto`.
 
 ## Documentation Gates

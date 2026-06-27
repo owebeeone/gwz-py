@@ -16,6 +16,8 @@ from gwz.protocol.generated import (
     CloneWorkspaceRequest,
     CloneWorkspaceResponse,
     InitFromSourcesResponse,
+    ListSnapshotsRequest,
+    ListSnapshotsResponse,
     LsResponse,
     MaterializeRequest,
     MaterializeResponse,
@@ -45,6 +47,7 @@ RESPONSE_TYPES = {
         BranchResponse,
         CloneWorkspaceResponse,
         InitFromSourcesResponse,
+        ListSnapshotsResponse,
         LsResponse,
         MaterializeResponse,
         PullHeadResponse,
@@ -60,6 +63,7 @@ RESPONSE_TYPES = {
 
 RESPONSE_EXTRAS = {
     BranchResponse: {"repos": None},
+    ListSnapshotsResponse: {"snapshots": None},
     LsResponse: {"members": []},
     StashResponse: {"bundles": None},
     StatusResponse: {"workspace_git_status": None},
@@ -219,6 +223,22 @@ def test_snapshot_branch_source_is_explicit() -> None:
     assert request.source.branch == "release/1"
 
 
+def test_list_snapshots_builds_taut_request() -> None:
+    bridge = FakeBridge()
+    client = Client(root=Path("/tmp/workspace"), bridge=bridge)
+
+    response = asyncio.run(client.list_snapshots())
+
+    assert isinstance(response, ListSnapshotsResponse)
+    method, request_message, response_message, request = bridge.calls[0]
+    assert method == "list_snapshots"
+    assert request_message == "ListSnapshotsRequest"
+    assert response_message == "ListSnapshotsResponse"
+    assert isinstance(request, ListSnapshotsRequest)
+    assert request.meta.workspace is not None
+    assert request.meta.workspace.root == str(Path("/tmp/workspace").resolve())
+
+
 def test_branch_merge_source_maps_to_start_ref() -> None:
     bridge = FakeBridge()
     client = Client(root=Path("/tmp/workspace"), bridge=bridge)
@@ -346,6 +366,7 @@ def test_public_operations_are_async() -> None:
         "create_repo",
         "create_workspace",
         "init_from_sources",
+        "list_snapshots",
         "ls",
         "materialize",
         "operation_result",

@@ -13,7 +13,14 @@ def test_packaged_ir_contains_gwz_core_service() -> None:
     assert "GwzCore" in loaded.services
     assert "StatusRequest" in loaded.messages
     methods = {method.name for method in loaded.services["GwzCore"].methods}
-    assert {"repo_sync", "branch", "stash", "events.subscribe", "operation.result"} <= methods
+    assert {
+        "repo_sync",
+        "branch",
+        "stash",
+        "list_snapshots",
+        "events.subscribe",
+        "operation.result",
+    } <= methods
     assert "forall" not in methods
 
 

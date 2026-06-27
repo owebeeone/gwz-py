@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 
 from gwz.cli import build_parser
-from gwz.cli_shared import CliUsageError, CommandContext, meta_kwargs, validate_args
+from gwz.cli_shared import CommandContext, meta_kwargs, validate_args
 from gwz.protocol.generated import SnapshotSourceKind, TagOp
 
 
@@ -21,6 +21,10 @@ class FakeClient:
     async def snapshot(self, *args: Any, **kwargs: Any) -> str:
         self.calls.append(("snapshot", args, kwargs))
         return "snapshot"
+
+    async def list_snapshots(self, **kwargs: Any) -> str:
+        self.calls.append(("list_snapshots", (), kwargs))
+        return "list_snapshots"
 
     async def tag(self, *args: Any, **kwargs: Any) -> str:
         self.calls.append(("tag", args, kwargs))
@@ -114,8 +118,8 @@ def test_tag_push_uses_explicit_remote_without_duplicate_meta() -> None:
     assert client.calls[0][2]["remote"] == "origin"
 
 
-def test_snapshot_list_is_explicitly_unimplemented() -> None:
+def test_snapshot_list_calls_client() -> None:
     client = FakeClient()
 
-    with pytest.raises(CliUsageError, match="snapshot --list"):
-        run_handler(["snapshot", "--list"], client)
+    assert run_handler(["snapshot", "--list"], client) == "list_snapshots"
+    assert client.calls[0][0] == "list_snapshots"

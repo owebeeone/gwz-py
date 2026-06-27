@@ -29,6 +29,7 @@ def test_native_snapshot_sources_and_branch_switch(tmp_path: Path) -> None:
         client.snapshot("snap_current", current_branch=True, paths=["repos/app"])
     )
     branch_snapshot = asyncio.run(client.snapshot("snap_feature", branch="feature", paths=["repos/app"]))
+    snapshots = asyncio.run(client.list_snapshots())
 
     assert current_snapshot.response.meta.aggregate_status is AggregateStatus.ok
     assert current_snapshot.response.members[0].state is not None
@@ -36,6 +37,9 @@ def test_native_snapshot_sources_and_branch_switch(tmp_path: Path) -> None:
     assert branch_snapshot.response.meta.aggregate_status is AggregateStatus.ok
     assert branch_snapshot.response.members[0].state is not None
     assert branch_snapshot.response.members[0].state.commit == feature_commit
+    assert snapshots.response.meta.aggregate_status is AggregateStatus.ok
+    assert snapshots.snapshots is not None
+    assert {snapshot.name for snapshot in snapshots.snapshots} == {"snap_current", "snap_feature"}
 
     switched = asyncio.run(client.materialize("branch", name="feature", paths=["repos/app"]))
 

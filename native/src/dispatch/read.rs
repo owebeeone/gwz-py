@@ -24,6 +24,9 @@ pub(crate) fn call(
         "repo_sync" => call_repo_sync(method, request_message, response_message, request_bytes),
         "status" => call_status(method, request_message, response_message, request_bytes),
         "ls" => call_ls(method, request_message, response_message, request_bytes),
+        "list_snapshots" => {
+            call_list_snapshots(method, request_message, response_message, request_bytes)
+        }
         other => error::unsupported(other),
     }
 }
@@ -173,6 +176,26 @@ fn call_ls(
         gwz_core::workspace_ops::handle_ls(&start, request, operation_id)
     })?;
     codec::encode_message("encode LsResponse", || response.to_cbor())
+}
+
+fn call_list_snapshots(
+    method: &str,
+    request_message: &str,
+    response_message: &str,
+    request_bytes: &[u8],
+) -> PyResult<Vec<u8>> {
+    codec::require_request(method, request_message, "ListSnapshotsRequest")?;
+    codec::require_response(method, response_message, "ListSnapshotsResponse")?;
+
+    let request = codec::decode_message(request_bytes, "decode ListSnapshotsRequest", |cbor| {
+        gwz_core::ListSnapshotsRequest::from_cbor(cbor)
+    })?;
+    let request_id = request.meta.request_id.clone();
+    let start = current_dir()?;
+    let response = shims::no_backend(&request_id, |operation_id| {
+        gwz_core::workspace_ops::handle_list_snapshots(&start, request, operation_id)
+    })?;
+    codec::encode_message("encode ListSnapshotsResponse", || response.to_cbor())
 }
 
 fn current_dir() -> PyResult<std::path::PathBuf> {

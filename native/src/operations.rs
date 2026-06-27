@@ -188,6 +188,7 @@ impl OperationRecord {
             member_id: None,
             member_path: None,
             detail: None,
+            target_kind: None,
         };
         self.set_result(gwz_core::OperationResult {
             operation_id,

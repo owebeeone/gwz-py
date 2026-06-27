@@ -24,6 +24,7 @@ class ActionKind(Enum):
     stash = 17
     branch = 18
     clone_workspace = 19
+    list_snapshots = 20
 
 class TagOp(Enum):
     create = 0
@@ -680,6 +681,10 @@ class SnapshotRequest:
     source: SnapshotSource | None
 
 @dataclass(slots=True)
+class ListSnapshotsRequest:
+    meta: RequestMeta
+
+@dataclass(slots=True)
 class TagRequest:
     meta: RequestMeta
     op: TagOp
@@ -776,6 +781,18 @@ class StatusResponse:
 @dataclass(slots=True)
 class SnapshotResponse:
     response: ResponseEnvelope
+
+@dataclass(slots=True)
+class SnapshotInfo:
+    name: str
+    created_at: str
+    created_by: str
+    members: int
+
+@dataclass(slots=True)
+class ListSnapshotsResponse:
+    response: ResponseEnvelope
+    snapshots: list[SnapshotInfo] | None
 
 @dataclass(slots=True)
 class TagInfo:

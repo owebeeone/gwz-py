@@ -17,7 +17,7 @@ pub(crate) fn call(
 ) -> PyResult<Vec<u8>> {
     match method {
         "create_workspace" | "init_from_sources" | "add_existing_repo" | "create_repo"
-        | "repo_sync" | "status" | "ls" => {
+        | "repo_sync" | "status" | "ls" | "list_snapshots" => {
             read::call(method, request_message, response_message, request_bytes)
         }
         "materialize" | "clone_workspace" | "snapshot" | "tag" | "capture" => {

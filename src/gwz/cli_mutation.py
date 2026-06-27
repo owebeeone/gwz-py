@@ -106,7 +106,7 @@ def configure_snapshot(parser: argparse.ArgumentParser) -> None:
 
 async def handle_snapshot(context: CommandContext) -> Any:
     if context.args.list:
-        raise CliUsageError("snapshot --list is not implemented in gwz-py yet")
+        return await context.client.list_snapshots(**context.meta)
     if context.args.name is None:
         raise CliUsageError("snapshot requires a name")
 

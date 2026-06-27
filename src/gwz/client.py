@@ -33,6 +33,8 @@ from .protocol.generated import (
     GwzError as GwzErrorDetail,
     InitFromSourcesRequest,
     InitFromSourcesResponse,
+    ListSnapshotsRequest,
+    ListSnapshotsResponse,
     LsRequest,
     LsResponse,
     MaterializeRequest,
@@ -417,6 +419,10 @@ class Client:
             source = SnapshotSource(kind=SnapshotSourceKind.current, branch=None)
         request = SnapshotRequest(meta=self.meta(**meta), snapshot_id=snapshot_id, source=source)
         return await self._call("snapshot", request, SnapshotResponse)
+
+    async def list_snapshots(self, **meta: Any) -> ListSnapshotsResponse:
+        request = ListSnapshotsRequest(meta=self.meta(**meta))
+        return await self._call("list_snapshots", request, ListSnapshotsResponse)
 
     async def tag(
         self,

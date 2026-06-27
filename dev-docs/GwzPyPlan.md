@@ -558,8 +558,8 @@ Steps:
    - Added `materialize --switch`.
    - Added `snapshot --branch[=<name>]`.
    - Added `add` as a stage alias for Rust CLI compatibility.
-   - Kept `snapshot --list` explicitly unimplemented because there is no Python
-     client method yet.
+   - Implemented `snapshot --list` through the generated
+     `list_snapshots` gwz-core service method.
    Verification: parser and fake client request tests plus `python run_tests.py`.
 
 4. CLI Agent D implements `branch` and `stash`.
