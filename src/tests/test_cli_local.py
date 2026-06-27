@@ -158,6 +158,18 @@ def test_forall_invocation_parses_argv_and_shell_forms() -> None:
         ExecMode.shell,
         ["echo hi"],
     )
+    assert _forall_invocation(["repos/app", "--command-string", "echo hi"]) == (
+        ["repos/app"],
+        ExecMode.shell,
+        ["echo hi"],
+    )
+
+
+def test_forall_command_string_long_option_parses_before_remainder() -> None:
+    args = build_parser().parse_args(["forall", "--command-string", "echo hi"])
+
+    assert args.command_string == "echo hi"
+    assert args.tokens == []
 
 
 def test_forall_runs_filtered_member_command(tmp_path: Path) -> None:
@@ -242,6 +254,8 @@ def test_forall_rejects_json_mode(tmp_path: Path) -> None:
 
     with pytest.raises(CliUsageError, match="forall does not support --json"):
         run_handler(["--json", "forall", "-c", "echo hi"], client)
+    with pytest.raises(CliUsageError, match="forall does not support --json/--jsonl"):
+        run_handler(["--jsonl", "forall", "-c", "echo hi"], client)
 
 
 def test_clone_streams_with_derived_target(tmp_path: Path) -> None:
@@ -256,10 +270,17 @@ def test_clone_streams_with_derived_target(tmp_path: Path) -> None:
     ]
 
 
-def test_clone_uses_explicit_target_in_json_mode(tmp_path: Path) -> None:
+@pytest.mark.parametrize("machine_flag", ["--json", "--jsonl"])
+def test_clone_uses_explicit_target_in_machine_mode(
+    machine_flag: str,
+    tmp_path: Path,
+) -> None:
     client = FakeClient([], tmp_path)
 
-    response = run_handler(["--json", "clone", "git@example.invalid:org/ws.git", "work/demo"], client)
+    response = run_handler(
+        [machine_flag, "clone", "git@example.invalid:org/ws.git", "work/demo"],
+        client,
+    )
 
     assert response.response.meta.action is ActionKind.clone_workspace
     assert client.calls == [

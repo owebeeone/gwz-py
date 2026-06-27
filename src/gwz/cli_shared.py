@@ -14,7 +14,14 @@ ConfigureParser = Callable[[argparse.ArgumentParser], None]
 
 
 GLOBAL_LIST_ATTRS = ("targets", "exclude_targets", "member_paths")
-GLOBAL_BOOL_ATTRS = ("all_members", "dry_run", "partial", "destructive", "json")
+GLOBAL_BOOL_ATTRS = (
+    "all_members",
+    "dry_run",
+    "partial",
+    "destructive",
+    "json",
+    "jsonl",
+)
 GLOBAL_SCALAR_ATTRS = (
     "root",
     "sync",
@@ -22,6 +29,7 @@ GLOBAL_SCALAR_ATTRS = (
     "jobs",
     "max_connections_per_host",
     "progress_min_interval_ms",
+    "ssh_timeout",
 )
 GLOBAL_DEST_PREFIXES = ("_cmd_", "_nested_")
 
@@ -212,6 +220,21 @@ def add_global_options(
         default=bool_default,
         help="Render one JSON response",
     )
+    parser.add_argument(
+        "--jsonl",
+        dest=f"{dest_prefix}jsonl",
+        action="store_true",
+        default=bool_default,
+        help="Render newline-delimited JSON events",
+    )
+    parser.add_argument(
+        "--ssh-timeout",
+        dest=f"{dest_prefix}ssh_timeout",
+        type=non_negative_int,
+        default=scalar_default,
+        metavar="secs",
+        help="Abort a stalled SSH/network read after N seconds (0 = no timeout)",
+    )
 
 
 def normalize_global_options(args: argparse.Namespace) -> None:
@@ -237,6 +260,8 @@ def normalize_global_options(args: argparse.Namespace) -> None:
 
 
 def validate_args(args: argparse.Namespace) -> None:
+    if getattr(args, "json", False) and getattr(args, "jsonl", False):
+        raise CliUsageError("--json and --jsonl are mutually exclusive")
     if (
         getattr(args, "command", None) == "repo"
         and getattr(args, "repo_command", None) == "sync"

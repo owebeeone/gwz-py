@@ -1,6 +1,9 @@
 {
   "accept": [
     ["status", "--no-combined"],
+    ["status", "--porcelain"],
+    ["--jsonl", "status"],
+    ["--ssh-timeout", "3", "status"],
     ["ls", "--unmaterialized"],
     ["init", "https://example.invalid/repo.git"],
     ["repo", "add", "../repo"],
@@ -10,10 +13,11 @@
     ["--all", "--member", "mem_app", "--no-target", "@root", "status"],
     ["ls", "--all", "--no-target", "@root"],
     ["materialize", "--switch", "feature"],
+    ["snapshot"],
     ["snapshot", "snap_1", "--branch", "main"],
     ["tag", "--push", "v1"],
     ["capture"],
-    ["stage", "-A", "src/file.py"],
+    ["add", "-A", "src/file.py"],
     ["commit", "-m", "message"],
     ["pull", "--snapshot", "snap_1"],
     ["push"],
@@ -22,17 +26,30 @@
     ["stash", "push", "-u", "-m", "work"],
     ["stash", "push", "--target", "@root", "-u"],
     ["forall", "repos/app", "--", "echo", "{@}"],
+    ["forall", "--command-string", "echo hi"],
     ["forall", "--all", "--no-target", "@root", "--", "echo", "{@}"],
     ["clone", "https://example.invalid/workspace.git"]
   ],
   "parse_reject": [
     ["repo"],
     ["commit"],
-    ["stash", "drop"]
+    ["stash", "drop"],
+    ["stage", "-A", "src/file.py"]
   ],
   "semantic_reject": [
+    ["--json", "--jsonl", "status"],
     ["branch", "--switch"],
     ["stash", "push", "-u", "-a"],
     ["forall"]
+  ],
+  "rust_accept": [
+    ["--jsonl", "status"],
+    ["--ssh-timeout", "10", "status"],
+    ["status", "--porcelain"],
+    ["forall", "--command-string", "echo hi"]
+  ],
+  "rust_version": [
+    ["-V"],
+    ["--version"]
   ]
 }

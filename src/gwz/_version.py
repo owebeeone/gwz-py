@@ -9,9 +9,12 @@ def _resolve() -> str:
     try:
         from importlib.metadata import PackageNotFoundError, version
 
-        return version("gwz-py")
+        return version("gwz")
     except PackageNotFoundError:
-        pass
+        try:
+            return version("gwz-py")
+        except PackageNotFoundError:
+            pass
     try:
         from setuptools_scm import get_version
 
