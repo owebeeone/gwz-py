@@ -110,8 +110,13 @@ The workflow:
 - Smoke-tests each built wheel through the installed `gwz-py` command.
 - Publishes to PyPI using trusted publishing.
 
-Before the first public upload, configure the `gwz` PyPI project to trust the
-GitHub Actions publisher for this repository and workflow.
+Before the first public upload, configure the `gwz` PyPI project, or a pending
+publisher for `gwz`, to trust this GitHub Actions publisher:
+
+- Owner: `owebeeone`
+- Repository: `gwz-py`
+- Workflow: `publish.yml`
+- Environment: `pypi`
 
 ## Routine Local Gates
 
