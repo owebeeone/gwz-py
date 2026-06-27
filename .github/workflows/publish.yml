@@ -230,6 +230,9 @@ jobs:
       - resolve
       - build
     runs-on: ubuntu-24.04
+    environment:
+      name: pypi
+      url: https://pypi.org/p/gwz
     steps:
       - name: Download distributions
         uses: actions/download-artifact@v7

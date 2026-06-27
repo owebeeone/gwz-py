@@ -60,8 +60,9 @@ run `gwz-py status` in the clone.
 - Run manual Windows SSH clone smoke against an installed `gwz-py` in a real
   developer Windows environment when the host is reachable.
 - Finish any remaining CLI parity gap review and document known differences.
-- Configure the PyPI project for trusted publishing from the GitHub Actions
-  publish workflow before the first public upload.
+- Configure the `gwz` PyPI project, or a pending publisher for `gwz`, for
+  trusted publishing from owner `owebeeone`, repository `gwz-py`, workflow
+  `publish.yml`, and environment `pypi` before the first public upload.
 
 ## Documentation Gates
 
