@@ -114,6 +114,8 @@ class Client:
         all_members: bool | None = None,
         member_ids: Iterable[str] = (),
         paths: Iterable[str] = (),
+        targets: Iterable[str] = (),
+        exclude_targets: Iterable[str] = (),
         dry_run: bool | None = None,
         partial: bool | None = None,
         destructive: bool | None = None,
@@ -127,12 +129,24 @@ class Client:
     ) -> RequestMeta:
         selected_member_ids = list(member_ids)
         selected_paths = list(paths)
+        selected_targets = list(targets)
+        selected_exclude_targets = list(exclude_targets)
+        if all_members is True and "@all" not in selected_targets:
+            selected_targets.insert(0, "@all")
         selection = None
-        if all_members is not None or selected_member_ids or selected_paths:
+        if (
+            all_members is not None
+            or selected_member_ids
+            or selected_paths
+            or selected_targets
+            or selected_exclude_targets
+        ):
             selection = Selection(
                 all=all_members,
                 member_ids=selected_member_ids,
                 paths=selected_paths,
+                targets=selected_targets,
+                exclude_targets=selected_exclude_targets,
             )
 
         policy = None
@@ -319,7 +333,16 @@ class Client:
 
     async def repo_sync(self, member_path: str | None = None, **meta: Any) -> RepoSyncResponse:
         if member_path is not None:
-            if any(key in meta for key in ("all_members", "member_ids", "paths")):
+            if any(
+                key in meta
+                for key in (
+                    "all_members",
+                    "member_ids",
+                    "paths",
+                    "targets",
+                    "exclude_targets",
+                )
+            ):
                 raise ValueError("repo_sync member_path cannot be combined with explicit selection")
             meta["paths"] = [member_path]
         request = RepoSyncRequest(meta=self.meta(**meta))

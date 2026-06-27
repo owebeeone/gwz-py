@@ -35,7 +35,18 @@ class FakeClient:
 
     async def ls(self, **kwargs: Any) -> LsResponse:
         self.calls.append(("ls", (), kwargs))
-        return LsResponse(response=response_envelope(ActionKind.ls), members=self.members)
+        members = self.members
+        targets = list(kwargs.get("targets") or ())
+        if targets:
+            selected = []
+            for target in targets:
+                selected.extend(
+                    member
+                    for member in members
+                    if member.id == target or member.path == target
+                )
+            members = selected
+        return LsResponse(response=response_envelope(ActionKind.ls), members=members)
 
     async def clone_workspace(self, url: str, target: str, **kwargs: Any) -> CloneWorkspaceResponse:
         self.calls.append(("clone_workspace", (url, target), kwargs))
@@ -59,6 +70,7 @@ class FakeClient:
                 error=None,
                 attribution=None,
                 progress=None,
+                target_kind=None,
             )
 
         return _events()
@@ -115,7 +127,13 @@ def run_handler(argv: list[str], client: FakeClient) -> Any:
 def member(id_: str, path: str, root: Path) -> MemberEntry:
     abspath = root / path
     abspath.mkdir(parents=True)
-    return MemberEntry(id=id_, path=path, abspath=str(abspath), materialized=True)
+    return MemberEntry(
+        id=id_,
+        path=path,
+        abspath=str(abspath),
+        materialized=True,
+        target_kind=None,
+    )
 
 
 def test_forall_invocation_parses_argv_and_shell_forms() -> None:
@@ -151,7 +169,7 @@ def test_forall_runs_filtered_member_command(tmp_path: Path) -> None:
     assert response.response.meta.aggregate_status is AggregateStatus.ok
     assert [result.path for result in response.results] == ["repos/app"]
     assert response.results[0].exit_code == 0
-    assert client.calls == [("ls", (), {"include_unmaterialized": False})]
+    assert client.calls == [("ls", (), {"include_unmaterialized": False, "targets": ["repos/app"]})]
 
 
 def test_forall_stops_on_failure_unless_partial(tmp_path: Path) -> None:

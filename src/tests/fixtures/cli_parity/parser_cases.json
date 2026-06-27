@@ -6,6 +6,7 @@
     ["repo", "add", "../repo"],
     ["repo", "create", "repos/app"],
     ["repo", "sync", "repos/app"],
+    ["--all", "--member", "mem_app", "--no-target", "@root", "status"],
     ["materialize", "--switch", "feature"],
     ["snapshot", "snap_1", "--branch", "main"],
     ["tag", "--push", "v1"],
@@ -25,7 +26,6 @@
     ["stash", "drop"]
   ],
   "semantic_reject": [
-    ["--all", "--member", "mem_app", "status"],
     ["branch", "--switch"],
     ["stash", "push", "-u", "-a"],
     ["forall"]

@@ -87,6 +87,10 @@ class SourceKind(Enum):
     local = 3
     generated = 4
 
+class TargetKind(Enum):
+    root = 0
+    member = 1
+
 class AggregateStatus(Enum):
     accepted = 0
     ok = 1
@@ -262,6 +266,8 @@ class Selection:
     all: bool | None
     member_ids: list[str]
     paths: list[str]
+    targets: list[str]
+    exclude_targets: list[str]
 
 @dataclass(slots=True)
 class OperationPolicy:
@@ -301,6 +307,7 @@ class GwzError:
     member_id: str | None
     member_path: str | None
     detail: str | None
+    target_kind: TargetKind | None
 
 @dataclass(slots=True)
 class RemoteSpec:
@@ -537,6 +544,7 @@ class MemberResponse:
     state: ResolvedMemberState | None
     git_status: GitStatus | None
     lock_match: LockMatch | None
+    target_kind: TargetKind | None
 
 @dataclass(slots=True)
 class ResponseEnvelope:
@@ -559,6 +567,7 @@ class OperationEvent:
     error: GwzError | None
     attribution: OperationAttribution | None
     progress: GitTransferProgress | None
+    target_kind: TargetKind | None
 
 @dataclass(slots=True)
 class OperationResult:
@@ -636,6 +645,7 @@ class MemberEntry:
     path: str
     abspath: str
     materialized: bool
+    target_kind: TargetKind | None
 
 @dataclass(slots=True)
 class LsResponse:

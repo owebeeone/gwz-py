@@ -6,7 +6,6 @@ import pytest
 
 from gwz.cli import build_parser
 from gwz.cli_shared import (
-    CliUsageError,
     CommandContext,
     CommandRegistry,
     meta_kwargs,
@@ -36,10 +35,19 @@ def test_global_options_build_client_meta_kwargs() -> None:
         [
             "--root",
             "/ws",
+            "--all",
+            "--target",
+            "@root",
             "--member",
             "mem_app",
+            "--no-target",
+            "@default",
+            "--no-member",
+            "mem_docs",
             "--member-path",
             "repos/lib",
+            "--no-member-path",
+            "repos/old",
             "--dry-run",
             "--partial",
             "--force",
@@ -64,7 +72,9 @@ def test_global_options_build_client_meta_kwargs() -> None:
     assert args.root == "/ws"
     assert args.json is True
     assert meta_kwargs(args) == {
-        "member_ids": ["mem_app"],
+        "all_members": True,
+        "targets": ["@root", "mem_app"],
+        "exclude_targets": ["@default", "mem_docs", "repos/old"],
         "paths": ["repos/lib"],
         "dry_run": True,
         "partial": True,
@@ -77,11 +87,17 @@ def test_global_options_build_client_meta_kwargs() -> None:
     }
 
 
-def test_all_rejects_specific_member_selection() -> None:
-    args = build_parser().parse_args(["--all", "--member", "mem_app", "status"])
+def test_all_accepts_specific_target_selection_and_exclusions() -> None:
+    args = build_parser().parse_args(
+        ["--all", "--member", "mem_app", "--no-target", "@root", "status"]
+    )
 
-    with pytest.raises(CliUsageError, match="--all cannot be combined"):
-        validate_args(args)
+    validate_args(args)
+    assert meta_kwargs(args) == {
+        "all_members": True,
+        "targets": ["mem_app"],
+        "exclude_targets": ["@root"],
+    }
 
 
 def test_command_registry_allows_modules_to_attach_commands() -> None:

@@ -192,6 +192,13 @@
       }
     },
     {
+      "name": "TargetKind",
+      "members": {
+        "root": 0,
+        "member": 1
+      }
+    },
+    {
       "name": "AggregateStatus",
       "members": {
         "accepted": 0,
@@ -615,6 +622,34 @@
           "optional": false,
           "transient": false,
           "merge": null
+        },
+        {
+          "name": "targets",
+          "tag": 4,
+          "type": {
+            "k": "list",
+            "elem": {
+              "k": "scalar",
+              "scalar": "str"
+            }
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "exclude_targets",
+          "tag": 5,
+          "type": {
+            "k": "list",
+            "elem": {
+              "k": "scalar",
+              "scalar": "str"
+            }
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
         }
       ]
     },
@@ -940,6 +975,17 @@
           "type": {
             "k": "scalar",
             "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "target_kind",
+          "tag": 6,
+          "type": {
+            "k": "enum",
+            "name": "TargetKind"
           },
           "optional": true,
           "transient": false,
@@ -2963,6 +3009,17 @@
           "optional": true,
           "transient": false,
           "merge": null
+        },
+        {
+          "name": "target_kind",
+          "tag": 10,
+          "type": {
+            "k": "enum",
+            "name": "TargetKind"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
         }
       ]
     },
@@ -3157,6 +3214,17 @@
           "type": {
             "k": "msg",
             "name": "GitTransferProgress"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "target_kind",
+          "tag": 14,
+          "type": {
+            "k": "enum",
+            "name": "TargetKind"
           },
           "optional": true,
           "transient": false,
@@ -3740,6 +3808,17 @@
             "scalar": "bool"
           },
           "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "target_kind",
+          "tag": 5,
+          "type": {
+            "k": "enum",
+            "name": "TargetKind"
+          },
+          "optional": true,
           "transient": false,
           "merge": null
         }

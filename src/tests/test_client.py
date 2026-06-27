@@ -137,6 +137,48 @@ def test_status_builds_taut_request() -> None:
     assert request.meta.workspace.root == str(Path("/tmp/workspace").resolve())
 
 
+def test_meta_builds_target_selection_fields() -> None:
+    client = Client(root=Path("/tmp/workspace"), bridge=FakeBridge())
+
+    meta = client.meta(
+        targets=("@root", "mem_app"),
+        exclude_targets=("@default", "repos/old"),
+    )
+
+    assert meta.selection is not None
+    assert meta.selection.all is None
+    assert meta.selection.member_ids == []
+    assert meta.selection.paths == []
+    assert meta.selection.targets == ["@root", "mem_app"]
+    assert meta.selection.exclude_targets == ["@default", "repos/old"]
+
+
+def test_meta_all_members_maps_to_all_target_and_keeps_legacy_flag() -> None:
+    client = Client(root=Path("/tmp/workspace"), bridge=FakeBridge())
+
+    meta = client.meta(all_members=True)
+
+    assert meta.selection is not None
+    assert meta.selection.all is True
+    assert meta.selection.member_ids == []
+    assert meta.selection.paths == []
+    assert meta.selection.targets == ["@all"]
+    assert meta.selection.exclude_targets == []
+
+
+def test_meta_keeps_legacy_selection_fields() -> None:
+    client = Client(root=Path("/tmp/workspace"), bridge=FakeBridge())
+
+    meta = client.meta(member_ids=("mem_app",), paths=("packages/app",))
+
+    assert meta.selection is not None
+    assert meta.selection.all is None
+    assert meta.selection.member_ids == ["mem_app"]
+    assert meta.selection.paths == ["packages/app"]
+    assert meta.selection.targets == []
+    assert meta.selection.exclude_targets == []
+
+
 def test_repo_sync_member_path_uses_selection() -> None:
     bridge = FakeBridge()
     client = Client(root=Path("/tmp/workspace"), bridge=bridge)

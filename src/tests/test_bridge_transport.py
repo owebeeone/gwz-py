@@ -76,6 +76,7 @@ def operation_event() -> OperationEvent:
         error=None,
         attribution=None,
         progress=None,
+        target_kind=None,
     )
 
 

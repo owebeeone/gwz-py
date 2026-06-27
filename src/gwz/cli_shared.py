@@ -59,24 +59,39 @@ class CommandRegistry:
 def add_global_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--root", help="Workspace root")
     parser.add_argument(
+        "--target",
         "--member",
-        dest="member_ids",
+        dest="targets",
         action="append",
         default=[],
-        help="Select a workspace member by id",
+        help="Select a workspace target selector",
+    )
+    parser.add_argument(
+        "--no-target",
+        "--no-member",
+        dest="exclude_targets",
+        action="append",
+        default=[],
+        help="Exclude a workspace target selector",
     )
     parser.add_argument(
         "--member-path",
         dest="member_paths",
         action="append",
         default=[],
-        help="Select a workspace member by path",
+        help="Select a workspace member path",
+    )
+    parser.add_argument(
+        "--no-member-path",
+        dest="exclude_targets",
+        action="append",
+        help="Exclude a workspace member path",
     )
     parser.add_argument(
         "--all",
         dest="all_members",
         action="store_true",
-        help="Select all workspace members",
+        help="Select all workspace targets",
     )
     parser.add_argument(
         "--dry-run",
@@ -121,16 +136,28 @@ def add_global_options(parser: argparse.ArgumentParser) -> None:
 
 
 def validate_args(args: argparse.Namespace) -> None:
-    if args.all_members and (args.member_ids or args.member_paths):
-        raise CliUsageError("--all cannot be combined with --member or --member-path")
+    if (
+        getattr(args, "command", None) == "repo"
+        and getattr(args, "repo_command", None) == "sync"
+        and getattr(args, "member_path", None)
+        and (
+            args.all_members
+            or args.targets
+            or args.exclude_targets
+            or args.member_paths
+        )
+    ):
+        raise CliUsageError("repo sync member path cannot be combined with global selection")
 
 
 def meta_kwargs(args: argparse.Namespace) -> dict[str, Any]:
     meta: dict[str, Any] = {}
     if args.all_members:
         meta["all_members"] = True
-    if args.member_ids:
-        meta["member_ids"] = args.member_ids
+    if args.targets:
+        meta["targets"] = args.targets
+    if args.exclude_targets:
+        meta["exclude_targets"] = args.exclude_targets
     if args.member_paths:
         meta["paths"] = args.member_paths
     if args.dry_run:

@@ -50,8 +50,11 @@ async def handle_forall(context: CommandContext) -> ExecResponse:
     if context.args.json:
         raise CliUsageError("forall does not support --json")
     projects, mode, command = _forall_invocation(context.args.tokens, context.args.command_string)
-    listed = await context.client.ls(include_unmaterialized=False, **context.meta)
-    members = _filter_members(listed.members or [], projects)
+    ls_meta = dict(context.meta)
+    if projects:
+        ls_meta["targets"] = [*ls_meta.get("targets", ()), *projects]
+    listed = await context.client.ls(include_unmaterialized=False, **ls_meta)
+    members = listed.members or []
     results = _run_forall(
         members=members,
         mode=mode,
@@ -229,6 +232,7 @@ def _run_one(
             "GWZ_MEMBER_PATH": member.path,
             "GWZ_MEMBER_ABSPATH": member.abspath,
             "GWZ_ROOT": root,
+            "GWZ_TARGET_KIND": "root" if getattr(member.target_kind, "name", None) == "root" else "member",
         }
     )
     cwd = member.abspath

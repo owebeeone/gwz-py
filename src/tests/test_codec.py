@@ -32,6 +32,8 @@ def _request_meta(request_id: str = "req_test") -> generated.RequestMeta:
             all=None,
             member_ids=["app", "lib"],
             paths=["packages/app"],
+            targets=["@root"],
+            exclude_targets=["@default"],
         ),
         policy=generated.OperationPolicy(
             partial=generated.PartialBehavior.partial,
@@ -128,6 +130,7 @@ def test_nested_dataclass_list_round_trip() -> None:
                 path="packages/app",
                 abspath="/workspace/packages/app",
                 materialized=True,
+                target_kind=None,
             )
         ],
     )
