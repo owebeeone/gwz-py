@@ -8,10 +8,12 @@ import os
 import platform
 import shutil
 import shlex
+import stat
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from typing import Callable
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -33,7 +35,7 @@ def main() -> int:
     if args.keep_temp:
         print(f"package_smoke: kept {smoke_root}")
     else:
-        shutil.rmtree(smoke_root)
+        remove_tree(smoke_root)
     print("package_smoke: ok")
     return 0
 
@@ -87,6 +89,18 @@ def build_wheel(wheel_dir: Path, auditwheel: str | None) -> Path:
 
 def default_auditwheel() -> str | None:
     return None if platform.system() == "Windows" else "repair"
+
+
+def remove_tree(path: Path) -> None:
+    def allow_write_and_retry(
+        func: Callable[[str], object],
+        target: str,
+        _exc_info: object,
+    ) -> None:
+        os.chmod(target, stat.S_IWRITE)
+        func(target)
+
+    shutil.rmtree(path, onerror=allow_write_and_retry)
 
 
 def install_wheel(smoke_root: Path, wheel: Path) -> Path:
