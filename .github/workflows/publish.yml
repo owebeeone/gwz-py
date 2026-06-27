@@ -1,0 +1,230 @@
+name: Publish
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to publish or retry, e.g. v0.3.0"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  resolve:
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.release-tag.outputs.tag }}
+      version: ${{ steps.release-tag.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - id: release-tag
+        name: Resolve release tag
+        shell: bash
+        run: |
+          tag="${{ github.event.release.tag_name || inputs.tag }}"
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "release tag must look like v0.3.0, got '$tag'" >&2
+            exit 1
+          fi
+          git rev-parse --verify "refs/tags/$tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: resolve
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            artifact: linux-x86_64
+            auditwheel: "--auditwheel=repair"
+          - os: macos-13
+            artifact: macos-x86_64
+            auditwheel: "--auditwheel=repair"
+          - os: macos-14
+            artifact: macos-arm64
+            auditwheel: "--auditwheel=repair"
+          - os: windows-2022
+            artifact: windows-x86_64
+            auditwheel: ""
+
+    steps:
+      - name: Checkout gwz-py
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.tag }}
+          path: gwz-py
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Checkout matching gwz-core tag
+        uses: actions/checkout@v4
+        with:
+          repository: owebeeone/gwz-core
+          ref: ${{ needs.resolve.outputs.tag }}
+          path: gwz-core
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux native build prerequisites
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev patchelf
+
+      - name: Install macOS native build prerequisites
+        if: runner.os == 'macOS'
+        run: brew install openssl@3 pkg-config
+
+      - name: Install Windows native build prerequisites
+        if: runner.os == 'Windows'
+        run: |
+          if (-not $env:VCPKG_INSTALLATION_ROOT) {
+            $env:VCPKG_INSTALLATION_ROOT = "C:\vcpkg"
+          }
+          "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "VCPKGRS_DYNAMIC=0" | Out-File -FilePath $env:GITHUB_ENV -Append
+          vcpkg install openssl:x64-windows-static
+
+      - name: Install Python build tools
+        run: python -m pip install --upgrade pip maturin
+
+      - name: Verify release metadata
+        working-directory: gwz-py
+        shell: python
+        run: |
+          import pathlib
+          import re
+          import sys
+
+          tag = "${{ needs.resolve.outputs.tag }}"
+          version = "${{ needs.resolve.outputs.version }}"
+          cargo = pathlib.Path("Cargo.toml").read_text(encoding="utf-8")
+          lock = pathlib.Path("Cargo.lock").read_text(encoding="utf-8")
+          pyproject = pathlib.Path("pyproject.toml").read_text(encoding="utf-8")
+
+          def require(condition, message):
+              if not condition:
+                  print(message, file=sys.stderr)
+                  raise SystemExit(1)
+
+          require(
+              re.search(rf'^version = "{re.escape(version)}"$', cargo, re.M),
+              f"Cargo.toml package version must be {version}",
+          )
+          require(
+              re.search(
+                  rf'gwz-core\s*=\s*\{{[^\n}}]*\bgit\s*=\s*"[^"]+"'
+                  rf'[^\n}}]*\btag\s*=\s*"{re.escape(tag)}"',
+                  cargo,
+              ),
+              f"Cargo.toml must pin gwz-core to git tag {tag}",
+          )
+          require(
+              re.search(r'^gwz-py = "gwz\.cli:main"$', pyproject, re.M),
+              "pyproject.toml must install gwz-py = gwz.cli:main",
+          )
+          require(
+              re.search(
+                  rf'\[\[package\]\]\nname = "gwz-core"\n'
+                  rf'version = "[^"]+"\nsource = "git\+[^"]*tag={re.escape(tag)}',
+                  lock,
+              ),
+              f"Cargo.lock must pin gwz-core through git tag {tag}",
+          )
+
+      - name: Check protocol drift against matching gwz-core tag
+        working-directory: gwz-py
+        run: python scripts/check_protocol_drift.py
+
+      - name: Check generated protocol
+        working-directory: gwz-py
+        run: python scripts/regen_protocol.py --check
+
+      - name: Check native extension crate
+        working-directory: gwz-py
+        run: cargo check
+
+      - name: Run Python tests
+        working-directory: gwz-py
+        run: python run_tests.py
+
+      - name: Build wheel
+        working-directory: gwz-py
+        run: python -m maturin build --release -o dist ${{ matrix.auditwheel }}
+
+      - name: Build source distribution
+        if: runner.os == 'Linux'
+        working-directory: gwz-py
+        run: python -m maturin sdist -o dist
+
+      - name: Smoke-test built wheel
+        working-directory: gwz-py
+        shell: python
+        run: |
+          import pathlib
+          import subprocess
+          import sys
+
+          version = "${{ needs.resolve.outputs.version }}"
+          wheels = sorted(pathlib.Path("dist").glob("gwz_py-*.whl"))
+          matching = [wheel for wheel in wheels if wheel.name.startswith(f"gwz_py-{version}-")]
+          if not matching:
+              print(f"no gwz_py {version} wheel found in dist", file=sys.stderr)
+              raise SystemExit(1)
+          subprocess.check_call(
+              [
+                  sys.executable,
+                  "scripts/package_smoke.py",
+                  "--wheel",
+                  str(matching[-1]),
+                  "--expected-version",
+                  version,
+              ]
+          )
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.artifact }}
+          path: gwz-py/dist/*
+          if-no-files-found: error
+
+  publish:
+    needs:
+      - resolve
+      - build
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          path: dist
+          merge-multiple: true
+
+      - name: List distributions
+        run: ls -l dist
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
+          skip-existing: true

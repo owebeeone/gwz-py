@@ -28,7 +28,7 @@ Homepage = "https://github.com/owebeeone/gwz-py"
 Repository = "https://github.com/owebeeone/gwz-py"
 
 [project.scripts]
-gwz = "gwz.cli:main"
+gwz-py = "gwz.cli:main"
 
 [build-system]
 requires = ["maturin>=1.13,<2"]

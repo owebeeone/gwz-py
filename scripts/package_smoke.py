@@ -26,9 +26,11 @@ def main() -> int:
     try:
         run([sys.executable, "scripts/check_protocol_drift.py"], cwd=ROOT)
         wheel = args.wheel or build_wheel(wheel_dir, args.auditwheel)
-        gwz = install_wheel(smoke_root, wheel)
-        smoke_console_script(gwz)
-        smoke_clone(gwz, smoke_root)
+        verify_wheel_version(wheel, args.expected_version)
+        python, gwz_py = install_wheel(smoke_root, wheel)
+        smoke_installed_version(python, args.expected_version)
+        smoke_console_script(gwz_py)
+        smoke_clone(gwz_py, smoke_root)
     except Exception:
         print(f"package_smoke: failed; preserving {smoke_root}", file=sys.stderr)
         raise
@@ -56,12 +58,19 @@ def parse_args() -> argparse.Namespace:
         "--auditwheel",
         default=None,
         choices=("repair", "check", "skip"),
-        help="maturin auditwheel mode for the release build. Defaults to repair on macOS/Linux and omitted on Windows.",
+        help=(
+            "maturin auditwheel mode for the release build. Defaults to repair "
+            "on macOS/Linux and omitted on Windows."
+        ),
     )
     parser.add_argument(
         "--keep-temp",
         action="store_true",
         help="Keep the temporary smoke workspace after a successful run.",
+    )
+    parser.add_argument(
+        "--expected-version",
+        help="Assert that the built wheel and installed package use this version.",
     )
     return parser.parse_args()
 
@@ -103,28 +112,57 @@ def remove_tree(path: Path) -> None:
     shutil.rmtree(path, onerror=allow_write_and_retry)
 
 
-def install_wheel(smoke_root: Path, wheel: Path) -> Path:
+def verify_wheel_version(wheel: Path, expected_version: str | None) -> None:
+    if expected_version is None:
+        return
+    require(
+        wheel.name.startswith(f"gwz_py-{expected_version}-"),
+        f"wheel {wheel.name!r} does not use expected version {expected_version!r}",
+    )
+
+
+def install_wheel(smoke_root: Path, wheel: Path) -> tuple[Path, Path]:
     venv = smoke_root / "venv"
     run([sys.executable, "-m", "venv", str(venv)])
     python = venv_executable(venv, "python")
     run([str(python), "-m", "pip", "install", "--upgrade", "pip"])
     run([str(python), "-m", "pip", "install", str(wheel)])
-    return venv_executable(venv, "gwz")
+    return python, venv_executable(venv, "gwz-py")
 
 
-def smoke_console_script(gwz: Path) -> None:
-    help_text = run([str(gwz), "--help"], capture=True).stdout
-    require("clone" in help_text, "gwz --help did not advertise clone")
+def smoke_installed_version(python: Path, expected_version: str | None) -> None:
+    if expected_version is None:
+        return
+    installed = run(
+        [
+            str(python),
+            "-c",
+            (
+                "from importlib.metadata import version; "
+                "print(version('gwz-py'))"
+            ),
+        ],
+        capture=True,
+    ).stdout.strip()
+    require(
+        installed == expected_version,
+        f"installed gwz-py version {installed!r}; expected {expected_version!r}",
+    )
 
 
-def smoke_clone(gwz: Path, smoke_root: Path) -> None:
+def smoke_console_script(gwz_py: Path) -> None:
+    help_text = run([str(gwz_py), "--help"], capture=True).stdout
+    require("clone" in help_text, "gwz-py --help did not advertise clone")
+
+
+def smoke_clone(gwz_py: Path, smoke_root: Path) -> None:
     source = smoke_root / "source"
     target = smoke_root / "clone"
     member_remote = smoke_root / "member.git"
     source.mkdir()
 
-    run([str(gwz), "--root", str(source), "init"])
-    run([str(gwz), "--root", str(source), "repo", "create", "repos/app"])
+    run([str(gwz_py), "--root", str(source), "init"])
+    run([str(gwz_py), "--root", str(source), "repo", "create", "repos/app"])
     git(source, "config", "user.name", "GWZ Smoke")
     git(source, "config", "user.email", "gwz-smoke@example.invalid")
 
@@ -139,18 +177,21 @@ def smoke_clone(gwz: Path, smoke_root: Path) -> None:
     run(["git", "init", "--bare", str(member_remote)])
     git(member, "remote", "add", "origin", member_remote.as_uri())
     git(member, "push", "origin", "HEAD:refs/heads/main")
-    run([str(gwz), "--root", str(source), "repo", "sync", "repos/app"])
-    run([str(gwz), "--root", str(source), "capture"])
+    run([str(gwz_py), "--root", str(source), "repo", "sync", "repos/app"])
+    run([str(gwz_py), "--root", str(source), "capture"])
 
     git(source, "add", "gwz.conf")
     git(source, "commit", "-m", "workspace")
 
-    clone = run([str(gwz), "clone", source.as_uri(), str(target)], capture=True)
-    status = run([str(gwz), "--root", str(target), "status"], capture=True)
+    clone = run([str(gwz_py), "clone", source.as_uri(), str(target)], capture=True)
+    status = run([str(gwz_py), "--root", str(target), "status"], capture=True)
     require(clone.stdout.strip() == "ok", f"unexpected clone stdout: {clone.stdout!r}")
     require(status.stdout.strip() == "ok", f"unexpected status stdout: {status.stdout!r}")
     require((target / "gwz.conf" / "gwz.lock.yml").is_file(), "clone did not include gwz lock")
-    require((target / "repos" / "app" / "README.md").is_file(), "clone did not materialize repos/app")
+    require(
+        (target / "repos" / "app" / "README.md").is_file(),
+        "clone did not materialize repos/app",
+    )
     cloned_commit = git(target / "repos" / "app", "rev-parse", "HEAD", capture=True).stdout.strip()
     require(cloned_commit == member_commit, "cloned member HEAD does not match source member HEAD")
     require(f"{target}: started" in clone.stderr, "clone did not stream root start")
@@ -165,8 +206,7 @@ def git(repo: Path, *args: str, capture: bool = False) -> subprocess.CompletedPr
 
 def venv_executable(venv: Path, name: str) -> Path:
     if os.name == "nt":
-        suffix = ".exe" if name in {"python", "gwz"} else ""
-        return venv / "Scripts" / f"{name}{suffix}"
+        return venv / "Scripts" / f"{name}.exe"
     return venv / "bin" / name
 
 

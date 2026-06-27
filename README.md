@@ -1,6 +1,6 @@
 # gwz-py
 
-Python bindings and an installable `gwz` command for GWZ multi-repository
+Python bindings and an installable `gwz-py` command for GWZ multi-repository
 workspaces.
 
 Status: alpha. The Python package shape, generated taut protocol API, async
@@ -8,7 +8,7 @@ client facade, CLI entry point, and native `gwz-core` bridge exist. The native
 bridge supports request/response calls plus operation event streaming for
 long-running operations such as `clone`, `materialize`, `pull`, and `push`.
 
-Release mode: installing `gwz-py` installs the Python `gwz` CLI
+Release mode: installing `gwz-py` installs the Python `gwz-py` CLI
 (`gwz.cli:main`). The CLI uses the same native `gwz-core` extension as the
 Python API; first-line PyPI wheels do not bundle or dispatch to the Rust `gwz`
 binary.
@@ -26,9 +26,10 @@ python -m pytest src/tests/test_native_bridge.py -q
 ```
 
 Run the package smoke test before release-oriented changes. It builds a repaired
-wheel, installs it into a fresh virtualenv, runs `gwz --help`, creates a local
-workspace fixture, exercises installed `gwz clone`, verifies clone progress
-events and materialized member state, then runs `gwz status` in the clone:
+wheel, installs it into a fresh virtualenv, runs `gwz-py --help`, creates a
+local workspace fixture, exercises installed `gwz-py clone`, verifies clone
+progress events and materialized member state, then runs `gwz-py status` in the
+clone:
 
 ```sh
 python scripts/package_smoke.py
@@ -71,5 +72,5 @@ async with Client(root=Path(".")) as client:
     response = await client.status(combined=True)
 ```
 
-The Python API uses the `gwz-core` bridge. It must not shell out to the `gwz`
-executable.
+The Python API uses the `gwz-core` bridge. It must not shell out to the Rust
+`gwz` executable.

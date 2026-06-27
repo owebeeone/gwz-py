@@ -4,7 +4,7 @@ Status: active design
 
 This plan supersedes the earlier GWS-named design and filename. The repository
 remains `gwz-py`, the PyPI distribution is `gwz-py`, the import package is
-`gwz`, and the installed console command is `gwz`.
+`gwz`, and the installed console command is `gwz-py`.
 
 ## Review Of The Old Plan
 
@@ -17,7 +17,7 @@ The parts that are now stale:
 - It used legacy GWS names. The project should align on GWZ before the first
   publish.
 - It made bundling the Rust `gwz` binary a hard release requirement. The release
-  mode is now the Python `gwz` CLI backed by the native `gwz-core` extension.
+  mode is now the Python `gwz-py` CLI backed by the native `gwz-core` extension.
 - It did not make the taut-generated Python API the central protocol surface.
 - It treated release packaging before there was a usable Python package shape.
 - It did not leave room for a Python CLI that demonstrates the same `gwz-core`
@@ -52,13 +52,13 @@ requirements:
 
 - Publish `gwz-py` to PyPI.
 - Provide `import gwz` Python bindings for `gwz-core` workspace operations.
-- Install a `gwz` command when users install `gwz-py`.
+- Install a `gwz-py` command when users install `gwz-py`.
 - Keep the Python API async and protocol-oriented.
 - Use the taut-generated Python API from `gwz-core/protocol/gwz.taut.py` as the
   Python request/response model surface.
 - Track the full current `GwzCore` service surface, including repo sync, branch,
   and coordinated stash operations.
-- Provide the Python implementation of the `gwz` CLI as the installed console
+- Provide the Python implementation of the `gwz-py` CLI as the installed console
   command and as an example consumer of the `gwz-core` bridge.
 - Keep the Rust `gwz` binary out of first-line `gwz-py` wheels; Rust execution
   enters through the native `gwz-core` extension, not CLI binary dispatch.
@@ -111,7 +111,7 @@ Recommended package metadata:
 | Repository | `gwz-py` |
 | PyPI distribution | `gwz-py` |
 | Import package | `gwz` |
-| Console script | `gwz` |
+| Console script | `gwz-py` |
 | Native extension | `gwz._gwz_core` |
 | Rust dependency | `gwz-core` |
 | Taut schema source | `gwz-core/protocol/gwz.taut.py` |
@@ -310,7 +310,7 @@ result lookup for the generated core service methods.
 
 ## CLI Strategy
 
-Installing `gwz-py` installs a `gwz` console script. The script is the Python
+Installing `gwz-py` installs a `gwz-py` console script. The script is the Python
 CLI and uses `gwz.Client` plus the same native bridge as the API. That CLI is
 both useful on its own and a concrete example of how to build a command surface
 over the `gwz-core` protocol plugin.
@@ -328,7 +328,7 @@ Two commands are intentionally special:
   The Python CLI uses `Client.clone_workspace_stream` in human mode and
   `Client.clone_workspace` for JSON mode.
 
-Release packaging keeps `gwz` as the Python CLI. First-line PyPI wheels do not
+Release packaging keeps `gwz-py` as the Python CLI. First-line PyPI wheels do not
 bundle the Rust `gwz` binary and do not use an environment-controlled dispatch
 choice. The Python API and CLI both stay bridge-backed.
 
@@ -366,7 +366,7 @@ namespace; if an ergonomic alias is needed, prefer a data-name such as
 - Run `python scripts/regen_protocol.py --check` in CI.
 - Integration-test the native bridge against `gwz-core` fixtures once the PyO3
   extension exists.
-- CLI smoke-test Python `gwz` commands against fake bridge fixtures first, then
+- CLI smoke-test Python `gwz-py` commands against fake bridge fixtures first, then
   against the native bridge.
 - Parity-test Python CLI output against the Rust CLI, including `branch` and
   `stash`, while hardening the Python CLI release mode.
@@ -387,9 +387,9 @@ namespace; if an ergonomic alias is needed, prefer a data-name such as
 7. Cover all current `GwzCore` service methods, explicitly including
    `repo_sync`, `branch`, and `stash`.
 8. Expand the Python CLI to match core `gwz-cli` command parsing and rendering,
-   including `gwz branch`, `gwz stash`, `gwz clone` through `clone_workspace`,
-   and CLI-local `gwz forall`.
-9. Run CLI parity tests and package-smoke tests for the Python `gwz` command.
+   including `gwz-py branch`, `gwz-py stash`, `gwz-py clone` through
+   `clone_workspace`, and CLI-local `gwz-py forall`.
+9. Run CLI parity tests and package-smoke tests for the Python `gwz-py` command.
 10. Add GitHub Actions for source distributions, wheels, protocol regen checks,
    native bridge integration tests, and PyPI publish.
 
@@ -397,9 +397,6 @@ namespace; if an ergonomic alias is needed, prefer a data-name such as
 
 - The remaining platform wheel repair strategy beyond the current macOS
   repaired-wheel smoke and Windows installed-wheel smoke.
-- Whether `gwz-py` releases are version-locked to `gwz-core` tags or consume a
-  manifest that records separate `gwz-py`, `gwz-core`, and `taut-proto`
-  versions.
 - Which remaining Rust CLI parity gaps must block the first Python CLI release
   versus being documented as known differences.
 

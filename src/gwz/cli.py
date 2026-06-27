@@ -24,7 +24,7 @@ from .errors import GwzError
 
 def build_parser() -> argparse.ArgumentParser:
     parser = GwzArgumentParser(
-        prog="gwz",
+        prog="gwz-py",
         description="Manage GWZ multi-repository workspaces",
     )
     add_global_options(parser)

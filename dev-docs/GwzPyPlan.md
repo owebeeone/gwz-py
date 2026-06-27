@@ -42,7 +42,7 @@ The baseline is not complete:
 - Protocol wire encode/decode is only partial.
 - Streaming is scaffolded but not backed by a native operation runtime.
 - CLI parity with Rust `gwz-cli` is incomplete.
-- Packaging uses the Python CLI as the installed `gwz` command; first-line PyPI
+- Packaging uses the Python CLI as the installed `gwz-py` command; first-line PyPI
   wheels do not bundle or dispatch to the Rust `gwz` binary.
 - Generated transport stubs are excluded from the runtime package with
   `tautc --api-only`; the handwritten `CoreBridge` is the only Python transport
@@ -509,7 +509,7 @@ Phase gate:
 
 ## Phase 5: Python CLI Parity
 
-Goal: make the installed `gwz` command a useful Python implementation of the Rust
+Goal: make the installed `gwz-py` command a useful Python implementation of the Rust
 CLI surface.
 
 Parallel agents:
@@ -594,7 +594,7 @@ Steps:
      and then materializes locked members through the existing materialize
      implementation using the same event sequence.
    - The Python client exposes `clone_workspace` and `clone_workspace_stream`.
-   - Python `gwz clone` derives the default target from the repository URL,
+   - Python `gwz-py clone` derives the default target from the repository URL,
      rejects `--dry-run`, uses the streaming path in human mode, and keeps JSON
      mode as a single typed response.
    Verification: clone CLI tests, native clone streaming test, `cargo test -p
@@ -609,7 +609,7 @@ Steps:
    - Kept command-family request construction tests focused on handler behavior
      to avoid brittle human-output lock-in.
    - JSON shape parity remains limited to shared dataclass rendering while the
-     Python CLI is hardened as the release `gwz` command.
+     Python CLI is hardened as the release `gwz-py` command.
    Verification: `python run_tests.py` and optional Rust CLI parity command.
 
 Phase gate:
@@ -624,7 +624,7 @@ Phase gate:
 
 ## Phase 6: Packaging, CI, And Release Mode
 
-Goal: make the package publishable with the Python CLI as the installed `gwz`
+Goal: make the package publishable with the Python CLI as the installed `gwz-py`
 command.
 
 Parallel agents:
@@ -646,8 +646,9 @@ Steps:
    - Do not reopen the build-backend decision made in Phase 2.
    - Ensure package data includes generated IR JSON and `py.typed`.
    - Keep source distribution install behavior explicit.
-   - Configure release builds to use a released `gwz-core` source, such as a
-     git tag, instead of a sibling checkout.
+   - Configure release builds to use a released `gwz-core` source: the local
+     `release` branch pins `gwz-core` through git tag `vX.Y.Z`, while `main`
+     keeps the sibling `../gwz-core` path dependency for development.
    - Add a release-ordering note mirroring the sibling repositories: release or
      tag `gwz-core` before building `gwz-py` wheels against it.
    Verification: local sdist/wheel build.
@@ -657,32 +658,32 @@ Steps:
    Completed path:
    - Added `scripts/package_smoke.py` as the shared local/CI packaging smoke.
    - The smoke builds a repaired wheel, installs it into a fresh virtualenv,
-     runs `gwz --help`, creates a local workspace fixture, exercises installed
-     `gwz clone`, verifies streamed clone lifecycle output and member
-     materialization, and runs `gwz status` in the clone.
+     runs `gwz-py --help`, creates a local workspace fixture, exercises
+     installed `gwz-py clone`, verifies streamed clone lifecycle output and
+     member materialization, and runs `gwz-py status` in the clone.
    - Added `.github/workflows/package-smoke.yml` to run the package smoke on
      macOS and Windows with sibling `gwz-core` checked out beside `gwz-py`.
    - Added the validation job for protocol drift, protocol regeneration,
      native `cargo check`, and `python run_tests.py`.
-   Remaining work:
-   - Verify packaged `gwz.ir.json` matches the `gwz-core` tag linked into the
-     extension for release-tag builds, not only the sibling checkout.
-   - Add Linux package-smoke coverage once the Linux wheel repair/publish policy
-     is settled.
+   - Added `.github/workflows/publish.yml` for release-tag builds on Linux,
+     macOS x86_64, macOS arm64, and Windows. The workflow checks out matching
+     `gwz-py` and `gwz-core` tags, verifies the release metadata, builds wheels
+     plus a Linux sdist, smoke-tests the built wheel, and publishes with PyPI
+     trusted publishing.
    Verification: `python scripts/check_protocol_drift.py`,
    `python run_tests.py`, `cargo check`, and `python scripts/package_smoke.py`.
 
-3. CLI Agent and Packaging Agent decide `gwz` command dispatch.
+3. CLI Agent and Packaging Agent decide Python command dispatch.
    Write scope: `src/gwz/cli.py`, packaging metadata, README.
    Completed path:
-   - The release `gwz` console script remains the Python CLI entry point
-     declared in `pyproject.toml`: `gwz = "gwz.cli:main"`.
+   - The release `gwz-py` console script is the Python CLI entry point declared
+     in `pyproject.toml`: `gwz-py = "gwz.cli:main"`.
    - The Python CLI uses `gwz.Client` and the native `gwz-core` extension.
    - First-line PyPI wheels do not bundle the Rust `gwz` binary.
    - No environment-controlled Rust/Python dispatch mode is planned for the
      initial release line.
    Verification: `python scripts/package_smoke.py` installs the wheel into a
-   fresh virtualenv and exercises the packaged `gwz` command.
+   fresh virtualenv and exercises the packaged `gwz-py` command.
 
 4. Bridge Agent prepares wheel artifacts.
    Write scope: native build metadata.
