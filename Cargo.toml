@@ -1,6 +1,6 @@
 [package]
 name = "gwz-py"
-version = "0.7.0"
+version = "0.7.1"
 edition = "2024"
 license = "GPL-2.0-only"
 rust-version = "1.95"
@@ -12,7 +12,7 @@ path = "native/src/lib.rs"
 crate-type = ["cdylib"]
 
 [dependencies]
-gwz-core = { git = "https://github.com/owebeeone/gwz-core", tag = "v0.7.0" }
+gwz-core = { git = "https://github.com/owebeeone/gwz-core", tag = "v0.7.1" }
 pyo3 = { version = "0.28.3", features = ["abi3-py310", "extension-module"] }
 
 [workspace]
