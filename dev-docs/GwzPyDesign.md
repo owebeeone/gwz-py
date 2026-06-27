@@ -3,8 +3,8 @@
 Status: active design
 
 This plan supersedes the earlier GWS-named design and filename. The repository
-remains `gwz-py`, the PyPI distribution is `gwz-py`, the import package is
-`gwz`, and the installed console command is `gwz-py`.
+remains `gwz-py`, the PyPI distribution is `gwz`, the import package is `gwz`,
+and the installed console command is `gwz-py`.
 
 ## Review Of The Old Plan
 
@@ -50,9 +50,9 @@ requirements:
 
 ## Product Goals
 
-- Publish `gwz-py` to PyPI.
+- Publish `gwz` to PyPI from the `gwz-py` repository.
 - Provide `import gwz` Python bindings for `gwz-core` workspace operations.
-- Install a `gwz-py` command when users install `gwz-py`.
+- Install a `gwz-py` command when users install `gwz`.
 - Keep the Python API async and protocol-oriented.
 - Use the taut-generated Python API from `gwz-core/protocol/gwz.taut.py` as the
   Python request/response model surface.
@@ -109,15 +109,16 @@ Recommended package metadata:
 | Artifact | Name |
 | --- | --- |
 | Repository | `gwz-py` |
-| PyPI distribution | `gwz-py` |
+| PyPI distribution | `gwz` |
 | Import package | `gwz` |
 | Console script | `gwz-py` |
 | Native extension | `gwz._gwz_core` |
 | Rust dependency | `gwz-core` |
 | Taut schema source | `gwz-core/protocol/gwz.taut.py` |
 
-If the bare `gwz` PyPI name becomes available before first publish, the
-distribution can be renamed. The import package should still remain `gwz`.
+The PyPI distribution and import package are both `gwz`; the console script is
+kept as `gwz-py` for the initial release line to avoid colliding with the Rust
+`gwz` command.
 
 ## Architecture
 

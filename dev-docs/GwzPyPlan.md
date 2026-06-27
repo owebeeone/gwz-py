@@ -42,8 +42,9 @@ The baseline is not complete:
 - Protocol wire encode/decode is only partial.
 - Streaming is scaffolded but not backed by a native operation runtime.
 - CLI parity with Rust `gwz-cli` is incomplete.
-- Packaging uses the Python CLI as the installed `gwz-py` command; first-line PyPI
-  wheels do not bundle or dispatch to the Rust `gwz` binary.
+- Packaging publishes the `gwz` distribution and uses the Python CLI as the
+  installed `gwz-py` command; first-line PyPI wheels do not bundle or dispatch
+  to the Rust `gwz` binary.
 - Generated transport stubs are excluded from the runtime package with
   `tautc --api-only`; the handwritten `CoreBridge` is the only Python transport
   boundary.
@@ -665,11 +666,11 @@ Steps:
      macOS and Windows with sibling `gwz-core` checked out beside `gwz-py`.
    - Added the validation job for protocol drift, protocol regeneration,
      native `cargo check`, and `python run_tests.py`.
-   - Added `.github/workflows/publish.yml` for release-tag builds on Linux,
-     Linux amd64, Linux arm64, macOS amd64, macOS arm64, and Windows amd64. The workflow checks out matching
-     `gwz-py` and `gwz-core` tags, verifies the release metadata, builds wheels
-     plus a Linux sdist, smoke-tests the built wheel, and publishes with PyPI
-     trusted publishing.
+   - Added `.github/workflows/publish.yml` for release-tag builds on Linux
+     amd64, Linux arm64, macOS amd64, macOS arm64, and Windows amd64. The
+     workflow checks out matching `gwz-py` and `gwz-core` tags, verifies the
+     release metadata, builds wheels plus a Linux sdist, smoke-tests the built
+     wheel, and publishes the `gwz` distribution with PyPI trusted publishing.
    Verification: `python scripts/check_protocol_drift.py`,
    `python run_tests.py`, `cargo check`, and `python scripts/package_smoke.py`.
 
@@ -765,7 +766,7 @@ Steps:
    Work remaining:
    - Versioning decision.
    - License metadata review.
-   - PyPI package name confirmation.
+   - PyPI package name confirmed as `gwz`.
    - Wheel contents audit.
    - Known limitations finalization.
    Verification: dry-run publish or equivalent.

@@ -152,6 +152,10 @@ jobs:
               f"Cargo.toml must pin gwz-core to git tag {tag}",
           )
           require(
+              re.search(r'^name = "gwz"$', pyproject, re.M),
+              "pyproject.toml must publish the Python distribution as gwz",
+          )
+          require(
               re.search(r'^gwz-py = "gwz\.cli:main"$', pyproject, re.M),
               "pyproject.toml must install gwz-py = gwz.cli:main",
           )
@@ -198,10 +202,10 @@ jobs:
           import sys
 
           version = "${{ needs.resolve.outputs.version }}"
-          wheels = sorted(pathlib.Path("dist").glob("gwz_py-*.whl"))
-          matching = [wheel for wheel in wheels if wheel.name.startswith(f"gwz_py-{version}-")]
+          wheels = sorted(pathlib.Path("dist").glob("gwz-*.whl"))
+          matching = [wheel for wheel in wheels if wheel.name.startswith(f"gwz-{version}-")]
           if not matching:
-              print(f"no gwz_py {version} wheel found in dist", file=sys.stderr)
+              print(f"no gwz {version} wheel found in dist", file=sys.stderr)
               raise SystemExit(1)
           subprocess.check_call(
               [

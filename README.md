@@ -8,10 +8,14 @@ client facade, CLI entry point, and native `gwz-core` bridge exist. The native
 bridge supports request/response calls plus operation event streaming for
 long-running operations such as `clone`, `materialize`, `pull`, and `push`.
 
-Release mode: installing `gwz-py` installs the Python `gwz-py` CLI
+Release mode: installing the PyPI distribution `gwz` installs the Python `gwz-py` CLI
 (`gwz.cli:main`). The CLI uses the same native `gwz-core` extension as the
 Python API; first-line PyPI wheels do not bundle or dispatch to the Rust `gwz`
 binary.
+
+```sh
+python -m pip install gwz
+```
 
 ```sh
 python -m pip install -e ".[dev]"

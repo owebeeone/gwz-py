@@ -252,8 +252,10 @@ def reconcile_cargo_toml(
     return True
 
 
-def verify_console_script(worktree: Path) -> None:
+def verify_pyproject_metadata(worktree: Path) -> None:
     pyproject = (worktree / "pyproject.toml").read_text(encoding="utf-8")
+    if not re.search(r'^name = "gwz"$', pyproject, re.M):
+        fail("pyproject.toml must publish the Python distribution as `gwz`")
     if 'gwz-py = "gwz.cli:main"' not in pyproject:
         fail("pyproject.toml must install the Python CLI as `gwz-py`")
 
@@ -284,7 +286,7 @@ def run_release_checks(
     tag: str,
     version: str,
 ) -> None:
-    verify_console_script(worktree)
+    verify_pyproject_metadata(worktree)
     run([sys.executable, "scripts/check_protocol_drift.py"], cwd=worktree)
     run([sys.executable, "scripts/regen_protocol.py", "--check"], cwd=worktree)
     run(["cargo", "check"], cwd=worktree)

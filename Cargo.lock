@@ -135,8 +135,8 @@ dependencies = [
 
 [[package]]
 name = "gwz-core"
-version = "0.7.2"
-source = "git+https://github.com/owebeeone/gwz-core?tag=v0.7.2#2432fc1ec237913cd8cb0f08347997ed3ac31449"
+version = "0.7.3"
+source = "git+https://github.com/owebeeone/gwz-core?tag=v0.7.3#17b91680924284cb0a2f7c77a7ba94e518f6ffa9"
 dependencies = [
  "git2",
  "serde",
@@ -147,7 +147,7 @@ dependencies = [
 
 [[package]]
 name = "gwz-py"
-version = "0.7.2"
+version = "0.7.3"
 dependencies = [
  "gwz-core",
  "pyo3",
