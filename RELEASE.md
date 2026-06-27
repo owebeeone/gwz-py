@@ -101,7 +101,8 @@ The workflow:
 - Verifies `Cargo.toml` and `Cargo.lock` pin gwz-core to tag `vX.Y.Z`.
 - Verifies `pyproject.toml` installs `gwz-py = "gwz.cli:main"`.
 - Runs protocol drift, protocol regeneration, `cargo check`, and Python tests.
-- Builds Linux, macOS x86_64, macOS arm64, and Windows wheels.
+- Builds Linux amd64, Linux arm64, macOS amd64, macOS arm64, and Windows amd64
+  wheels.
 - Builds the Linux source distribution.
 - Smoke-tests each built wheel through the installed `gwz-py` command.
 - Publishes to PyPI using trusted publishing.

@@ -6,6 +6,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PIP_NO_CACHE_DIR: "1"
+
 jobs:
   validate:
     runs-on: ${{ matrix.os }}
@@ -18,18 +22,18 @@ jobs:
 
     steps:
       - name: Checkout gwz-py
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           path: gwz-py
 
       - name: Checkout gwz-core
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: owebeeone/gwz-core
           path: gwz-core
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -85,18 +89,18 @@ jobs:
 
     steps:
       - name: Checkout gwz-py
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           path: gwz-py
 
       - name: Checkout gwz-core
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: owebeeone/gwz-core
           path: gwz-core
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.10"
 
