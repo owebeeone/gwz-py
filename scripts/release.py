@@ -38,6 +38,13 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 DEFAULT_GWZ_CORE_URL = "https://github.com/owebeeone/gwz-core"
+RELEASE_PYTHON_DEPS = (
+    "maturin>=1.13,<2",
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+    "setuptools-scm>=8",
+    "taut-proto>=0.6.0",
+)
 
 
 def fail(message: str) -> None:
@@ -83,6 +90,12 @@ def git_wt(
     **kwargs: object,
 ) -> subprocess.CompletedProcess[str]:
     return run(["git", "-C", worktree, *args], **kwargs)
+
+
+def venv_executable(venv: Path, name: str) -> Path:
+    if os.name == "nt":
+        return venv / "Scripts" / f"{name}.exe"
+    return venv / "bin" / name
 
 
 def branch_exists(branch: str) -> bool:
@@ -279,6 +292,15 @@ def checkout_gwz_core(url: str, tag: str, target: Path) -> None:
     run(["git", "clone", "--depth", "1", "--branch", tag, url, target])
 
 
+def create_release_python(worktree: Path) -> Path:
+    venv = worktree.parent / ".release-python"
+    run([sys.executable, "-m", "venv", venv])
+    python = venv_executable(venv, "python")
+    run([python, "-m", "pip", "install", "--upgrade", "pip"])
+    run([python, "-m", "pip", "install", *RELEASE_PYTHON_DEPS])
+    return python
+
+
 def run_release_checks(
     worktree: Path,
     args: argparse.Namespace,
@@ -286,17 +308,18 @@ def run_release_checks(
     tag: str,
     version: str,
 ) -> None:
+    python = create_release_python(worktree)
     verify_pyproject_metadata(worktree)
-    run([sys.executable, "scripts/check_protocol_drift.py"], cwd=worktree)
-    run([sys.executable, "scripts/regen_protocol.py", "--check"], cwd=worktree)
+    run([python, "scripts/check_protocol_drift.py"], cwd=worktree)
+    run([python, "scripts/regen_protocol.py", "--check"], cwd=worktree)
     run(["cargo", "check"], cwd=worktree)
     verify_locked_git_pin(worktree, tag)
     if not args.no_test:
-        run([sys.executable, "run_tests.py"], cwd=worktree)
+        run([python, "run_tests.py"], cwd=worktree)
     if not args.no_package_smoke:
         run(
             [
-                sys.executable,
+                python,
                 "scripts/package_smoke.py",
                 "--expected-version",
                 version,

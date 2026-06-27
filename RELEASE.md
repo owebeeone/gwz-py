@@ -69,6 +69,8 @@ need `--bootstrap-release`.
    - Checks the `Cargo.lock` gwz-core git pin.
    - Verifies the PyPI distribution is `gwz` and the installed console script is
      `gwz-py`.
+   - Creates an isolated temporary Python check environment with the release/test
+     tools (`taut-proto`, `pytest`, `maturin`, and `setuptools-scm`).
    - Runs protocol drift checks, protocol regeneration checks, `cargo check`,
      `python run_tests.py`, and package smoke.
    - Builds and installs a wheel in a clean virtualenv.
