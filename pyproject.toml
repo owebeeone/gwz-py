@@ -1,5 +1,5 @@
 [project]
-name = "gwz-py"
+name = "gwz"
 dynamic = ["version"]
 description = "Python bindings and CLI for GWZ multi-repository workspaces."
 readme = "README.md"
