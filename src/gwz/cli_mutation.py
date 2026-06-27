@@ -29,14 +29,8 @@ def register_commands(registry: CommandRegistry) -> None:
     )
     registry.register("capture", help="Record live worktree state", handler=handle_capture)
     registry.register(
-        "stage",
-        help="Stage file contents across workspace repos",
-        configure=configure_stage,
-        handler=handle_stage,
-    )
-    registry.register(
         "add",
-        help="Alias for stage",
+        help="Stage file contents across workspace repos",
         configure=configure_stage,
         handler=handle_stage,
     )
@@ -105,10 +99,12 @@ def configure_snapshot(parser: argparse.ArgumentParser) -> None:
 
 
 async def handle_snapshot(context: CommandContext) -> Any:
-    if context.args.list:
+    if context.args.list or context.args.name is None:
+        if context.args.branch is not None:
+            raise CliUsageError(
+                "--branch requires a snapshot name and cannot be combined with --list"
+            )
         return await context.client.list_snapshots(**context.meta)
-    if context.args.name is None:
-        raise CliUsageError("snapshot requires a name")
 
     source = None
     if context.args.branch is True:

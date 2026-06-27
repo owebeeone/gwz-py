@@ -4,8 +4,10 @@ import argparse
 
 import pytest
 
+from gwz import __version__
 from gwz.cli import build_parser
 from gwz.cli_shared import (
+    CliUsageError,
     CommandContext,
     CommandRegistry,
     meta_kwargs,
@@ -18,9 +20,11 @@ from gwz.protocol.generated import SyncBehavior
     "argv,command",
     [
         (["status", "--combined"], "status"),
+        (["status", "--porcelain"], "status"),
         (["ls", "--materialized-only"], "ls"),
         (["init", "https://example.invalid/repo.git"], "init"),
         (["materialize", "--snapshot", "snap_1"], "materialize"),
+        (["add", "-A", "src/file.py"], "add"),
     ],
 )
 def test_current_commands_register_handlers(argv: list[str], command: str) -> None:
@@ -61,6 +65,8 @@ def test_global_options_build_client_meta_kwargs() -> None:
             "2",
             "--progress-interval",
             "0",
+            "--ssh-timeout",
+            "0",
             "--json",
             "status",
             "--combined",
@@ -71,6 +77,7 @@ def test_global_options_build_client_meta_kwargs() -> None:
 
     assert args.root == "/ws"
     assert args.json is True
+    assert args.ssh_timeout == 0
     assert meta_kwargs(args) == {
         "all_members": True,
         "targets": ["@root", "mem_app"],
@@ -85,6 +92,32 @@ def test_global_options_build_client_meta_kwargs() -> None:
         "max_connections_per_host": 2,
         "progress_min_interval_ms": 0,
     }
+
+
+@pytest.mark.parametrize("flag", ["-V", "--version"])
+def test_version_flags_exit_success(flag: str, capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        build_parser().parse_args([flag])
+
+    assert exc_info.value.code == 0
+    assert capsys.readouterr().out == f"gwz-py {__version__}\n"
+
+
+def test_jsonl_and_ssh_timeout_parse_as_globals() -> None:
+    args = build_parser().parse_args(["--jsonl", "status", "--ssh-timeout", "3"])
+
+    validate_args(args)
+    assert args.jsonl is True
+    assert args.json is False
+    assert args.ssh_timeout == 3
+    assert meta_kwargs(args) == {}
+
+
+def test_json_and_jsonl_are_mutually_exclusive() -> None:
+    args = build_parser().parse_args(["--json", "--jsonl", "status"])
+
+    with pytest.raises(CliUsageError, match="--json and --jsonl"):
+        validate_args(args)
 
 
 def test_all_accepts_specific_target_selection_and_exclusions() -> None:
@@ -133,17 +166,28 @@ def test_global_options_are_accepted_after_nested_subcommands() -> None:
 
 
 def test_local_all_options_keep_command_specific_meaning() -> None:
-    stage_args = build_parser().parse_args(["stage", "--target", "@root", "--all"])
+    add_args = build_parser().parse_args(["add", "--target", "@root", "--all"])
     commit_args = build_parser().parse_args(
         ["commit", "-m", "message", "--target", "@root", "--all"]
     )
 
-    assert stage_args.all_members is False
-    assert stage_args.stage_all is True
-    assert meta_kwargs(stage_args) == {"targets": ["@root"]}
+    assert add_args.all_members is False
+    assert add_args.stage_all is True
+    assert meta_kwargs(add_args) == {"targets": ["@root"]}
     assert commit_args.all_members is False
     assert commit_args.commit_all is True
     assert meta_kwargs(commit_args) == {"targets": ["@root"]}
+
+
+def test_stage_is_not_a_public_top_level_command() -> None:
+    parser = build_parser()
+    subparsers = next(
+        action for action in parser._actions if isinstance(action, argparse._SubParsersAction)
+    )
+
+    assert "stage" not in subparsers.choices
+    with pytest.raises(SystemExit):
+        parser.parse_args(["stage", "-A"])
 
 
 def test_command_registry_allows_modules_to_attach_commands() -> None:

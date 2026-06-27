@@ -67,8 +67,7 @@ def run_handler(argv: list[str], client: FakeClient) -> Any:
     [
         (["materialize", "--switch", "feature"], "materialize", ("branch",)),
         (["capture"], "capture", ()),
-        (["stage", "-A", "src/file.py"], "stage", (["src/file.py"],)),
-        (["add", "src/file.py"], "stage", (["src/file.py"],)),
+        (["add", "-A", "src/file.py"], "stage", (["src/file.py"],)),
         (["commit", "-m", "message", "-a"], "commit", ("message",)),
         (["pull"], "pull_head", ()),
         (["pull", "--snapshot", "snap_1"], "pull_snapshot", ("snap_1",)),
@@ -118,8 +117,9 @@ def test_tag_push_uses_explicit_remote_without_duplicate_meta() -> None:
     assert client.calls[0][2]["remote"] == "origin"
 
 
-def test_snapshot_list_calls_client() -> None:
+@pytest.mark.parametrize("argv", [["snapshot"], ["snapshot", "--list"]])
+def test_snapshot_list_calls_client(argv: list[str]) -> None:
     client = FakeClient()
 
-    assert run_handler(["snapshot", "--list"], client) == "list_snapshots"
+    assert run_handler(argv, client) == "list_snapshots"
     assert client.calls[0][0] == "list_snapshots"

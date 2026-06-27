@@ -189,7 +189,10 @@ def smoke_clone(cli: Path, smoke_root: Path) -> None:
     clone = run([str(cli), "clone", source.as_uri(), str(target)], capture=True)
     status = run([str(cli), "--root", str(target), "status"], capture=True)
     require(clone.stdout.strip() == "ok", f"unexpected clone stdout: {clone.stdout!r}")
-    require(status.stdout.strip() == "ok", f"unexpected status stdout: {status.stdout!r}")
+    require(
+        status.stdout.strip().startswith("On branch "),
+        f"unexpected status stdout: {status.stdout!r}",
+    )
     require((target / "gwz.conf" / "gwz.lock.yml").is_file(), "clone did not include gwz lock")
     require(
         (target / "repos" / "app" / "README.md").is_file(),

@@ -36,11 +36,16 @@ def register_commands(registry: CommandRegistry) -> None:
 def configure_status(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--combined", action="store_true", help="Include combined workspace status")
     parser.add_argument("--no-combined", action="store_true", help="Render per-repo status")
+    parser.add_argument("--porcelain", action="store_true", help="Render porcelain output")
     parser.add_argument("--no-files", action="store_true", help="Omit file changes from combined status")
     parser.add_argument("--no-branches", action="store_true", help="Omit branch summaries from combined status")
 
 
 async def handle_status(context: CommandContext) -> Any:
+    if context.args.porcelain and (context.args.json or context.args.jsonl):
+        raise CliUsageError("--porcelain cannot be combined with --json or --jsonl")
+    if context.args.porcelain and context.args.no_combined:
+        raise CliUsageError("--porcelain cannot be combined with --no-combined")
     if context.args.combined and context.args.no_combined:
         raise CliUsageError("--combined and --no-combined are mutually exclusive")
     if context.args.no_files and context.args.no_branches:

@@ -41,14 +41,19 @@ def register_commands(registry: CommandRegistry) -> None:
 
 
 def configure_forall(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("-c", dest="command_string", help="Run a shell command string")
+    parser.add_argument(
+        "-c",
+        "--command-string",
+        dest="command_string",
+        help="Run a shell command string",
+    )
     parser.add_argument("--no-banner", action="store_true", help="Suppress per-member banners")
     parser.add_argument("tokens", nargs=argparse.REMAINDER, help="[projects...] -- <cmd> or [projects...] -c <string>")
 
 
 async def handle_forall(context: CommandContext) -> ExecResponse:
-    if context.args.json:
-        raise CliUsageError("forall does not support --json")
+    if context.args.json or context.args.jsonl:
+        raise CliUsageError("forall does not support --json/--jsonl")
     projects, mode, command = _forall_invocation(context.args.tokens, context.args.command_string)
     ls_meta = dict(context.meta)
     if projects:
@@ -95,7 +100,7 @@ async def handle_clone(context: CommandContext) -> Any:
     if context.meta.get("dry_run"):
         raise CliUsageError("--dry-run is not supported for clone")
     target = context.args.directory or _repo_name_from_url(context.args.url)
-    if context.args.json:
+    if context.args.json or context.args.jsonl:
         return await context.client.clone_workspace(context.args.url, target, **context.meta)
 
     operation_id = None
@@ -172,12 +177,17 @@ def _forall_invocation(
             return tokens[:index], ExecMode.argv, command
         raise CliUsageError("no command (use `-- <cmd>` or `-c <string>`)")
 
-    if "-c" in tokens:
-        index = tokens.index("-c")
-        if index + 1 >= len(tokens):
-            raise CliUsageError("-c requires a command string")
-        if index + 2 < len(tokens):
+    command_string_indices = [
+        index for index, token in enumerate(tokens) if token in ("-c", "--command-string")
+    ]
+    if command_string_indices:
+        if len(command_string_indices) > 1:
             raise CliUsageError("-c accepts exactly one command string")
+        index = command_string_indices[0]
+        if index + 1 >= len(tokens):
+            raise CliUsageError(f"{tokens[index]} requires a command string")
+        if index + 2 < len(tokens):
+            raise CliUsageError(f"{tokens[index]} accepts exactly one command string")
         return tokens[:index], ExecMode.shell, [tokens[index + 1]]
     raise CliUsageError("no command (use `-- <cmd>` or `-c <string>`)")
 
