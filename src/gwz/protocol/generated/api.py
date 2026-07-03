@@ -25,6 +25,7 @@ class ActionKind(Enum):
     branch = 18
     clone_workspace = 19
     list_snapshots = 20
+    diff = 21
 
 class TagOp(Enum):
     create = 0
@@ -235,6 +236,67 @@ class GwzErrorCode(Enum):
     stash_not_found = 33
     stash_incomplete = 34
     stash_conflict = 35
+
+class DiffComparisonKind(Enum):
+    worktree_vs_index = 0
+    index_vs_tree = 1
+    worktree_vs_tree = 2
+    tree_vs_tree = 3
+
+class DiffOutputFormat(Enum):
+    patch = 0
+    raw = 1
+    name_only = 2
+    name_status = 3
+    stat = 4
+    numstat = 5
+    shortstat = 6
+    summary = 7
+    patch_with_raw = 8
+    patch_with_stat = 9
+    no_patch = 10
+
+class DiffManifestMode(Enum):
+    full = 0
+    any_difference = 1
+
+class DiffAlgorithm(Enum):
+    default = 0
+    myers = 1
+    minimal = 2
+    patience = 3
+
+class DiffWhitespaceMode(Enum):
+    default = 0
+    ignore_all = 1
+    ignore_change = 2
+    ignore_eol = 3
+    ignore_blank_lines = 4
+
+class DiffStatus(Enum):
+    added = 0
+    modified = 1
+    deleted = 2
+    renamed = 3
+    copied = 4
+    type_changed = 5
+    unmerged = 6
+
+class DiffChunkEncoding(Enum):
+    utf8 = 0
+    bytes = 1
+
+class DiffOutputRecordKind(Enum):
+    patch_bytes = 0
+    file_started = 1
+    file_finished = 2
+    stale_file = 3
+    diagnostic = 4
+
+class DiffTargetExclusionReason(Enum):
+    snapshot_missing = 0
+    snapshot_missing_commit = 1
+    root_not_in_snapshot = 2
 
 @dataclass(slots=True)
 class WorkspaceRef:
@@ -837,4 +899,131 @@ class StashResponse:
 class BranchResponse:
     response: ResponseEnvelope
     repos: list[BranchRepoSummary] | None
+
+@dataclass(slots=True)
+class DiffComparison:
+    kind: DiffComparisonKind
+    left: str | None
+    right: str | None
+    merge_base: bool | None
+
+@dataclass(slots=True)
+class DiffOptions:
+    output_format: DiffOutputFormat | None
+    context_lines: int | None
+    interhunk_lines: int | None
+    algorithm: DiffAlgorithm | None
+    whitespace: DiffWhitespaceMode | None
+    find_renames: bool | None
+    find_copies: bool | None
+    rename_threshold: int | None
+    rename_limit: int | None
+    binary: bool | None
+    text: bool | None
+    full_index: bool | None
+    abbrev: int | None
+    reverse: bool | None
+    null_terminated: bool | None
+    src_prefix: str | None
+    dst_prefix: str | None
+    no_prefix: bool | None
+    line_prefix: str | None
+    ignore_submodules: str | None
+    diff_filter: str | None
+    manifest_mode: DiffManifestMode | None
+    echo_manifest_entries: bool | None
+
+@dataclass(slots=True)
+class DiffRequest:
+    meta: RequestMeta
+    workspace_cwd: str | None
+    operands: list[str]
+    explicit_pathspecs: list[str]
+    options: DiffOptions | None
+    cached: bool | None
+    merge_base: bool | None
+
+@dataclass(slots=True)
+class DiffRepoScope:
+    root: bool | None
+    member_id: str | None
+    member_path: str | None
+    source_kind: SourceKind | None
+
+@dataclass(slots=True)
+class DiffExcludedTarget:
+    scope: DiffRepoScope
+    reason: DiffTargetExclusionReason
+    snapshot_id: str | None
+    message: str | None
+
+@dataclass(slots=True)
+class DiffParsedTarget:
+    target_id: str
+    scope: DiffRepoScope
+    comparison: DiffComparison
+    pathspecs: list[str]
+    left_oid: str | None
+    right_oid: str | None
+    merge_base_oid: str | None
+    left_snapshot_id: str | None
+    right_snapshot_id: str | None
+
+@dataclass(slots=True)
+class DiffFileEntry:
+    file_id: str
+    scope: DiffRepoScope
+    status: DiffStatus
+    old_path: str | None
+    new_path: str | None
+    old_mode: int | None
+    new_mode: int | None
+    similarity: int | None
+    insertions: int | None
+    deletions: int | None
+    is_binary: bool | None
+
+@dataclass(slots=True)
+class DiffRepoSummary:
+    scope: DiffRepoScope
+    has_differences: bool
+    files_changed: int
+    insertions: int
+    deletions: int
+    files_manifested: int
+
+@dataclass(slots=True)
+class DiffSummary:
+    has_differences: bool
+    repos_examined: int
+    repos_with_differences: int
+    files_changed: int
+    insertions: int
+    deletions: int
+    repo_summaries: list[DiffRepoSummary]
+
+@dataclass(slots=True)
+class DiffOutputLogRef:
+    log_id: str
+    format: DiffOutputFormat
+    encoding: DiffChunkEncoding | None
+
+@dataclass(slots=True)
+class DiffManifestResponse:
+    response: ResponseEnvelope
+    files: list[DiffFileEntry]
+    summary: DiffSummary | None
+    targets: list[DiffParsedTarget]
+    output: DiffOutputLogRef | None
+    excluded_targets: list[DiffExcludedTarget]
+
+@dataclass(slots=True)
+class DiffOutputRecord:
+    kind: DiffOutputRecordKind
+    scope: DiffRepoScope | None
+    file_id: str | None
+    entry: DiffFileEntry | None
+    data: bytes | None
+    stale: bool | None
+    diagnostic: str | None
 
