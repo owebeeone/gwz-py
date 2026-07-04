@@ -135,12 +135,13 @@ dependencies = [
 
 [[package]]
 name = "gwz-core"
-version = "0.7.4"
+version = "0.7.5"
 dependencies = [
  "git2",
  "serde",
  "serde_yaml",
  "sha2",
+ "taut-shape",
  "url",
 ]
 
@@ -589,6 +590,10 @@ name = "target-lexicon"
 version = "0.13.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "adb6935a6f5c20170eeceb1a3835a49e12e19d792f6dd344ccc76a985ca5a6ca"
+
+[[package]]
+name = "taut-shape"
+version = "0.0.0"
 
 [[package]]
 name = "tinystr"

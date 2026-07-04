@@ -1,7 +1,6 @@
-use std::env;
-
 use pyo3::PyResult;
 
+use super::current_dir;
 use crate::{codec, error, shims};
 
 pub(crate) fn call(
@@ -30,6 +29,8 @@ pub(crate) fn call(
         other => error::unsupported(other),
     }
 }
+
+// `current_dir` now lives in the parent dispatch module (shared with `diff`).
 
 fn call_create_workspace(
     method: &str,
@@ -196,8 +197,4 @@ fn call_list_snapshots(
         gwz_core::workspace_ops::handle_list_snapshots(&start, request, operation_id)
     })?;
     codec::encode_message("encode ListSnapshotsResponse", || response.to_cbor())
-}
-
-fn current_dir() -> PyResult<std::path::PathBuf> {
-    env::current_dir().map_err(|err| error::runtime(format!("current_dir failed: {err}")))
 }

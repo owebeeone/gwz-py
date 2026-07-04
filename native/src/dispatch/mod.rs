@@ -1,13 +1,23 @@
 mod branch_stash;
+mod diff;
 mod git_mutation;
 mod materialize;
 mod read;
 
+use std::env;
+use std::path::PathBuf;
 use std::thread;
 
 use pyo3::PyResult;
 
 use crate::{codec, error, operations, shims};
+
+/// The process cwd, resolved once per dispatch. `handle_*` operations resolve the
+/// workspace root relative to this (and, for `diff`, use it as the logical cwd
+/// base). A failure to read the cwd is a runtime error, not a protocol error.
+pub(crate) fn current_dir() -> PyResult<PathBuf> {
+    env::current_dir().map_err(|err| error::runtime(format!("current_dir failed: {err}")))
+}
 
 pub(crate) fn call(
     method: &str,
@@ -29,6 +39,7 @@ pub(crate) fn call(
         "branch" | "stash" => {
             branch_stash::call(method, request_message, response_message, request_bytes)
         }
+        "diff" => diff::call(method, request_message, response_message, request_bytes),
         other => Err(error::unsupported_method(other)),
     }
 }
