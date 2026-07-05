@@ -172,12 +172,21 @@ async def handle_stage(context: CommandContext) -> Any:
 def configure_commit(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-m", "--message", required=True, help="Commit message")
     parser.add_argument("-a", "--all", dest="commit_all", action="store_true", help="Stage tracked modifications first")
+    marker = parser.add_mutually_exclusive_group()
+    marker.add_argument("--commit-marker", action="store_true", help="Create and persist a GWZ commit marker")
+    marker.add_argument("--no-commit-marker", action="store_true", help="Disable GWZ commit marker creation for this commit")
 
 
 async def handle_commit(context: CommandContext) -> Any:
+    commit_marker = None
+    if context.args.commit_marker:
+        commit_marker = True
+    elif context.args.no_commit_marker:
+        commit_marker = False
     return await context.client.commit(
         context.args.message,
         all=True if context.args.commit_all else None,
+        commit_marker=commit_marker,
         **context.meta,
     )
 

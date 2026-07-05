@@ -107,6 +107,23 @@ def test_snapshot_bare_branch_uses_current_branch_source() -> None:
     assert source.branch is None
 
 
+def test_commit_marker_flags_lower_to_tristate() -> None:
+    client = FakeClient()
+    run_handler(["commit", "-m", "message"], client)
+    assert client.calls[-1][2]["commit_marker"] is None
+
+    run_handler(["commit", "-m", "message", "--commit-marker"], client)
+    assert client.calls[-1][2]["commit_marker"] is True
+
+    run_handler(["commit", "-m", "message", "--no-commit-marker"], client)
+    assert client.calls[-1][2]["commit_marker"] is False
+
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(
+            ["commit", "-m", "message", "--commit-marker", "--no-commit-marker"]
+        )
+
+
 def test_tag_push_uses_explicit_remote_without_duplicate_meta() -> None:
     client = FakeClient()
 

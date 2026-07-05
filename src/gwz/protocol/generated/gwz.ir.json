@@ -4314,6 +4314,17 @@
           "optional": true,
           "transient": false,
           "merge": null
+        },
+        {
+          "name": "commit_marker",
+          "tag": 4,
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
         }
       ]
     },

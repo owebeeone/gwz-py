@@ -765,6 +765,7 @@ class CommitRequest:
     meta: RequestMeta
     message: str
     all: bool | None
+    commit_marker: bool | None
 
 @dataclass(slots=True)
 class StageRequest:

@@ -475,8 +475,20 @@ class Client:
         request = CaptureRequest(meta=self.meta(**meta))
         return await self._call("capture", request, CaptureResponse)
 
-    async def commit(self, message: str, *, all: bool | None = None, **meta: Any) -> CommitResponse:
-        request = CommitRequest(meta=self.meta(**meta), message=message, all=all)
+    async def commit(
+        self,
+        message: str,
+        *,
+        all: bool | None = None,
+        commit_marker: bool | None = None,
+        **meta: Any,
+    ) -> CommitResponse:
+        request = CommitRequest(
+            meta=self.meta(**meta),
+            message=message,
+            all=all,
+            commit_marker=commit_marker,
+        )
         return await self._call("commit", request, CommitResponse)
 
     async def stage(

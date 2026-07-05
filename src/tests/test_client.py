@@ -15,6 +15,8 @@ from gwz.protocol.generated import (
     BranchResponse,
     CloneWorkspaceRequest,
     CloneWorkspaceResponse,
+    CommitRequest,
+    CommitResponse,
     CreateWorkspaceRequest,
     CreateWorkspaceResponse,
     InitFromSourcesResponse,
@@ -48,6 +50,7 @@ RESPONSE_TYPES = {
     for cls in (
         BranchResponse,
         CloneWorkspaceResponse,
+        CommitResponse,
         CreateWorkspaceResponse,
         InitFromSourcesResponse,
         ListSnapshotsResponse,
@@ -258,6 +261,23 @@ def test_list_snapshots_builds_taut_request() -> None:
     assert isinstance(request, ListSnapshotsRequest)
     assert request.meta.workspace is not None
     assert request.meta.workspace.root == str(Path("/tmp/workspace").resolve())
+
+
+def test_commit_builds_marker_tristate_request() -> None:
+    bridge = FakeBridge()
+    client = Client(root=Path("/tmp/workspace"), bridge=bridge)
+
+    response = asyncio.run(client.commit("message", all=True, commit_marker=False))
+
+    assert isinstance(response, CommitResponse)
+    method, request_message, response_message, request = bridge.calls[0]
+    assert method == "commit"
+    assert request_message == "CommitRequest"
+    assert response_message == "CommitResponse"
+    assert isinstance(request, CommitRequest)
+    assert request.message == "message"
+    assert request.all is True
+    assert request.commit_marker is False
 
 
 def test_branch_merge_source_maps_to_start_ref() -> None:
