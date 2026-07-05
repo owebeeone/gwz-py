@@ -249,6 +249,8 @@ class Client:
         **meta: Any,
     ) -> CreateWorkspaceResponse:
         root = Path(workspace_root).resolve() if workspace_root is not None else self.root
+        if root is None:
+            root = Path.cwd().resolve()
         request = CreateWorkspaceRequest(
             meta=self.meta(root=root, **meta),
             workspace_root=str(root or ""),

@@ -15,6 +15,8 @@ from gwz.protocol.generated import (
     BranchResponse,
     CloneWorkspaceRequest,
     CloneWorkspaceResponse,
+    CreateWorkspaceRequest,
+    CreateWorkspaceResponse,
     InitFromSourcesResponse,
     ListSnapshotsRequest,
     ListSnapshotsResponse,
@@ -46,6 +48,7 @@ RESPONSE_TYPES = {
     for cls in (
         BranchResponse,
         CloneWorkspaceResponse,
+        CreateWorkspaceResponse,
         InitFromSourcesResponse,
         ListSnapshotsResponse,
         LsResponse,
@@ -139,6 +142,24 @@ def test_status_builds_taut_request() -> None:
     assert request.meta.schema_version == "gwz.protocol/v0"
     assert request.meta.workspace is not None
     assert request.meta.workspace.root == str(Path("/tmp/workspace").resolve())
+
+
+def test_create_workspace_without_root_defaults_to_cwd(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    bridge = FakeBridge()
+    client = Client(bridge=bridge)
+
+    response = asyncio.run(client.create_workspace())
+
+    assert isinstance(response, CreateWorkspaceResponse)
+    method, request_message, response_message, request = bridge.calls[0]
+    assert method == "create_workspace"
+    assert request_message == "CreateWorkspaceRequest"
+    assert response_message == "CreateWorkspaceResponse"
+    assert isinstance(request, CreateWorkspaceRequest)
+    assert request.workspace_root == str(tmp_path.resolve())
+    assert request.meta.workspace is not None
+    assert request.meta.workspace.root == str(tmp_path.resolve())
 
 
 def test_meta_builds_target_selection_fields() -> None:
