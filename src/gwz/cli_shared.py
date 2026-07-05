@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+import sys
 from typing import Any
 
 from .client import Client
@@ -32,6 +33,29 @@ GLOBAL_SCALAR_ATTRS = (
     "ssh_timeout",
 )
 GLOBAL_DEST_PREFIXES = ("_cmd_", "_nested_")
+GLOBAL_BOOL_OPTIONS = {
+    "--all",
+    "--dry-run",
+    "--partial",
+    "--force",
+    "--json",
+    "--jsonl",
+}
+GLOBAL_VALUE_OPTIONS = {
+    "--root",
+    "--target",
+    "--member",
+    "--no-target",
+    "--no-member",
+    "--member-path",
+    "--no-member-path",
+    "--sync",
+    "--remote",
+    "--jobs",
+    "--max-per-host",
+    "--progress-interval",
+    "--ssh-timeout",
+}
 
 
 class CliUsageError(ValueError):
@@ -92,8 +116,10 @@ class GwzArgumentParser(argparse.ArgumentParser):
         args: list[str] | None = None,
         namespace: argparse.Namespace | None = None,
     ) -> argparse.Namespace:
+        raw_args = list(sys.argv[1:] if args is None else args)
         parsed = super().parse_args(args, namespace)
         normalize_global_options(parsed)
+        normalize_diff_pathspecs(parsed, raw_args)
         return parsed
 
 
@@ -257,6 +283,49 @@ def normalize_global_options(args: argparse.Namespace) -> None:
             if override is not None:
                 value = override
         setattr(args, attr, value)
+
+
+def normalize_diff_pathspecs(args: argparse.Namespace, raw_args: list[str]) -> None:
+    if getattr(args, "command", None) != "diff":
+        return
+    pathspecs = _diff_pathspecs_from_raw_args(raw_args)
+    setattr(args, "pathspecs", pathspecs)
+    if not pathspecs:
+        return
+    operands = list(getattr(args, "operands", []) or [])
+    if operands[-len(pathspecs) :] == pathspecs:
+        setattr(args, "operands", operands[: -len(pathspecs)])
+
+
+def _diff_pathspecs_from_raw_args(raw_args: list[str]) -> list[str]:
+    command_index = _top_level_command_index(raw_args)
+    if command_index is None or raw_args[command_index] != "diff":
+        return []
+    try:
+        separator_index = raw_args.index("--", command_index + 1)
+    except ValueError:
+        return []
+    return raw_args[separator_index + 1 :]
+
+
+def _top_level_command_index(raw_args: list[str]) -> int | None:
+    index = 0
+    while index < len(raw_args):
+        token = raw_args[index]
+        if token == "--":
+            return None
+        if token in ("-V", "--version"):
+            return None
+        if token.startswith("--"):
+            option, has_inline_value, _value = token.partition("=")
+            if option in GLOBAL_VALUE_OPTIONS:
+                index += 1 if has_inline_value else 2
+                continue
+            if option in GLOBAL_BOOL_OPTIONS:
+                index += 1
+                continue
+        return index
+    return None
 
 
 def validate_args(args: argparse.Namespace) -> None:

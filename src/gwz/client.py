@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import inspect
+import itertools
 from collections.abc import AsyncIterator, Iterable, Sequence
 from pathlib import Path
 from typing import Any
 
-from .bridge import CoreBridge, NativeCoreBridge
+from .bridge import CoreBridge, DiffLogRead, NativeCoreBridge
+from .errors import GwzBridgeError
 from .client_helpers import (
     enum_value as _enum_value,
     materialize_target as _target,
@@ -30,6 +32,15 @@ from .protocol.generated import (
     CreateWorkspaceRequest,
     CreateWorkspaceResponse,
     DestructiveBehavior,
+    DiffAlgorithm,
+    DiffManifestMode,
+    DiffManifestResponse,
+    DiffOptions,
+    DiffOutputFormat,
+    DiffOutputLogRef,
+    DiffOutputRecord,
+    DiffRequest,
+    DiffWhitespaceMode,
     GwzError as GwzErrorDetail,
     InitFromSourcesRequest,
     InitFromSourcesResponse,
@@ -79,6 +90,18 @@ from .protocol.generated import (
 )
 
 SCHEMA_VERSION = "gwz.protocol/v0"
+
+# diff.output cursor-loop delivery states. `data` yields and advances; `expired`
+# resumes from the returned cursor; the terminal states stop the loop.
+_DIFF_OUTPUT_TERMINAL_STATES = frozenset({"eof", "closed", "failed"})
+_DIFF_OUTPUT_READ_MAX_RECORDS = 64
+
+_diff_stream_counter = itertools.count(1)
+
+
+def _diff_stream_id() -> str:
+    """A fresh reader stream id (taut-shape D3): one logical read loop position."""
+    return f"pydiff-{next(_diff_stream_counter)}"
 
 
 class Client:
@@ -226,6 +249,8 @@ class Client:
         **meta: Any,
     ) -> CreateWorkspaceResponse:
         root = Path(workspace_root).resolve() if workspace_root is not None else self.root
+        if root is None:
+            root = Path.cwd().resolve()
         request = CreateWorkspaceRequest(
             meta=self.meta(root=root, **meta),
             workspace_root=str(root or ""),
@@ -450,8 +475,20 @@ class Client:
         request = CaptureRequest(meta=self.meta(**meta))
         return await self._call("capture", request, CaptureResponse)
 
-    async def commit(self, message: str, *, all: bool | None = None, **meta: Any) -> CommitResponse:
-        request = CommitRequest(meta=self.meta(**meta), message=message, all=all)
+    async def commit(
+        self,
+        message: str,
+        *,
+        all: bool | None = None,
+        commit_marker: bool | None = None,
+        **meta: Any,
+    ) -> CommitResponse:
+        request = CommitRequest(
+            meta=self.meta(**meta),
+            message=message,
+            all=all,
+            commit_marker=commit_marker,
+        )
         return await self._call("commit", request, CommitResponse)
 
     async def stage(
@@ -550,6 +587,140 @@ class Client:
             switch_after_create=switch_after_create,
         )
         return await self._call("branch", request, BranchResponse)
+
+    async def diff(
+        self,
+        operands: Sequence[str] = (),
+        *,
+        pathspecs: Sequence[str] = (),
+        workspace_cwd: str | None = None,
+        cached: bool | None = None,
+        merge_base: bool | None = None,
+        output_format: DiffOutputFormat | str | None = None,
+        manifest_mode: DiffManifestMode | str | None = None,
+        context_lines: int | None = None,
+        interhunk_lines: int | None = None,
+        algorithm: DiffAlgorithm | str | None = None,
+        whitespace: DiffWhitespaceMode | str | None = None,
+        find_renames: bool | None = None,
+        find_copies: bool | None = None,
+        rename_threshold: int | None = None,
+        rename_limit: int | None = None,
+        binary: bool | None = None,
+        text: bool | None = None,
+        full_index: bool | None = None,
+        abbrev: int | None = None,
+        reverse: bool | None = None,
+        null_terminated: bool | None = None,
+        src_prefix: str | None = None,
+        dst_prefix: str | None = None,
+        no_prefix: bool | None = None,
+        line_prefix: str | None = None,
+        ignore_submodules: str | None = None,
+        diff_filter: str | None = None,
+        echo_manifest_entries: bool | None = None,
+        options: DiffOptions | None = None,
+        **meta: Any,
+    ) -> DiffManifestResponse:
+        """Plan a workspace diff and return the metadata-only manifest response.
+
+        Patch bytes are never in this response; when a byte output format is
+        requested, ``response.output`` carries a ``DiffOutputLogRef`` whose
+        ``log_id`` is read through :meth:`diff_output`. Metadata-only formats
+        (name/status/stat/quiet) answer from ``response.files`` / ``response.summary``
+        with no output log.
+        """
+        if options is None:
+            options = DiffOptions(
+                output_format=_enum_value(DiffOutputFormat, output_format),
+                context_lines=context_lines,
+                interhunk_lines=interhunk_lines,
+                algorithm=_enum_value(DiffAlgorithm, algorithm),
+                whitespace=_enum_value(DiffWhitespaceMode, whitespace),
+                find_renames=find_renames,
+                find_copies=find_copies,
+                rename_threshold=rename_threshold,
+                rename_limit=rename_limit,
+                binary=binary,
+                text=text,
+                full_index=full_index,
+                abbrev=abbrev,
+                reverse=reverse,
+                null_terminated=null_terminated,
+                src_prefix=src_prefix,
+                dst_prefix=dst_prefix,
+                no_prefix=no_prefix,
+                line_prefix=line_prefix,
+                ignore_submodules=ignore_submodules,
+                diff_filter=diff_filter,
+                manifest_mode=_enum_value(DiffManifestMode, manifest_mode),
+                echo_manifest_entries=echo_manifest_entries,
+            )
+        request = DiffRequest(
+            meta=self.meta(**meta),
+            workspace_cwd=workspace_cwd,
+            operands=list(operands),
+            explicit_pathspecs=list(pathspecs),
+            options=options,
+            cached=cached,
+            merge_base=merge_base,
+        )
+        return await self._call("diff", request, DiffManifestResponse)
+
+    async def diff_output(
+        self,
+        log_ref: DiffOutputLogRef | str,
+        *,
+        stream_id: str | None = None,
+    ) -> AsyncIterator[DiffOutputRecord]:
+        """Read a ``diff.output`` log, yielding each ``DiffOutputRecord`` in order.
+
+        Drives the taut-shape cursor loop over the byte-bearing patch stream:
+        ``data`` yields records and advances the cursor; ``expired`` resumes from
+        the returned cursor; ``eof`` / ``closed`` / ``failed`` stop. On consumer
+        cancellation (``aclose()`` or ``CancelledError``) the reader stream is
+        ended so core can release retained render state (taut-shape D4/D6).
+        """
+        log_id = log_ref.log_id if isinstance(log_ref, DiffOutputLogRef) else log_ref
+        reader_stream = stream_id or _diff_stream_id()
+        bridge_read = getattr(self.bridge, "diff_log_read", None)
+        if bridge_read is None:
+            raise GwzBridgeError("bridge does not support diff.output log reads")
+
+        cursor: int | None = None
+        try:
+            while True:
+                answer: DiffLogRead = await bridge_read(
+                    log_id,
+                    reader_stream,
+                    cursor=cursor,
+                    max_records=_DIFF_OUTPUT_READ_MAX_RECORDS,
+                )
+                cursor = answer.next_cursor
+                if answer.state == "data":
+                    for record in answer.records:
+                        yield record
+                    continue
+                if answer.state == "expired":
+                    # Resume from the earliest-resumable cursor and re-read.
+                    continue
+                if answer.state == "would_block":
+                    # A blocking read only returns would_block on a probe; be
+                    # defensive and keep reading rather than spinning tight.
+                    continue
+                if answer.state in _DIFF_OUTPUT_TERMINAL_STATES:
+                    if answer.state == "failed":
+                        raise GwzBridgeError(
+                            f"diff.output log {log_id} failed before completion"
+                        )
+                    return
+                raise GwzBridgeError(
+                    f"diff.output log {log_id} returned unknown state {answer.state!r}"
+                )
+        finally:
+            end_stream = getattr(self.bridge, "diff_log_end_stream", None)
+            if end_stream is not None:
+                await end_stream(log_id, reader_stream)
 
     def events_subscribe(self, operation_id: str) -> AsyncIterator[OperationEvent]:
         return self.bridge.subscribe_events(operation_id)

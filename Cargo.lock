@@ -135,19 +135,21 @@ dependencies = [
 
 [[package]]
 name = "gwz-core"
-version = "0.7.5"
-source = "git+https://github.com/owebeeone/gwz-core?tag=v0.7.5#39cc60237fffad1f2853a9e05d7f5c1c7b48bd0f"
+version = "0.8.1"
+source = "git+https://github.com/owebeeone/gwz-core?tag=v0.8.1#99d25c41d82b12afe31141ee887dfa98f19b7dcd"
 dependencies = [
+ "getrandom",
  "git2",
  "serde",
  "serde_yaml",
  "sha2",
+ "taut-shape",
  "url",
 ]
 
 [[package]]
 name = "gwz-py"
-version = "0.7.5"
+version = "0.8.1"
 dependencies = [
  "gwz-core",
  "pyo3",
@@ -590,6 +592,11 @@ name = "target-lexicon"
 version = "0.13.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "adb6935a6f5c20170eeceb1a3835a49e12e19d792f6dd344ccc76a985ca5a6ca"
+
+[[package]]
+name = "taut-shape"
+version = "0.0.0"
+source = "git+https://github.com/owebeeone/taut-shape-rs?rev=7fd171b737f25cb6c356845eb68164d35326ffb0#7fd171b737f25cb6c356845eb68164d35326ffb0"
 
 [[package]]
 name = "tinystr"

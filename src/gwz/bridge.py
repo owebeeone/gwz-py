@@ -2,13 +2,23 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator, Iterable
-from typing import Any, Protocol, TypeAlias
+from typing import Any, NamedTuple, Protocol, TypeAlias
 
 from .errors import GwzBridgeError, GwzCoreLoadError, GwzProtocolError
 from .protocol.codec import decode_message, encode_message, event_message_name, result_message_name
 
 NativeBytePayload: TypeAlias = bytes | bytearray | memoryview
 _EVENT_WAIT_TIMEOUT_MS = 30_000
+_DIFF_OUTPUT_RECORD_MESSAGE = "DiffOutputRecord"
+
+
+class DiffLogRead(NamedTuple):
+    """One `diff.output` read answer: decoded records, the always-present resume
+    cursor (taut-shape D8), and the delivery state token."""
+
+    records: list[Any]
+    next_cursor: int
+    state: str
 
 
 class CoreBridge(Protocol):
@@ -26,6 +36,21 @@ class CoreBridge(Protocol):
 
     async def operation_result(self, operation_id: str) -> Any:
         """Return the generated OperationResult for a submitted operation."""
+
+    async def diff_log_read(
+        self,
+        log_id: str,
+        stream_id: str,
+        *,
+        cursor: int | None = None,
+        max_records: int | None = None,
+        max_bytes: int | None = None,
+        timeout_ms: int | None = None,
+    ) -> DiffLogRead:
+        """Read decoded DiffOutputRecords from a `diff.output` log by log_id."""
+
+    async def diff_log_end_stream(self, log_id: str, stream_id: str) -> None:
+        """End a `diff.output` reader stream (cancellation / cleanup)."""
 
 
 class NativeModule(Protocol):
@@ -63,6 +88,20 @@ class NativeModule(Protocol):
 
     def try_operation_result(self, operation_id: str) -> NativeBytePayload | None:
         """Return encoded OperationResult bytes if a submitted operation is complete."""
+
+    def diff_log_read(
+        self,
+        log_id: str,
+        stream_id: str,
+        cursor: int | None,
+        max_records: int | None,
+        max_bytes: int | None,
+        timeout_ms: int | None,
+    ) -> tuple[Iterable[NativeBytePayload], int, str]:
+        """Read encoded DiffOutputRecord payloads, the resume cursor, and state."""
+
+    def diff_log_end_stream(self, log_id: str, stream_id: str) -> None:
+        """End a `diff.output` reader stream."""
 
 
 class NativeCoreBridge:
@@ -191,6 +230,51 @@ class NativeCoreBridge:
                 f"native operation result lookup failed for {operation_id}: {exc}"
             ) from exc
         return decode_message(result_message_name(), _bytes(result_bytes, result_message_name()))
+
+    async def diff_log_read(
+        self,
+        log_id: str,
+        stream_id: str,
+        *,
+        cursor: int | None = None,
+        max_records: int | None = None,
+        max_bytes: int | None = None,
+        timeout_ms: int | None = None,
+    ) -> DiffLogRead:
+        try:
+            records, next_cursor, state = await asyncio.to_thread(
+                self._native.diff_log_read,
+                log_id,
+                stream_id,
+                cursor,
+                max_records,
+                max_bytes,
+                timeout_ms,
+            )
+        except GwzBridgeError:
+            raise
+        except Exception as exc:
+            raise GwzBridgeError(
+                f"native diff.output read failed for {log_id}/{stream_id}: {exc}"
+            ) from exc
+        decoded = [
+            decode_message(
+                _DIFF_OUTPUT_RECORD_MESSAGE,
+                _bytes(item, _DIFF_OUTPUT_RECORD_MESSAGE),
+            )
+            for item in records
+        ]
+        return DiffLogRead(records=decoded, next_cursor=int(next_cursor), state=str(state))
+
+    async def diff_log_end_stream(self, log_id: str, stream_id: str) -> None:
+        try:
+            await asyncio.to_thread(self._native.diff_log_end_stream, log_id, stream_id)
+        except GwzBridgeError:
+            raise
+        except Exception as exc:
+            raise GwzBridgeError(
+                f"native diff.output end_stream failed for {log_id}/{stream_id}: {exc}"
+            ) from exc
 
 
 def _bytes(value: NativeBytePayload, message_name: str) -> bytes:

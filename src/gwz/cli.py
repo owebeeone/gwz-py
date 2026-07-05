@@ -5,7 +5,7 @@ import asyncio
 import sys
 
 from . import __version__
-from . import cli_branch_stash, cli_local, cli_mutation, cli_read
+from . import cli_branch_stash, cli_diff, cli_local, cli_mutation, cli_read
 from .cli_render import render_error, render_response
 from .cli_shared import (
     CliUsageError,
@@ -47,6 +47,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def register_commands(registry: CommandRegistry) -> None:
     cli_read.register_commands(registry)
+    cli_diff.register_commands(registry)
     cli_mutation.register_commands(registry)
     cli_branch_stash.register_commands(registry)
     cli_local.register_commands(registry)
@@ -63,6 +64,9 @@ async def run(args: argparse.Namespace) -> int:
             response = _renderable_operation_response(args, exc)
             if response is None:
                 raise
+
+    if cli_diff.is_diff_result(response):
+        return response.exit_code
 
     rendered = render_response(
         response,

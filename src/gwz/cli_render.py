@@ -346,6 +346,9 @@ def _append_suppressed_dirty_summary(
 
 
 def _render_branch_response(response: Any, repos: list[Any]) -> str:
+    if all(_enum_name(repo.result) == "listed" for repo in repos):
+        return _render_branch_listing_response(response, repos)
+
     lines = [_status_line(response)]
     for repo in repos:
         branch = repo.branch or repo.current_branch or "(detached)"
@@ -361,6 +364,61 @@ def _render_branch_response(response: Any, repos: list[Any]) -> str:
         lines.append(line)
     _append_errors(lines, response)
     return "\n".join(lines)
+
+
+def _render_branch_listing_response(response: Any, repos: list[Any]) -> str:
+    lines = _branch_listing_lines(repos)
+    envelope = getattr(response, "response", None)
+    meta = getattr(envelope, "meta", None)
+    aggregate = getattr(meta, "aggregate_status", None)
+    if _enum_name(aggregate) != "ok":
+        lines.insert(0, _status_line(response))
+    _append_errors(lines, response)
+    return "\n".join(lines)
+
+
+def _branch_listing_lines(repos: list[Any]) -> list[str]:
+    if not repos:
+        return ["no branches"]
+
+    short_name_counts = _branch_repo_short_name_counts(repos)
+    groups: dict[tuple[str, bool], set[str]] = {}
+    for repo in repos:
+        branch = repo.branch or repo.current_branch or "(detached)"
+        is_current = repo.current_branch == branch
+        groups.setdefault((branch, is_current), set()).add(
+            _branch_repo_label(repo, short_name_counts)
+        )
+
+    return [
+        f"{'*' if is_current else ''}{branch}: {' '.join(sorted(labels))}"
+        for (branch, is_current), labels in sorted(
+            groups.items(), key=lambda item: (item[0][0], not item[0][1])
+        )
+    ]
+
+
+def _branch_repo_short_name_counts(repos: list[Any]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for path in {repo.member_path for repo in repos}:
+        short_name = _member_short_name(path)
+        counts[short_name] = counts.get(short_name, 0) + 1
+    return counts
+
+
+def _branch_repo_label(repo: Any, short_name_counts: dict[str, int]) -> str:
+    short_name = _member_short_name(repo.member_path)
+    return repo.member_path if short_name_counts.get(short_name, 0) > 1 else short_name
+
+
+def _member_short_name(path: str) -> str:
+    trimmed = path.rstrip("/\\")
+    name = trimmed.replace("\\", "/").rsplit("/", 1)[-1]
+    return name.removesuffix(".git")
+
+
+def _enum_name(value: Any) -> str:
+    return getattr(value, "name", str(value))
 
 
 def _render_stash_response(response: Any, bundles: list[Any]) -> str:

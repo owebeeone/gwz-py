@@ -33,6 +33,7 @@ def main() -> int:
         python, cli = install_wheel(smoke_root, wheel)
         smoke_installed_version(python, args.expected_version)
         smoke_console_script(cli)
+        smoke_default_init(cli, smoke_root)
         smoke_clone(cli, smoke_root)
     except Exception:
         print(f"package_smoke: failed; preserving {smoke_root}", file=sys.stderr)
@@ -156,6 +157,20 @@ def smoke_installed_version(python: Path, expected_version: str | None) -> None:
 def smoke_console_script(cli: Path) -> None:
     help_text = run([str(cli), "--help"], capture=True).stdout
     require("clone" in help_text, "gwz-py --help did not advertise clone")
+
+
+def smoke_default_init(cli: Path, smoke_root: Path) -> None:
+    workspace = smoke_root / "default-init"
+    workspace.mkdir()
+    run([str(cli), "init"], cwd=workspace)
+    require(
+        (workspace / "gwz.conf" / "gwz.yml").is_file(),
+        "gwz-py init without --root did not create gwz.conf/gwz.yml",
+    )
+    require(
+        (workspace / "gwz.conf" / "gwz.lock.yml").is_file(),
+        "gwz-py init without --root did not create gwz.conf/gwz.lock.yml",
+    )
 
 
 def smoke_clone(cli: Path, smoke_root: Path) -> None:
