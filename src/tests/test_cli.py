@@ -188,7 +188,52 @@ def test_cli_render_branch_listing() -> None:
         ],
     )
 
-    assert render_response(response) == "status: Ok\nmem_gwz_cli gwz-cli Listed main abc123"
+    assert render_response(response) == "*main: gwz-cli"
+
+
+def test_cli_render_branch_listing_groups_by_current_branch() -> None:
+    def repo(
+        member_id: str,
+        member_path: str,
+        branch: str,
+        current_branch: str,
+    ) -> BranchRepoSummary:
+        return BranchRepoSummary(
+            member_id=member_id,
+            member_path=member_path,
+            source_kind=SourceKind.git,
+            result=BranchActionResult.listed,
+            branch=branch,
+            current_branch=current_branch,
+            detached=False,
+            unborn=False,
+            head="abc123",
+            upstream=None,
+            ahead=0,
+            behind=0,
+            source_ref=None,
+            target_branch=None,
+            resulting_commit=None,
+            conflict_paths=[],
+        )
+
+    response = BranchResponse(
+        response=response_envelope(ActionKind.branch),
+        repos=[
+            repo("mem_cli", "gwz-cli", "main", "main"),
+            repo("mem_cli", "gwz-cli", "release", "main"),
+            repo("mem_core", "gwz-core", "main", "main"),
+            repo("mem_py", "gwz-py", "main", "release"),
+            repo("mem_py", "gwz-py", "release", "release"),
+        ],
+    )
+
+    assert render_response(response) == (
+        "*main: gwz-cli gwz-core\n"
+        "main: gwz-py\n"
+        "*release: gwz-py\n"
+        "release: gwz-cli"
+    )
 
 
 def test_cli_render_stash_list_empty() -> None:

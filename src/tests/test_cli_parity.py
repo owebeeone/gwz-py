@@ -216,10 +216,7 @@ def test_cli_parity_accepts_rust_version_flags(argv: list[str]) -> None:
         (["status"], "On branch main"),
         (["ls"], "/workspace/repos/app\n/workspace/libs/lib"),
         (["ls", "--local"], "repos/app\nlibs/lib"),
-        (
-            ["branch"],
-            "status: Ok\nmem_app repos/app Listed main 1111111111111111111111111111111111111111",
-        ),
+        (["branch"], "*main: app"),
     ],
 )
 def test_cli_parity_renders_high_priority_human_output(
