@@ -6,6 +6,8 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from gwz import Client
 from gwz.protocol.generated import (
     ActionKind,
@@ -13,12 +15,18 @@ from gwz.protocol.generated import (
     BranchOp,
     BranchRequest,
     BranchResponse,
+    AttachRepoMemberRequest,
+    AttachRepoMemberResponse,
     CloneWorkspaceRequest,
     CloneWorkspaceResponse,
+    CloneRepoMemberRequest,
+    CloneRepoMemberResponse,
     CommitRequest,
     CommitResponse,
     CreateWorkspaceRequest,
     CreateWorkspaceResponse,
+    DetachRepoMemberRequest,
+    DetachRepoMemberResponse,
     InitFromSourcesResponse,
     ListSnapshotsRequest,
     ListSnapshotsResponse,
@@ -49,9 +57,12 @@ RESPONSE_TYPES = {
     cls.__name__: cls
     for cls in (
         BranchResponse,
+        AttachRepoMemberResponse,
+        CloneRepoMemberResponse,
         CloneWorkspaceResponse,
         CommitResponse,
         CreateWorkspaceResponse,
+        DetachRepoMemberResponse,
         InitFromSourcesResponse,
         ListSnapshotsResponse,
         LsResponse,
@@ -324,6 +335,66 @@ def test_clone_workspace_builds_taut_request() -> None:
     assert request.target == "work/ws"
 
 
+def test_repo_lifecycle_builds_taut_requests_with_cli_parity() -> None:
+    bridge = FakeBridge()
+    client = Client(root=Path("/tmp/workspace"), bridge=bridge)
+
+    cloned = asyncio.run(
+        client.clone_repo_member(
+            "git@example.invalid:org/shared.git",
+            "libs/shared",
+            member_id="mem_shared_v2",
+            source_id="src_shared",
+            dry_run=True,
+        )
+    )
+    detached = asyncio.run(client.detach_repo_member("libs/shared", dry_run=True))
+    attached = asyncio.run(client.attach_repo_member("mem_shared", dry_run=True))
+
+    assert isinstance(cloned, CloneRepoMemberResponse)
+    assert isinstance(detached, DetachRepoMemberResponse)
+    assert isinstance(attached, AttachRepoMemberResponse)
+
+    clone_method, clone_request_name, clone_response_name, clone_request = bridge.calls[0]
+    assert clone_method == "clone_repo_member"
+    assert clone_request_name == "CloneRepoMemberRequest"
+    assert clone_response_name == "CloneRepoMemberResponse"
+    assert isinstance(clone_request, CloneRepoMemberRequest)
+    assert clone_request.source.url == "git@example.invalid:org/shared.git"
+    assert clone_request.source.path == "libs/shared"
+    assert clone_request.member_id == "mem_shared_v2"
+    assert clone_request.source_id == "src_shared"
+    assert clone_request.meta.dry_run is True
+
+    detach_method, _, _, detach_request = bridge.calls[1]
+    assert detach_method == "detach_repo_member"
+    assert isinstance(detach_request, DetachRepoMemberRequest)
+    assert detach_request.meta.selection is not None
+    assert detach_request.meta.selection.targets == ["libs/shared"]
+
+    attach_method, _, _, attach_request = bridge.calls[2]
+    assert attach_method == "attach_repo_member"
+    assert isinstance(attach_request, AttachRepoMemberRequest)
+    assert attach_request.meta.selection is not None
+    assert attach_request.meta.selection.targets == ["mem_shared"]
+
+
+def test_repo_lifecycle_operands_reject_explicit_selection() -> None:
+    client = Client(root=Path("/tmp/workspace"), bridge=FakeBridge())
+
+    with pytest.raises(ValueError, match="cannot be combined with explicit selection"):
+        asyncio.run(client.detach_repo_member("mem_shared", targets=("mem_other",)))
+    with pytest.raises(ValueError, match="cannot be combined with explicit selection"):
+        asyncio.run(client.attach_repo_member("mem_shared", all_members=True))
+
+
+def test_attach_repo_member_rejects_path_operand() -> None:
+    client = Client(root=Path("/tmp/workspace"), bridge=FakeBridge())
+
+    with pytest.raises(ValueError, match="member id"):
+        asyncio.run(client.attach_repo_member("libs/shared"))
+
+
 def test_materialize_branch_switch_uses_branch_target() -> None:
     bridge = FakeBridge()
     client = Client(root=Path("/tmp/workspace"), bridge=bridge)
@@ -364,6 +435,7 @@ def test_materialize_stream_subscribes_by_operation_id() -> None:
 
 def test_stream_helpers_subscribe_by_operation_id() -> None:
     stream_calls = [
+        ("clone_repo_member", lambda client: client.clone_repo_member_stream("file:///tmp/source", "libs/source")),
         ("clone_workspace", lambda client: client.clone_workspace_stream("file:///tmp/source", "workspace")),
         ("init_from_sources", lambda client: client.init_from_sources_stream(["file:///tmp/source"])),
         ("pull_head", lambda client: client.pull_head_stream()),
@@ -384,6 +456,44 @@ def test_stream_helpers_subscribe_by_operation_id() -> None:
         assert bridge.subscriptions == ["op_test"]
 
 
+def test_clone_repo_member_stream_prefers_submit_route() -> None:
+    class SubmitBridge(FakeBridge):
+        def __init__(self) -> None:
+            super().__init__()
+            self.submissions: list[tuple[str, str, str, Any]] = []
+
+        async def submit(
+            self,
+            method: str,
+            request_message: str,
+            response_message: str,
+            request: Any,
+        ) -> Any:
+            self.submissions.append(
+                (method, request_message, response_message, request)
+            )
+            return ok_response(RESPONSE_TYPES[response_message])
+
+    bridge = SubmitBridge()
+    client = Client(root=Path("/tmp/workspace"), bridge=bridge)
+
+    async def drain() -> None:
+        async for _event in client.clone_repo_member_stream(
+            "file:///tmp/source", "libs/source"
+        ):
+            pass
+
+    asyncio.run(drain())
+
+    assert bridge.calls == []
+    assert bridge.submissions[0][:3] == (
+        "clone_repo_member",
+        "CloneRepoMemberRequest",
+        "CloneRepoMemberResponse",
+    )
+    assert bridge.subscriptions == ["op_test"]
+
+
 def test_operation_result_delegates_to_bridge() -> None:
     bridge = FakeBridge()
     client = Client(root=Path("/tmp/workspace"), bridge=bridge)
@@ -401,11 +511,14 @@ def test_public_operations_are_async() -> None:
     async_methods = [
         "add_existing_repo",
         "branch",
+        "attach_repo_member",
         "capture",
         "clone_workspace",
+        "clone_repo_member",
         "commit",
         "create_repo",
         "create_workspace",
+        "detach_repo_member",
         "init_from_sources",
         "list_snapshots",
         "ls",

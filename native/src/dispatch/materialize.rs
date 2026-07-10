@@ -16,6 +16,12 @@ pub(crate) fn call(
         "clone_workspace" => {
             call_clone_workspace(method, request_message, response_message, request_bytes)
         }
+        "clone_repo_member" => {
+            call_clone_repo_member(method, request_message, response_message, request_bytes)
+        }
+        "attach_repo_member" => {
+            call_attach_repo_member(method, request_message, response_message, request_bytes)
+        }
         "snapshot" => call_snapshot(method, request_message, response_message, request_bytes),
         "tag" => call_tag(method, request_message, response_message, request_bytes),
         "capture" => call_capture(method, request_message, response_message, request_bytes),
@@ -75,6 +81,62 @@ fn call_clone_workspace(
         })?;
     recorder.finish(&response.response)?;
     codec::encode_message("encode CloneWorkspaceResponse", || response.to_cbor())
+}
+
+fn call_clone_repo_member(
+    method: &str,
+    request_message: &str,
+    response_message: &str,
+    request_bytes: &[u8],
+) -> PyResult<Vec<u8>> {
+    codec::require_request(method, request_message, "CloneRepoMemberRequest")?;
+    codec::require_response(method, response_message, "CloneRepoMemberResponse")?;
+
+    let request = codec::decode_message(request_bytes, "decode CloneRepoMemberRequest", |cbor| {
+        gwz_core::CloneRepoMemberRequest::from_cbor(cbor)
+    })?;
+    let request_id = request.meta.request_id.clone();
+    let start = current_dir()?;
+    let (response, recorder) =
+        shims::backend_with_events(&request_id, |backend, operation_id, events| {
+            gwz_core::workspace_ops::handle_clone_repo_member(
+                backend,
+                &start,
+                request,
+                operation_id,
+                events,
+            )
+        })?;
+    recorder.finish(&response.response)?;
+    codec::encode_message("encode CloneRepoMemberResponse", || response.to_cbor())
+}
+
+fn call_attach_repo_member(
+    method: &str,
+    request_message: &str,
+    response_message: &str,
+    request_bytes: &[u8],
+) -> PyResult<Vec<u8>> {
+    codec::require_request(method, request_message, "AttachRepoMemberRequest")?;
+    codec::require_response(method, response_message, "AttachRepoMemberResponse")?;
+
+    let request = codec::decode_message(request_bytes, "decode AttachRepoMemberRequest", |cbor| {
+        gwz_core::AttachRepoMemberRequest::from_cbor(cbor)
+    })?;
+    let request_id = request.meta.request_id.clone();
+    let start = current_dir()?;
+    let (response, recorder) =
+        shims::backend_with_events(&request_id, |backend, operation_id, events| {
+            gwz_core::workspace_ops::handle_attach_repo_member(
+                backend,
+                &start,
+                request,
+                operation_id,
+                events,
+            )
+        })?;
+    recorder.finish(&response.response)?;
+    codec::encode_message("encode AttachRepoMemberResponse", || response.to_cbor())
 }
 
 fn call_snapshot(

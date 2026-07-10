@@ -101,7 +101,10 @@
         "branch": 18,
         "clone_workspace": 19,
         "list_snapshots": 20,
-        "diff": 21
+        "diff": 21,
+        "clone_repo_member": 22,
+        "detach_repo_member": 23,
+        "attach_repo_member": 24
       }
     },
     {
@@ -292,7 +295,9 @@
         "push": 11,
         "merge": 12,
         "rebase": 13,
-        "reset": 14
+        "reset": 14,
+        "detach_member": 15,
+        "attach_member": 16
       }
     },
     {
@@ -389,7 +394,8 @@
         "branch_mixed": 32,
         "stash_not_found": 33,
         "stash_incomplete": 34,
-        "stash_conflict": 35
+        "stash_conflict": 35,
+        "source_identity_mismatch": 36
       }
     },
     {
@@ -3729,6 +3735,96 @@
       ]
     },
     {
+      "name": "CloneRepoMemberRequest",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "meta",
+          "tag": 1,
+          "type": {
+            "k": "msg",
+            "name": "RequestMeta"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "source",
+          "tag": 2,
+          "type": {
+            "k": "msg",
+            "name": "SourceUrl"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "member_id",
+          "tag": 3,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "source_id",
+          "tag": 4,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "DetachRepoMemberRequest",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "meta",
+          "tag": 1,
+          "type": {
+            "k": "msg",
+            "name": "RequestMeta"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "AttachRepoMemberRequest",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "meta",
+          "tag": 1,
+          "type": {
+            "k": "msg",
+            "name": "RequestMeta"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
       "name": "MaterializeRequest",
       "reserved_tags": [],
       "reserved_names": [],
@@ -4729,6 +4825,63 @@
     },
     {
       "name": "RepoSyncResponse",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "response",
+          "tag": 1,
+          "type": {
+            "k": "msg",
+            "name": "ResponseEnvelope"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "CloneRepoMemberResponse",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "response",
+          "tag": 1,
+          "type": {
+            "k": "msg",
+            "name": "ResponseEnvelope"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "DetachRepoMemberResponse",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "response",
+          "tag": 1,
+          "type": {
+            "k": "msg",
+            "name": "ResponseEnvelope"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "AttachRepoMemberResponse",
       "reserved_tags": [],
       "reserved_names": [],
       "next_id": null,
@@ -6399,6 +6552,75 @@
               "type": {
                 "k": "msg",
                 "name": "RepoSyncResponse"
+              }
+            }
+          ]
+        },
+        {
+          "name": "clone_repo_member",
+          "role": "in",
+          "shape": "unary",
+          "params": [
+            {
+              "name": "request",
+              "type": {
+                "k": "msg",
+                "name": "CloneRepoMemberRequest"
+              }
+            }
+          ],
+          "out": [
+            {
+              "slot": "value",
+              "type": {
+                "k": "msg",
+                "name": "CloneRepoMemberResponse"
+              }
+            }
+          ]
+        },
+        {
+          "name": "detach_repo_member",
+          "role": "in",
+          "shape": "unary",
+          "params": [
+            {
+              "name": "request",
+              "type": {
+                "k": "msg",
+                "name": "DetachRepoMemberRequest"
+              }
+            }
+          ],
+          "out": [
+            {
+              "slot": "value",
+              "type": {
+                "k": "msg",
+                "name": "DetachRepoMemberResponse"
+              }
+            }
+          ]
+        },
+        {
+          "name": "attach_repo_member",
+          "role": "in",
+          "shape": "unary",
+          "params": [
+            {
+              "name": "request",
+              "type": {
+                "k": "msg",
+                "name": "AttachRepoMemberRequest"
+              }
+            }
+          ],
+          "out": [
+            {
+              "slot": "value",
+              "type": {
+                "k": "msg",
+                "name": "AttachRepoMemberResponse"
               }
             }
           ]

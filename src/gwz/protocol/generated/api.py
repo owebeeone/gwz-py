@@ -26,6 +26,9 @@ class ActionKind(Enum):
     clone_workspace = 19
     list_snapshots = 20
     diff = 21
+    clone_repo_member = 22
+    detach_repo_member = 23
+    attach_repo_member = 24
 
 class TagOp(Enum):
     create = 0
@@ -160,6 +163,8 @@ class PlannedAction(Enum):
     merge = 12
     rebase = 13
     reset = 14
+    detach_member = 15
+    attach_member = 16
 
 class LockMatch(Enum):
     unknown = 0
@@ -236,6 +241,7 @@ class GwzErrorCode(Enum):
     stash_not_found = 33
     stash_incomplete = 34
     stash_conflict = 35
+    source_identity_mismatch = 36
 
 class DiffComparisonKind(Enum):
     worktree_vs_index = 0
@@ -685,6 +691,21 @@ class RepoSyncRequest:
     meta: RequestMeta
 
 @dataclass(slots=True)
+class CloneRepoMemberRequest:
+    meta: RequestMeta
+    source: SourceUrl
+    member_id: str | None
+    source_id: str | None
+
+@dataclass(slots=True)
+class DetachRepoMemberRequest:
+    meta: RequestMeta
+
+@dataclass(slots=True)
+class AttachRepoMemberRequest:
+    meta: RequestMeta
+
+@dataclass(slots=True)
 class MaterializeRequest:
     meta: RequestMeta
     target: MaterializeTarget
@@ -830,6 +851,18 @@ class CreateRepoResponse:
 
 @dataclass(slots=True)
 class RepoSyncResponse:
+    response: ResponseEnvelope
+
+@dataclass(slots=True)
+class CloneRepoMemberResponse:
+    response: ResponseEnvelope
+
+@dataclass(slots=True)
+class DetachRepoMemberResponse:
+    response: ResponseEnvelope
+
+@dataclass(slots=True)
+class AttachRepoMemberResponse:
     response: ResponseEnvelope
 
 @dataclass(slots=True)

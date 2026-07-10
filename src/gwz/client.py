@@ -18,6 +18,8 @@ from .client_helpers import (
 from .protocol.generated import (
     AddExistingRepoRequest,
     AddExistingRepoResponse,
+    AttachRepoMemberRequest,
+    AttachRepoMemberResponse,
     BranchOp,
     BranchRequest,
     BranchResponse,
@@ -25,12 +27,16 @@ from .protocol.generated import (
     CaptureResponse,
     CloneWorkspaceRequest,
     CloneWorkspaceResponse,
+    CloneRepoMemberRequest,
+    CloneRepoMemberResponse,
     CommitRequest,
     CommitResponse,
     CreateRepoRequest,
     CreateRepoResponse,
     CreateWorkspaceRequest,
     CreateWorkspaceResponse,
+    DetachRepoMemberRequest,
+    DetachRepoMemberResponse,
     DestructiveBehavior,
     DiffAlgorithm,
     DiffManifestMode,
@@ -102,6 +108,21 @@ _diff_stream_counter = itertools.count(1)
 def _diff_stream_id() -> str:
     """A fresh reader stream id (taut-shape D3): one logical read loop position."""
     return f"pydiff-{next(_diff_stream_counter)}"
+
+
+def _validate_member_id(value: str) -> None:
+    suffix = value.removeprefix("mem_")
+    if (
+        not value.startswith("mem_")
+        or not suffix
+        or not all(
+            character.isascii() and (character.isalnum() or character in "_-.")
+            for character in value
+        )
+    ):
+        raise ValueError(
+            "member id must start with mem_ and contain only portable characters"
+        )
 
 
 class Client:
@@ -321,6 +342,102 @@ class Client:
             target=str(target),
         )
         return self._stream_call("clone_workspace", request, CloneWorkspaceResponse)
+
+    async def clone_repo_member(
+        self,
+        url: str,
+        member_path: str | Path | None = None,
+        *,
+        member_id: str | None = None,
+        source_id: str | None = None,
+        **meta: Any,
+    ) -> CloneRepoMemberResponse:
+        request = self._clone_repo_member_request(
+            url,
+            member_path,
+            member_id=member_id,
+            source_id=source_id,
+            **meta,
+        )
+        return await self._call("clone_repo_member", request, CloneRepoMemberResponse)
+
+    def clone_repo_member_stream(
+        self,
+        url: str,
+        member_path: str | Path | None = None,
+        *,
+        member_id: str | None = None,
+        source_id: str | None = None,
+        **meta: Any,
+    ) -> AsyncIterator[OperationEvent]:
+        request = self._clone_repo_member_request(
+            url,
+            member_path,
+            member_id=member_id,
+            source_id=source_id,
+            **meta,
+        )
+        return self._stream_call("clone_repo_member", request, CloneRepoMemberResponse)
+
+    def _clone_repo_member_request(
+        self,
+        url: str,
+        member_path: str | Path | None,
+        *,
+        member_id: str | None,
+        source_id: str | None,
+        **meta: Any,
+    ) -> CloneRepoMemberRequest:
+        return CloneRepoMemberRequest(
+            meta=self.meta(**meta),
+            source=SourceUrl(
+                url=url,
+                path=str(member_path) if member_path is not None else None,
+                remote_name=None,
+                branch=None,
+            ),
+            member_id=member_id,
+            source_id=source_id,
+        )
+
+    async def detach_repo_member(
+        self,
+        member: str,
+        **meta: Any,
+    ) -> DetachRepoMemberResponse:
+        request = DetachRepoMemberRequest(
+            meta=self._single_repo_lifecycle_meta(member, "detach_repo_member", meta)
+        )
+        return await self._call("detach_repo_member", request, DetachRepoMemberResponse)
+
+    async def attach_repo_member(
+        self,
+        member_id: str,
+        **meta: Any,
+    ) -> AttachRepoMemberResponse:
+        _validate_member_id(member_id)
+        request = AttachRepoMemberRequest(
+            meta=self._single_repo_lifecycle_meta(member_id, "attach_repo_member", meta)
+        )
+        return await self._call("attach_repo_member", request, AttachRepoMemberResponse)
+
+    def _single_repo_lifecycle_meta(
+        self,
+        selector: str,
+        method: str,
+        meta: dict[str, Any],
+    ) -> RequestMeta:
+        request_meta = self.meta(**meta)
+        if request_meta.selection is not None:
+            raise ValueError(f"{method} operand cannot be combined with explicit selection")
+        request_meta.selection = Selection(
+            all=None,
+            member_ids=[],
+            paths=[],
+            targets=[selector],
+            exclude_targets=[],
+        )
+        return request_meta
 
     async def add_existing_repo(
         self,

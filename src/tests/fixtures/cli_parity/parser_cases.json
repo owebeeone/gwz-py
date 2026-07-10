@@ -7,7 +7,13 @@
     ["ls", "--unmaterialized"],
     ["init", "https://example.invalid/repo.git"],
     ["repo", "add", "../repo"],
+    ["repo", "add", "../repo", "--member-id", "mem_app", "--source-id", "src_app"],
+    ["repo", "clone", "https://example.invalid/shared.git", "libs/shared", "--member-id", "mem_shared", "--source-id", "src_shared"],
+    ["--dry-run", "repo", "clone", "https://example.invalid/shared.git"],
     ["repo", "create", "repos/app"],
+    ["repo", "create", "repos/app", "--member-id", "mem_app", "--source-id", "src_app"],
+    ["repo", "detach", "libs/shared"],
+    ["repo", "attach", "mem_shared"],
     ["repo", "sync", "repos/app"],
     ["repo", "sync", "--target", "@root"],
     ["--all", "--member", "mem_app", "--no-target", "@root", "status"],
@@ -32,6 +38,9 @@
   ],
   "parse_reject": [
     ["repo"],
+    ["repo", "clone"],
+    ["repo", "detach"],
+    ["repo", "attach"],
     ["commit"],
     ["stash", "drop"],
     ["stage", "-A", "src/file.py"]
@@ -40,13 +49,19 @@
     ["--json", "--jsonl", "status"],
     ["branch", "--switch"],
     ["stash", "push", "-u", "-a"],
-    ["forall"]
+    ["forall"],
+    ["--member", "mem_other", "repo", "detach", "mem_shared"],
+    ["--all", "repo", "attach", "mem_shared"],
+    ["repo", "attach", "libs/shared"]
   ],
   "rust_accept": [
     ["--jsonl", "status"],
     ["--ssh-timeout", "10", "status"],
     ["status", "--porcelain"],
-    ["forall", "--command-string", "echo hi"]
+    ["forall", "--command-string", "echo hi"],
+    ["repo", "clone", "https://example.invalid/shared.git", "libs/shared", "--member-id", "mem_shared", "--source-id", "src_shared"],
+    ["repo", "detach", "libs/shared"],
+    ["repo", "attach", "mem_shared"]
   ],
   "rust_version": [
     ["-V"],

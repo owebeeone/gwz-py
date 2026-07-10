@@ -11,6 +11,7 @@ from gwz.protocol.generated import ActionKind, AggregateStatus, EventKind, Opera
 
 from native_helpers import (
     commit_file,
+    create_git_repo,
     create_workspace_with_member,
     git,
     init_bare_repo,
@@ -143,6 +144,33 @@ def test_native_clone_workspace_streams_root_and_member_events(tmp_path: Path) -
     assert result.aggregate_status is AggregateStatus.ok
     assert (target / "gwz.conf" / "gwz.lock.yml").is_file()
     assert git(target / "repos" / "app", "rev-parse", "HEAD") == commit
+
+
+def test_native_clone_repo_member_stream_uses_submitted_route(tmp_path: Path) -> None:
+    source = tmp_path / "source-member"
+    create_git_repo(source)
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    client = native_client(workspace)
+    asyncio.run(client.create_workspace(workspace_id="ws_native_clone_member"))
+
+    events = asyncio.run(
+        collect(
+            client.clone_repo_member_stream(
+                str(source),
+                "libs/shared",
+                member_id="mem_shared",
+                source_id="src_shared",
+            )
+        )
+    )
+    result = asyncio.run(client.operation_result(events[0].operation_id))
+
+    assert events[0].kind is EventKind.operation_started
+    assert events[-1].kind is EventKind.operation_finished
+    assert result.action is ActionKind.clone_repo_member
+    assert result.aggregate_status is AggregateStatus.ok
+    assert (workspace / "libs" / "shared" / ".git").is_dir()
 
 
 def test_native_operation_lookup_reports_missing_id(tmp_path: Path) -> None:

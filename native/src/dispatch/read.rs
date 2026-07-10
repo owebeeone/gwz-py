@@ -21,6 +21,9 @@ pub(crate) fn call(
         }
         "create_repo" => call_create_repo(method, request_message, response_message, request_bytes),
         "repo_sync" => call_repo_sync(method, request_message, response_message, request_bytes),
+        "detach_repo_member" => {
+            call_detach_repo_member(method, request_message, response_message, request_bytes)
+        }
         "status" => call_status(method, request_message, response_message, request_bytes),
         "ls" => call_ls(method, request_message, response_message, request_bytes),
         "list_snapshots" => {
@@ -137,6 +140,26 @@ fn call_repo_sync(
         gwz_core::workspace_ops::handle_repo_sync(backend, &start, request, operation_id)
     })?;
     codec::encode_message("encode RepoSyncResponse", || response.to_cbor())
+}
+
+fn call_detach_repo_member(
+    method: &str,
+    request_message: &str,
+    response_message: &str,
+    request_bytes: &[u8],
+) -> PyResult<Vec<u8>> {
+    codec::require_request(method, request_message, "DetachRepoMemberRequest")?;
+    codec::require_response(method, response_message, "DetachRepoMemberResponse")?;
+
+    let request = codec::decode_message(request_bytes, "decode DetachRepoMemberRequest", |cbor| {
+        gwz_core::DetachRepoMemberRequest::from_cbor(cbor)
+    })?;
+    let request_id = request.meta.request_id.clone();
+    let start = current_dir()?;
+    let response = shims::backend(&request_id, |backend, operation_id| {
+        gwz_core::workspace_ops::handle_detach_repo_member(backend, &start, request, operation_id)
+    })?;
+    codec::encode_message("encode DetachRepoMemberResponse", || response.to_cbor())
 }
 
 fn call_status(

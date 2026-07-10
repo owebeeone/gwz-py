@@ -3,7 +3,10 @@ from __future__ import annotations
 import argparse
 from typing import Any
 
+from . import cli_local
 from .cli_shared import CliUsageError, CommandContext, CommandRegistry, global_options_parent
+from .errors import GwzBridgeError
+from .protocol.generated import CloneRepoMemberResponse
 
 
 def register_commands(registry: CommandRegistry) -> None:
@@ -112,6 +115,21 @@ def configure_repo(parser: argparse.ArgumentParser) -> None:
         conflict_handler="resolve",
     )
     add.add_argument("repo_path", help="Path to an existing local git repository")
+    _add_identity_options(add)
+
+    clone = subparsers.add_parser(
+        "clone",
+        help="Clone and register a new repository member",
+        parents=[nested_global],
+        conflict_handler="resolve",
+    )
+    clone.add_argument("url", help="Git URL of the repository to clone")
+    clone.add_argument(
+        "member_path",
+        nargs="?",
+        help="Workspace-relative target path; defaults from the URL",
+    )
+    _add_identity_options(clone)
 
     create = subparsers.add_parser(
         "create",
@@ -119,7 +137,26 @@ def configure_repo(parser: argparse.ArgumentParser) -> None:
         parents=[nested_global],
         conflict_handler="resolve",
     )
-    create.add_argument("member_path", help="Workspace-relative path for the new repository member")
+    create.add_argument(
+        "member_path", help="Workspace-relative path for the new repository member"
+    )
+    _add_identity_options(create)
+
+    detach = subparsers.add_parser(
+        "detach",
+        help="Detach a repository member without deleting its checkout",
+        parents=[nested_global],
+        conflict_handler="resolve",
+    )
+    detach.add_argument("member", help="Active member id or workspace-relative path")
+
+    attach = subparsers.add_parser(
+        "attach",
+        help="Reattach an inactive repository designation",
+        parents=[nested_global],
+        conflict_handler="resolve",
+    )
+    attach.add_argument("member_id", help="Inactive member designation id")
 
     sync = subparsers.add_parser(
         "sync",
@@ -127,18 +164,44 @@ def configure_repo(parser: argparse.ArgumentParser) -> None:
         parents=[nested_global],
         conflict_handler="resolve",
     )
-    sync.add_argument("member_path", nargs="?", help="Workspace-relative member path to sync")
+    sync.add_argument(
+        "member_path", nargs="?", help="Workspace-relative member path to sync"
+    )
+
+
+def _add_identity_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--member-id", help="Explicit member designation id")
+    parser.add_argument("--source-id", help="Explicit logical source id")
 
 
 async def handle_repo(context: CommandContext) -> Any:
     if context.args.repo_command == "add":
         return await context.client.add_existing_repo(
             context.args.repo_path,
+            member_id=context.args.member_id,
+            source_id=context.args.source_id,
             **context.meta,
         )
+    if context.args.repo_command == "clone":
+        return await _handle_repo_clone(context)
     if context.args.repo_command == "create":
         return await context.client.create_repo(
             context.args.member_path,
+            member_id=context.args.member_id,
+            source_id=context.args.source_id,
+            **context.meta,
+        )
+    if context.args.repo_command == "detach":
+        _reject_repo_operand_with_selection(context, "repo detach")
+        return await context.client.detach_repo_member(
+            context.args.member,
+            **context.meta,
+        )
+    if context.args.repo_command == "attach":
+        _validate_member_id(context.args.member_id)
+        _reject_repo_operand_with_selection(context, "repo attach")
+        return await context.client.attach_repo_member(
+            context.args.member_id,
             **context.meta,
         )
     if context.args.repo_command == "sync":
@@ -151,3 +214,55 @@ async def handle_repo(context: CommandContext) -> Any:
             **context.meta,
         )
     raise AssertionError(context.args.repo_command)
+
+
+async def _handle_repo_clone(context: CommandContext) -> Any:
+    call_kwargs = {
+        "member_id": context.args.member_id,
+        "source_id": context.args.source_id,
+        **context.meta,
+    }
+    if context.args.json or context.args.jsonl or context.meta.get("dry_run"):
+        return await context.client.clone_repo_member(
+            context.args.url,
+            context.args.member_path,
+            **call_kwargs,
+        )
+
+    operation_id = None
+    async for event in context.client.clone_repo_member_stream(
+        context.args.url,
+        context.args.member_path,
+        **call_kwargs,
+    ):
+        operation_id = event.operation_id
+        cli_local.render_clone_event(event)
+    if operation_id is None:
+        raise GwzBridgeError("repo clone stream completed without an operation event")
+    result = await context.client.operation_result(operation_id)
+    return CloneRepoMemberResponse(
+        response=cli_local.response_envelope_from_result(result)
+    )
+
+
+def _reject_repo_operand_with_selection(context: CommandContext, command: str) -> None:
+    if any(
+        key in context.meta
+        for key in ("all_members", "member_ids", "paths", "targets", "exclude_targets")
+    ):
+        raise CliUsageError(f"{command} member cannot be combined with global selection")
+
+
+def _validate_member_id(value: str) -> None:
+    suffix = value.removeprefix("mem_")
+    if (
+        not value.startswith("mem_")
+        or not suffix
+        or not all(
+            character.isascii() and (character.isalnum() or character in "_-.")
+            for character in value
+        )
+    ):
+        raise CliUsageError(
+            "member id must start with mem_ and contain only portable characters"
+        )
