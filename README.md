@@ -1,73 +1,29 @@
 # gwz-py
 
-Python bindings and an installable `gwz-py` command for GWZ multi-repository
-workspaces.
+`gwz-py` provides Python bindings to `gwz-core` and a Python implementation of
+the GWZ CLI. The CLI keeps the bindings exercised through real user-facing
+workflows, helping ensure that Python applications can rely on the workspace
+operations exposed by the message-driven core engine.
 
-Status: alpha. The Python package shape, generated taut protocol API, async
-client facade, CLI entry point, and native `gwz-core` bridge exist. The native
-bridge supports request/response calls plus operation event streaming for
-long-running operations such as `clone`, `materialize`, `pull`, and `push`.
-The nested `repo` surface is argv-compatible with Rust `gwz` for `add`,
-`clone`, `create`, `detach`, `attach`, and `sync`, including member/source id
-overrides and repo-clone dry-run behavior.
+The `gwz-py` CLI is intended to be functional and follows the same command
+model. For general terminal use, the Rust [`gwz`](https://github.com/owebeeone/gwz-cli)
+CLI is the primary and more thoroughly tested implementation. Use `gwz-py` when
+Python API integration or a Python-distributed CLI is the requirement.
 
-Release mode: installing the PyPI distribution `gwz` installs the Python `gwz-py` CLI
-(`gwz.cli:main`). The CLI uses the same native `gwz-core` extension as the
-Python API; first-line PyPI wheels do not bundle or dispatch to the Rust `gwz`
-binary.
+Both the Python API and CLI call the native `gwz-core` extension; the package
+does not shell out to or bundle the Rust `gwz` executable. The current package
+uses an in-process bridge, while the typed message boundary is designed to also
+support a separately hosted core through a remote adapter.
+
+## Install
 
 ```sh
 python -m pip install gwz
 ```
 
-```sh
-python -m pip install -e ".[dev]"
-python run_tests.py
-```
+The distribution installs the `gwz-py` command and the `gwz` Python package.
 
-Build the native extension locally with maturin:
-
-```sh
-python -m maturin develop
-python -m pytest src/tests/test_native_bridge.py -q
-```
-
-Run the package smoke test before release-oriented changes. It builds a repaired
-wheel, installs it into a fresh virtualenv, runs `gwz-py --help`, creates a
-local workspace fixture, exercises installed `gwz-py clone`, verifies clone
-progress events and materialized member state, then runs `gwz-py status` in the
-clone:
-
-```sh
-python scripts/package_smoke.py
-```
-
-Check that the packaged protocol IR still matches the sibling `gwz-core` schema:
-
-```sh
-python scripts/check_protocol_drift.py
-```
-
-The native crate requires Rust 1.95 or newer and links the sibling
-`../gwz-core` checkout during local development. `gwz-core` depends on `git2`
-with HTTPS and SSH support, so source builds may need platform OpenSSL, libgit2,
-and SSH build prerequisites when wheels are not available.
-
-CI validates macOS, Linux, and Windows. Windows source builds use the same
-native extension path as other platforms and need OpenSSL/libgit2 prerequisites
-available to Cargo, for example through `vcpkg` with `VCPKG_ROOT` set.
-
-If `gwz._gwz_core` is missing, pass a custom bridge in tests or run
-`python -m maturin develop` from this directory.
-
-Regenerate the protocol API from the sibling `gwz-core` checkout:
-
-```sh
-python scripts/regen_protocol.py
-python scripts/regen_protocol.py --check
-```
-
-Example API shape:
+## Python API
 
 ```python
 from pathlib import Path
@@ -79,10 +35,26 @@ async with Client(root=Path(".")) as client:
     response = await client.status(combined=True)
 ```
 
-## Repository Member Lifecycle
+Long-running operations such as clone, materialize, pull, and push also expose
+streaming forms for operation progress events.
 
-The async client and `gwz-py repo` commands follow the same lifecycle contract
-as Rust `gwz`:
+## Python CLI
+
+```sh
+gwz-py --help
+gwz-py status
+gwz-py diff
+```
+
+Workspace concepts and workflows are shared with the Rust CLI. Start with the
+[GWZ Quick Start](https://owebeeone.github.io/gwz-cli/QuickStart/) and use the
+[repository lifecycle guide](https://owebeeone.github.io/gwz-cli/RepoLifecycle/)
+for create, publish, detach, attach, and identity-verification behavior.
+
+## Native Bridge And Repository Lifecycle
+
+The asynchronous client sends generated protocol requests through the native
+extension. For example:
 
 ```python
 from pathlib import Path
@@ -101,30 +73,53 @@ async with Client(root=Path("/work/ws")) as client:
     await client.attach_repo_member("mem_shared")
 ```
 
-Use `clone_repo_member_stream(...)` instead of `clone_repo_member(...)` when the
-caller needs clone progress events. The corresponding CLI forms are `gwz-py
-repo clone`, `gwz-py repo detach`, and `gwz-py repo attach`; their positional
-arguments and member/source id options match Rust `gwz`.
+Use `clone_repo_member_stream(...)` when the caller needs clone progress. The
+native core verifies snapshot and marker commit evidence before reactivating a
+historical designation; it does not fetch missing history automatically.
 
-`detach_repo_member` accepts exactly one active member id or
-workspace-relative path. `attach_repo_member` requires one literal historical
-member id. Their positional selector cannot be combined with selection keyword
-arguments in `**meta`.
+## Development
 
-Bare `add_existing_repo` can reactivate a detached row only when exactly one
-inactive row at the same path has a non-empty historical commit evidence set
-and every recorded commit exists locally. An explicit new `member_id` creates a
-new designation instead. Explicit attach with no recorded evidence succeeds
-with this exact warning:
+Install the development dependencies and run the Python tests:
 
-```text
-attached <member_id>; no snapshot or marker commit evidence was available to verify repository identity
+```sh
+python -m pip install -e ".[dev]"
+python run_tests.py
 ```
 
-Attach, evidence-backed add, and reuse of an existing `source_id` fail with
-`GwzErrorCode.source_identity_mismatch` when any required snapshot or marker
-commit is missing. The native core does not fetch automatically; fetch
-sufficient history into shallow or incomplete repositories before retrying.
+Build the native extension locally:
 
-The Python API uses the `gwz-core` bridge. It must not shell out to the Rust
-`gwz` executable.
+```sh
+python -m maturin develop
+python -m pytest src/tests/test_native_bridge.py -q
+```
+
+Check or regenerate the protocol API against the sibling `gwz-core` checkout:
+
+```sh
+python scripts/check_protocol_drift.py
+python scripts/regen_protocol.py --check
+```
+
+The release smoke test builds and repairs a wheel, installs it in a fresh
+environment, exercises the installed CLI against a workspace fixture, and
+checks operation events and materialized state:
+
+```sh
+python scripts/package_smoke.py
+```
+
+## Platform And Status
+
+Status: alpha.
+
+CI validates macOS, Linux, and Windows. Source builds require Rust 1.95 or newer
+and may need platform OpenSSL, libgit2, and SSH prerequisites when a wheel is
+not available. Windows source builds can provide those dependencies through
+`vcpkg` with `VCPKG_ROOT` set.
+
+If `gwz._gwz_core` is missing in a development checkout, run
+`python -m maturin develop` from this directory.
+
+## License
+
+`gwz-py` is licensed under GPL-2.0-only.
