@@ -24,8 +24,10 @@ dependencies = ["taut-proto>=0.6.0"]
 dev = ["maturin>=1.13,<2", "pytest>=8", "pytest-asyncio>=0.23", "setuptools-scm>=8"]
 
 [project.urls]
-Homepage = "https://github.com/owebeeone/gwz-py"
+Homepage = "https://owebeeone.github.io/gwz-cli/"
+Documentation = "https://owebeeone.github.io/gwz-cli/"
 Repository = "https://github.com/owebeeone/gwz-py"
+Issues = "https://github.com/owebeeone/gwz-py/issues"
 
 [project.scripts]
 gwz-py = "gwz.cli:main"
