@@ -7,6 +7,9 @@ Status: alpha. The Python package shape, generated taut protocol API, async
 client facade, CLI entry point, and native `gwz-core` bridge exist. The native
 bridge supports request/response calls plus operation event streaming for
 long-running operations such as `clone`, `materialize`, `pull`, and `push`.
+The nested `repo` surface is argv-compatible with Rust `gwz` for `add`,
+`clone`, `create`, `detach`, `attach`, and `sync`, including member/source id
+overrides and repo-clone dry-run behavior.
 
 Release mode: installing the PyPI distribution `gwz` installs the Python `gwz-py` CLI
 (`gwz.cli:main`). The CLI uses the same native `gwz-core` extension as the
@@ -75,6 +78,53 @@ from gwz import Client
 async with Client(root=Path(".")) as client:
     response = await client.status(combined=True)
 ```
+
+## Repository Member Lifecycle
+
+The async client and `gwz-py repo` commands follow the same lifecycle contract
+as Rust `gwz`:
+
+```python
+from pathlib import Path
+
+from gwz import Client
+
+
+async with Client(root=Path("/work/ws")) as client:
+    await client.clone_repo_member(
+        "git@github.com:org/shared.git",
+        "libs/shared",
+        member_id="mem_shared",
+        source_id="src_shared",
+    )
+    await client.detach_repo_member("mem_shared")
+    await client.attach_repo_member("mem_shared")
+```
+
+Use `clone_repo_member_stream(...)` instead of `clone_repo_member(...)` when the
+caller needs clone progress events. The corresponding CLI forms are `gwz-py
+repo clone`, `gwz-py repo detach`, and `gwz-py repo attach`; their positional
+arguments and member/source id options match Rust `gwz`.
+
+`detach_repo_member` accepts exactly one active member id or
+workspace-relative path. `attach_repo_member` requires one literal historical
+member id. Their positional selector cannot be combined with selection keyword
+arguments in `**meta`.
+
+Bare `add_existing_repo` can reactivate a detached row only when exactly one
+inactive row at the same path has a non-empty historical commit evidence set
+and every recorded commit exists locally. An explicit new `member_id` creates a
+new designation instead. Explicit attach with no recorded evidence succeeds
+with this exact warning:
+
+```text
+attached <member_id>; no snapshot or marker commit evidence was available to verify repository identity
+```
+
+Attach, evidence-backed add, and reuse of an existing `source_id` fail with
+`GwzErrorCode.source_identity_mismatch` when any required snapshot or marker
+commit is missing. The native core does not fetch automatically; fetch
+sufficient history into shallow or incomplete repositories before retrying.
 
 The Python API uses the `gwz-core` bridge. It must not shell out to the Rust
 `gwz` executable.

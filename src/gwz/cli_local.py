@@ -22,6 +22,7 @@ from .protocol.generated import (
     OperationResult,
     ResponseEnvelope,
     ResponseMeta,
+    Severity,
 )
 
 
@@ -106,7 +107,7 @@ async def handle_clone(context: CommandContext) -> Any:
     operation_id = None
     async for event in context.client.clone_workspace_stream(context.args.url, target, **context.meta):
         operation_id = event.operation_id
-        _render_clone_event(event)
+        render_clone_event(event)
     if operation_id is None:
         raise GwzBridgeError("clone stream completed without an operation event")
     result = await context.client.operation_result(operation_id)
@@ -125,7 +126,11 @@ def _repo_name_from_url(url: str) -> str:
     return name
 
 
-def _render_clone_event(event: OperationEvent) -> None:
+def render_clone_event(event: OperationEvent) -> None:
+    if event.severity in (Severity.warn, Severity.error) and event.message:
+        label = "warning" if event.severity is Severity.warn else "error"
+        print(f"{label}: {event.message}", file=sys.stderr)
+        return
     if event.kind is EventKind.operation_started or event.kind is EventKind.operation_finished:
         return
     path = event.member_path or event.member_id or "workspace"
@@ -145,19 +150,23 @@ def _render_clone_event(event: OperationEvent) -> None:
 
 def _clone_response_from_result(result: OperationResult) -> CloneWorkspaceResponse:
     return CloneWorkspaceResponse(
-        response=ResponseEnvelope(
-            meta=ResponseMeta(
-                request_id=result.request_id,
-                schema_version="gwz.protocol/v0",
-                action=result.action,
-                aggregate_status=result.aggregate_status,
-                operation_id=result.operation_id,
-                message=None,
-                attribution=result.attribution,
-            ),
-            members=result.members,
-            errors=result.errors,
-        )
+        response=response_envelope_from_result(result)
+    )
+
+
+def response_envelope_from_result(result: OperationResult) -> ResponseEnvelope:
+    return ResponseEnvelope(
+        meta=ResponseMeta(
+            request_id=result.request_id,
+            schema_version="gwz.protocol/v0",
+            action=result.action,
+            aggregate_status=result.aggregate_status,
+            operation_id=result.operation_id,
+            message=None,
+            attribution=result.attribution,
+        ),
+        members=result.members,
+        errors=result.errors,
     )
 
 

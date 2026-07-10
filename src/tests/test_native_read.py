@@ -76,6 +76,36 @@ def test_native_add_existing_repo_records_git_state(tmp_path: Path) -> None:
     assert status.response.members[0].member_path == "local-repo"
 
 
+def test_native_repo_clone_detach_and_attach_routes(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    commit = create_git_repo(source)
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    client = native_client(workspace)
+    asyncio.run(client.create_workspace(workspace_id="ws_native"))
+
+    cloned = asyncio.run(
+        client.clone_repo_member(
+            str(source),
+            "libs/shared",
+            member_id="mem_shared",
+            source_id="src_shared",
+        )
+    )
+    detached = asyncio.run(client.detach_repo_member("libs/shared"))
+    attached = asyncio.run(client.attach_repo_member("mem_shared"))
+
+    assert cloned.response.meta.aggregate_status is AggregateStatus.ok
+    assert cloned.response.members[0].member_id == "mem_shared"
+    assert cloned.response.members[0].state is not None
+    assert cloned.response.members[0].state.commit == commit
+    assert detached.response.meta.aggregate_status is AggregateStatus.ok
+    assert attached.response.meta.aggregate_status is AggregateStatus.ok
+    assert attached.response.members[0].member_id == "mem_shared"
+    assert attached.response.meta.message is not None
+    assert "no snapshot or marker commit evidence was available" in attached.response.meta.message
+
+
 def test_native_init_from_sources_dry_run_plans_without_cloning(tmp_path: Path) -> None:
     client = native_client(tmp_path)
 

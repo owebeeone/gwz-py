@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 
 from gwz.cli import build_parser
-from gwz.cli_local import _forall_invocation, _run_forall
+from gwz.cli_local import _forall_invocation, _run_forall, render_clone_event
 from gwz.cli_shared import CliUsageError, CommandContext, meta_kwargs, validate_args
 from gwz.protocol.generated import (
     ActionKind,
@@ -293,3 +293,29 @@ def test_clone_rejects_dry_run(tmp_path: Path) -> None:
 
     with pytest.raises(CliUsageError, match="--dry-run is not supported for clone"):
         run_handler(["--dry-run", "clone", "https://example.invalid/workspace.git"], client)
+
+
+def test_clone_stream_renders_warning_events(capsys: pytest.CaptureFixture[str]) -> None:
+    render_clone_event(
+        OperationEvent(
+            operation_id="op_cli",
+            request_id="req_cli",
+            sequence=1,
+            timestamp_ms=0,
+            kind=EventKind.reset,
+            severity=Severity.warn,
+            member_id="mem_shared",
+            member_path="libs/shared",
+            message="accepted source identity with no historical evidence",
+            member=None,
+            error=None,
+            attribution=None,
+            progress=None,
+            target_kind=None,
+        )
+    )
+
+    assert (
+        capsys.readouterr().err
+        == "warning: accepted source identity with no historical evidence\n"
+    )

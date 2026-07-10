@@ -27,10 +27,11 @@ pub(crate) fn call(
 ) -> PyResult<Vec<u8>> {
     match method {
         "create_workspace" | "init_from_sources" | "add_existing_repo" | "create_repo"
-        | "repo_sync" | "status" | "ls" | "list_snapshots" => {
+        | "repo_sync" | "detach_repo_member" | "status" | "ls" | "list_snapshots" => {
             read::call(method, request_message, response_message, request_bytes)
         }
-        "materialize" | "clone_workspace" | "snapshot" | "tag" | "capture" => {
+        "materialize" | "clone_workspace" | "clone_repo_member" | "attach_repo_member"
+        | "snapshot" | "tag" | "capture" => {
             materialize::call(method, request_message, response_message, request_bytes)
         }
         "commit" | "stage" | "pull_head" | "pull_snapshot" | "push" => {
@@ -59,6 +60,9 @@ pub(crate) fn submit(
         }
         "clone_workspace" => {
             submit_clone_workspace(method, request_message, response_message, request_bytes)
+        }
+        "clone_repo_member" => {
+            submit_clone_repo_member(method, request_message, response_message, request_bytes)
         }
         "pull_head" => submit_pull_head(method, request_message, response_message, request_bytes),
         "pull_snapshot" => {
@@ -132,6 +136,28 @@ fn submit_clone_workspace(
         &request.meta,
         gwz_core::ActionKind::CloneWorkspace,
         |response| gwz_core::CloneWorkspaceResponse { response }.to_cbor(),
+    )
+}
+
+fn submit_clone_repo_member(
+    method: &str,
+    request_message: &str,
+    response_message: &str,
+    request_bytes: &[u8],
+) -> PyResult<Vec<u8>> {
+    codec::require_request(method, request_message, "CloneRepoMemberRequest")?;
+    codec::require_response(method, response_message, "CloneRepoMemberResponse")?;
+    let request = codec::decode_message(request_bytes, "decode CloneRepoMemberRequest", |cbor| {
+        gwz_core::CloneRepoMemberRequest::from_cbor(cbor)
+    })?;
+    submit_accepted(
+        method,
+        request_message,
+        response_message,
+        request_bytes,
+        &request.meta,
+        gwz_core::ActionKind::CloneRepoMember,
+        |response| gwz_core::CloneRepoMemberResponse { response }.to_cbor(),
     )
 }
 
