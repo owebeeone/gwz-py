@@ -39,10 +39,13 @@ pub(crate) fn catch_protocol<T>(context: &'static str, f: impl FnOnce() -> T) ->
 pub(crate) fn decode_message<T>(
     data: &[u8],
     context: &'static str,
-    decode: impl FnOnce(&gwz_core::Cbor) -> T,
+    decode: impl FnOnce(&gwz_core::Cbor) -> Result<T, gwz_core::cbor::DecodeError>,
 ) -> PyResult<T> {
     let cbor = decode_cbor(data)?;
-    catch_protocol(context, || decode(&cbor))
+    // `from_cbor` is fallible as of taut-proto 0.8.x; the unwind guard stays
+    // for any residual panic path in the runtime.
+    catch_protocol(context, || decode(&cbor))?
+        .map_err(|e| error::protocol(format!("{context} failed: {e:?}")))
 }
 
 pub(crate) fn encode_message(
