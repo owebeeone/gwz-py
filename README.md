@@ -1,9 +1,9 @@
 # gwz-py
 
 `gwz-py` provides Python bindings to `gwz-core` and a Python implementation of
-the GWZ CLI. The CLI keeps the bindings exercised through real user-facing
-workflows, helping ensure that Python applications can rely on the workspace
-operations exposed by the message-driven core engine.
+the GWZ (Git Workspace Zone) CLI. The CLI keeps the bindings exercised through
+real user-facing workflows, helping ensure that Python applications can rely on
+the workspace operations exposed by the message-driven core engine.
 
 The `gwz-py` CLI is intended to be functional and follows the same command
 model. For general terminal use, the Rust [`gwz`](https://github.com/owebeeone/gwz-cli)
