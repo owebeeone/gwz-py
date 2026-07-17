@@ -43,9 +43,11 @@ async def handle_merge(context: CommandContext) -> Any:
         )
     )
     if lifecycle_ops > 1:
-        raise CliUsageError("merge accepts only one lifecycle operation")
+        raise CliUsageError("merge accepts only one lifecycle operation", code="InvalidRequest")
     if context.args.ff_only and context.args.no_ff:
-        raise CliUsageError("--ff-only and --no-ff are mutually exclusive")
+        raise CliUsageError(
+            "--ff-only and --no-ff are mutually exclusive", code="InvalidRequest"
+        )
     op = (
         MergeOp.resume
         if context.args.resume

@@ -26,7 +26,10 @@ def render_response(
     porcelain: bool = False,
 ) -> str:
     if json_mode:
-        return json.dumps(response, default=json_default, sort_keys=True)
+        value = _merge_response_json(response) if _is_response(
+            response, "MergeResponse", "merge"
+        ) else response
+        return json.dumps(value, default=json_default, sort_keys=True)
 
     snapshots = getattr(response, "snapshots", None)
     if snapshots is not None:
@@ -71,6 +74,7 @@ def render_error(error: BaseException, *, json_mode: bool = False) -> str:
     if json_mode:
         message = str(error)
         match = re.search(r"(?:^|: )([A-Z][A-Za-z0-9]+): (.*)$", message)
+        code = getattr(error, "code", None) or (match.group(1) if match else None)
         return json.dumps(
             {
                 "kind": "response",
@@ -78,10 +82,14 @@ def render_error(error: BaseException, *, json_mode: bool = False) -> str:
                 "members": [],
                 "errors": [
                     {
-                        "code": match.group(1) if match else None,
+                        "code": code,
                         "message": match.group(2) if match else message,
+                        "member_id": None,
+                        "member_path": None,
+                        "detail": None,
                     }
                 ],
+                "workspace_git_status": None,
             },
             sort_keys=True,
         )
@@ -422,6 +430,57 @@ def _render_merge_response(response: Any) -> str:
         lines.append("Other members may already have changed; M0 has no coordinated continue or")
         lines.append("rollback. The workspace lock reflects clean member outcomes.")
     return "\n".join(lines)
+
+
+def _merge_response_json(response: Any) -> dict[str, Any]:
+    envelope, counts = response.response, response.participant_counts
+    meta = envelope.meta
+    merge = {
+        "merge_id": response.merge_id,
+        "state": _enum_label(response.state),
+        "open": response.open,
+        "participant_counts": _json_fields(
+            counts, "total", "planned", "up_to_date", "fast_forwarded", "merged",
+            "conflicted", "failed", "unattempted",
+        ),
+        "repos": [_merge_repo_json(repo) for repo in response.repos],
+    }
+    return {
+        "kind": "response",
+        "meta": {
+            **_json_fields(meta, "request_id", "schema_version"),
+            "action": _enum_label(meta.action),
+            "aggregate_status": _enum_label(meta.aggregate_status),
+            **_json_fields(meta, "operation_id", "message"),
+        },
+        "members": [json_default(member) for member in envelope.members],
+        "errors": [_merge_error_json(error) for error in envelope.errors],
+        "workspace_git_status": None,
+        "branch_repos": None,
+        "merge": merge,
+        "stash_bundles": None,
+    }
+
+
+def _merge_repo_json(repo: Any) -> dict[str, Any]:
+    value = _json_fields(
+        repo, "target_id", "path", "source_ref", "source_commit", "target_branch",
+        "before_commit", "resulting_commit", "live_commit", "prediction_complete",
+        "conflict_paths", "continue_eligible", "abort_eligible",
+    )
+    value.update(target_kind=_enum_label(repo.target_kind), state=_enum_label(repo.state),
+                 predicted=_enum_label(repo.predicted) if repo.predicted else None,
+                 error=_merge_error_json(repo.error) if repo.error else None)
+    return value
+
+
+def _merge_error_json(error: Any) -> dict[str, Any]:
+    return {**_json_fields(error, "message", "member_id", "member_path", "detail"),
+            "code": _enum_label(error.code)}
+
+
+def _json_fields(value: Any, *names: str) -> dict[str, Any]:
+    return {name: getattr(value, name) for name in names}
 
 
 def _render_branch_listing_response(response: Any, repos: list[Any]) -> str:
