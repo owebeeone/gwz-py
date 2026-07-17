@@ -19,6 +19,7 @@ def test_packaged_ir_contains_gwz_core_service() -> None:
         "detach_repo_member",
         "attach_repo_member",
         "branch",
+        "merge",
         "stash",
         "list_snapshots",
         "events.subscribe",
@@ -34,6 +35,8 @@ def test_repo_member_lifecycle_protocol_is_pinned() -> None:
     assert generated.PlannedAction.detach_member.value == 15
     assert generated.PlannedAction.attach_member.value == 16
     assert generated.GwzErrorCode.source_identity_mismatch.value == 36
+    assert generated.ActionKind.merge.value == 25
+    assert generated.GwzErrorCode.deprecated_operation.value == 37
 
     request = generated.CloneRepoMemberRequest(
         meta=generated.RequestMeta(

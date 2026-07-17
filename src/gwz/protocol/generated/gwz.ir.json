@@ -104,7 +104,8 @@
         "diff": 21,
         "clone_repo_member": 22,
         "detach_repo_member": 23,
-        "attach_repo_member": 24
+        "attach_repo_member": 24,
+        "merge": 25
       }
     },
     {
@@ -163,6 +164,99 @@
         "create": 1,
         "delete": 2,
         "merge": 3
+      }
+    },
+    {
+      "name": "MergeOp",
+      "members": {
+        "start": 0,
+        "resume": 1,
+        "abort": 2,
+        "status": 3,
+        "gc": 4
+      }
+    },
+    {
+      "name": "MergeMode",
+      "members": {
+        "normal": 0,
+        "ff_only": 1,
+        "no_ff": 2
+      }
+    },
+    {
+      "name": "MergeAnalysisKind",
+      "members": {
+        "up_to_date": 0,
+        "fast_forward": 1,
+        "true_merge": 2,
+        "unknown": 3
+      }
+    },
+    {
+      "name": "MergeParticipantState",
+      "members": {
+        "planned": 0,
+        "up_to_date": 1,
+        "fast_forwarded": 2,
+        "merged": 3,
+        "conflicted": 4,
+        "failed": 5,
+        "unattempted": 6,
+        "continued": 7,
+        "aborted": 8,
+        "rolled_back": 9
+      }
+    },
+    {
+      "name": "MergeOperationState",
+      "members": {
+        "executing": 0,
+        "awaiting_resolution": 1,
+        "halted": 2,
+        "finalizing": 3,
+        "preserving": 4,
+        "rolling_back": 5,
+        "completed": 6,
+        "aborted": 7,
+        "recovery_required": 8
+      }
+    },
+    {
+      "name": "MergeParticipantDriftKind",
+      "members": {
+        "branch_changed": 0,
+        "head_advanced": 1,
+        "head_rewound": 2,
+        "target_ref_changed": 3,
+        "worktree_modified": 4,
+        "index_modified": 5,
+        "merge_state_missing": 6,
+        "merge_head_changed": 7,
+        "new_integration_state": 8,
+        "repository_missing": 9
+      }
+    },
+    {
+      "name": "MergeOperationDriftKind",
+      "members": {
+        "baseline_lock_changed": 0,
+        "baseline_manifest_changed": 1,
+        "root_candidate_metadata_invalid": 2,
+        "root_candidate_state_changed": 3,
+        "record_unreadable": 4
+      }
+    },
+    {
+      "name": "MergePublicationStep",
+      "members": {
+        "not_started": 0,
+        "validating_results": 1,
+        "preparing_candidate": 2,
+        "committing_evidence": 3,
+        "publishing_candidate": 4,
+        "verifying_publication": 5,
+        "complete": 6
       }
     },
     {
@@ -344,7 +438,8 @@
         "member_finished": 3,
         "artifact_written": 4,
         "operation_finished": 5,
-        "reset": 6
+        "reset": 6,
+        "operation_state_changed": 7
       }
     },
     {
@@ -395,7 +490,16 @@
         "stash_not_found": 33,
         "stash_incomplete": 34,
         "stash_conflict": 35,
-        "source_identity_mismatch": 36
+        "source_identity_mismatch": 36,
+        "deprecated_operation": 37,
+        "merge_validation_failed": 38,
+        "merge_id_mismatch": 39,
+        "merge_drift": 40,
+        "open_operation": 41,
+        "merge_recovery_required": 42,
+        "merge_phase_unsupported": 43,
+        "root_merge_not_yet_supported": 44,
+        "merge_record_unreadable": 45
       }
     },
     {
@@ -2950,6 +3054,536 @@
       ]
     },
     {
+      "name": "MergeParticipantCounts",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "total",
+          "tag": 1,
+          "type": {
+            "k": "scalar",
+            "scalar": "int"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "planned",
+          "tag": 2,
+          "type": {
+            "k": "scalar",
+            "scalar": "int"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "up_to_date",
+          "tag": 3,
+          "type": {
+            "k": "scalar",
+            "scalar": "int"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "fast_forwarded",
+          "tag": 4,
+          "type": {
+            "k": "scalar",
+            "scalar": "int"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "merged",
+          "tag": 5,
+          "type": {
+            "k": "scalar",
+            "scalar": "int"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "conflicted",
+          "tag": 6,
+          "type": {
+            "k": "scalar",
+            "scalar": "int"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "failed",
+          "tag": 7,
+          "type": {
+            "k": "scalar",
+            "scalar": "int"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "unattempted",
+          "tag": 8,
+          "type": {
+            "k": "scalar",
+            "scalar": "int"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "continued",
+          "tag": 9,
+          "type": {
+            "k": "scalar",
+            "scalar": "int"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "aborted",
+          "tag": 10,
+          "type": {
+            "k": "scalar",
+            "scalar": "int"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "rolled_back",
+          "tag": 11,
+          "type": {
+            "k": "scalar",
+            "scalar": "int"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "MergeParticipantDrift",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "kind",
+          "tag": 1,
+          "type": {
+            "k": "enum",
+            "name": "MergeParticipantDriftKind"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "message",
+          "tag": 2,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "expected_branch",
+          "tag": 3,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "live_branch",
+          "tag": 4,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "expected_head",
+          "tag": 5,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "live_head",
+          "tag": 6,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "expected_merge_head",
+          "tag": 7,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "live_merge_head",
+          "tag": 8,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "MergeOperationDrift",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "kind",
+          "tag": 1,
+          "type": {
+            "k": "enum",
+            "name": "MergeOperationDriftKind"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "message",
+          "tag": 2,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "MergePreservation",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "target_id",
+          "tag": 1,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "path",
+          "tag": 2,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "backup_ref",
+          "tag": 3,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "backup_commit",
+          "tag": 4,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "stash_id",
+          "tag": 5,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "stash_object_id",
+          "tag": 6,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "MergeRepoSummary",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "target_id",
+          "tag": 1,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "target_kind",
+          "tag": 2,
+          "type": {
+            "k": "enum",
+            "name": "TargetKind"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "path",
+          "tag": 3,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "source_ref",
+          "tag": 4,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "source_commit",
+          "tag": 5,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "target_branch",
+          "tag": 6,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "before_commit",
+          "tag": 7,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "resulting_commit",
+          "tag": 8,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "live_commit",
+          "tag": 9,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "state",
+          "tag": 10,
+          "type": {
+            "k": "enum",
+            "name": "MergeParticipantState"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "predicted",
+          "tag": 11,
+          "type": {
+            "k": "enum",
+            "name": "MergeAnalysisKind"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "prediction_complete",
+          "tag": 12,
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "conflict_paths",
+          "tag": 13,
+          "type": {
+            "k": "list",
+            "elem": {
+              "k": "scalar",
+              "scalar": "str"
+            }
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "continue_eligible",
+          "tag": 14,
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "abort_eligible",
+          "tag": 15,
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "drift",
+          "tag": 16,
+          "type": {
+            "k": "list",
+            "elem": {
+              "k": "msg",
+              "name": "MergeParticipantDrift"
+            }
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "error",
+          "tag": 17,
+          "type": {
+            "k": "msg",
+            "name": "GwzError"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
       "name": "PlannedChange",
       "reserved_tags": [],
       "reserved_names": [],
@@ -3321,6 +3955,17 @@
           "type": {
             "k": "enum",
             "name": "TargetKind"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "merge_state",
+          "tag": 15,
+          "type": {
+            "k": "enum",
+            "name": "MergeOperationState"
           },
           "optional": true,
           "transient": false,
@@ -4729,6 +5374,91 @@
       ]
     },
     {
+      "name": "MergeRequest",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "meta",
+          "tag": 1,
+          "type": {
+            "k": "msg",
+            "name": "RequestMeta"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "op",
+          "tag": 2,
+          "type": {
+            "k": "enum",
+            "name": "MergeOp"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "source_ref",
+          "tag": 3,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "merge_id",
+          "tag": 4,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "mode",
+          "tag": 5,
+          "type": {
+            "k": "enum",
+            "name": "MergeMode"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "message",
+          "tag": 6,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "preserve",
+          "tag": 7,
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
       "name": "CreateWorkspaceResponse",
       "reserved_tags": [],
       "reserved_names": [],
@@ -5288,6 +6018,122 @@
               "k": "msg",
               "name": "BranchRepoSummary"
             }
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "MergeResponse",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "response",
+          "tag": 1,
+          "type": {
+            "k": "msg",
+            "name": "ResponseEnvelope"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "merge_id",
+          "tag": 2,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "state",
+          "tag": 3,
+          "type": {
+            "k": "enum",
+            "name": "MergeOperationState"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "open",
+          "tag": 4,
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "participant_counts",
+          "tag": 5,
+          "type": {
+            "k": "msg",
+            "name": "MergeParticipantCounts"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "repos",
+          "tag": 6,
+          "type": {
+            "k": "list",
+            "elem": {
+              "k": "msg",
+              "name": "MergeRepoSummary"
+            }
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "operation_drift",
+          "tag": 7,
+          "type": {
+            "k": "list",
+            "elem": {
+              "k": "msg",
+              "name": "MergeOperationDrift"
+            }
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "preservation",
+          "tag": 8,
+          "type": {
+            "k": "list",
+            "elem": {
+              "k": "msg",
+              "name": "MergePreservation"
+            }
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "publication_step",
+          "tag": 9,
+          "type": {
+            "k": "enum",
+            "name": "MergePublicationStep"
           },
           "optional": true,
           "transient": false,
@@ -6943,6 +7789,29 @@
               "type": {
                 "k": "msg",
                 "name": "BranchResponse"
+              }
+            }
+          ]
+        },
+        {
+          "name": "merge",
+          "role": "in",
+          "shape": "unary",
+          "params": [
+            {
+              "name": "request",
+              "type": {
+                "k": "msg",
+                "name": "MergeRequest"
+              }
+            }
+          ],
+          "out": [
+            {
+              "slot": "value",
+              "type": {
+                "k": "msg",
+                "name": "MergeResponse"
               }
             }
           ]

@@ -29,6 +29,7 @@ class ActionKind(Enum):
     clone_repo_member = 22
     detach_repo_member = 23
     attach_repo_member = 24
+    merge = 25
 
 class TagOp(Enum):
     create = 0
@@ -69,6 +70,75 @@ class BranchOp(Enum):
     create = 1
     delete = 2
     merge = 3
+
+class MergeOp(Enum):
+    start = 0
+    resume = 1
+    abort = 2
+    status = 3
+    gc = 4
+
+class MergeMode(Enum):
+    normal = 0
+    ff_only = 1
+    no_ff = 2
+
+class MergeAnalysisKind(Enum):
+    up_to_date = 0
+    fast_forward = 1
+    true_merge = 2
+    unknown = 3
+
+class MergeParticipantState(Enum):
+    planned = 0
+    up_to_date = 1
+    fast_forwarded = 2
+    merged = 3
+    conflicted = 4
+    failed = 5
+    unattempted = 6
+    continued = 7
+    aborted = 8
+    rolled_back = 9
+
+class MergeOperationState(Enum):
+    executing = 0
+    awaiting_resolution = 1
+    halted = 2
+    finalizing = 3
+    preserving = 4
+    rolling_back = 5
+    completed = 6
+    aborted = 7
+    recovery_required = 8
+
+class MergeParticipantDriftKind(Enum):
+    branch_changed = 0
+    head_advanced = 1
+    head_rewound = 2
+    target_ref_changed = 3
+    worktree_modified = 4
+    index_modified = 5
+    merge_state_missing = 6
+    merge_head_changed = 7
+    new_integration_state = 8
+    repository_missing = 9
+
+class MergeOperationDriftKind(Enum):
+    baseline_lock_changed = 0
+    baseline_manifest_changed = 1
+    root_candidate_metadata_invalid = 2
+    root_candidate_state_changed = 3
+    record_unreadable = 4
+
+class MergePublicationStep(Enum):
+    not_started = 0
+    validating_results = 1
+    preparing_candidate = 2
+    committing_evidence = 3
+    publishing_candidate = 4
+    verifying_publication = 5
+    complete = 6
 
 class BranchActionResult(Enum):
     listed = 0
@@ -197,6 +267,7 @@ class EventKind(Enum):
     artifact_written = 4
     operation_finished = 5
     reset = 6
+    operation_state_changed = 7
 
 class Severity(Enum):
     debug = 0
@@ -242,6 +313,15 @@ class GwzErrorCode(Enum):
     stash_incomplete = 34
     stash_conflict = 35
     source_identity_mismatch = 36
+    deprecated_operation = 37
+    merge_validation_failed = 38
+    merge_id_mismatch = 39
+    merge_drift = 40
+    open_operation = 41
+    merge_recovery_required = 42
+    merge_phase_unsupported = 43
+    root_merge_not_yet_supported = 44
+    merge_record_unreadable = 45
 
 class DiffComparisonKind(Enum):
     worktree_vs_index = 0
@@ -596,6 +676,65 @@ class BranchRepoSummary:
     conflict_paths: list[str]
 
 @dataclass(slots=True)
+class MergeParticipantCounts:
+    total: int
+    planned: int
+    up_to_date: int
+    fast_forwarded: int
+    merged: int
+    conflicted: int
+    failed: int
+    unattempted: int
+    continued: int
+    aborted: int
+    rolled_back: int
+
+@dataclass(slots=True)
+class MergeParticipantDrift:
+    kind: MergeParticipantDriftKind
+    message: str
+    expected_branch: str | None
+    live_branch: str | None
+    expected_head: str | None
+    live_head: str | None
+    expected_merge_head: str | None
+    live_merge_head: str | None
+
+@dataclass(slots=True)
+class MergeOperationDrift:
+    kind: MergeOperationDriftKind
+    message: str
+
+@dataclass(slots=True)
+class MergePreservation:
+    target_id: str
+    path: str
+    backup_ref: str | None
+    backup_commit: str | None
+    stash_id: str | None
+    stash_object_id: str | None
+
+@dataclass(slots=True)
+class MergeRepoSummary:
+    target_id: str
+    target_kind: TargetKind
+    path: str
+    source_ref: str
+    source_commit: str
+    target_branch: str
+    before_commit: str
+    resulting_commit: str | None
+    live_commit: str | None
+    state: MergeParticipantState
+    predicted: MergeAnalysisKind | None
+    prediction_complete: bool | None
+    conflict_paths: list[str]
+    continue_eligible: bool | None
+    abort_eligible: bool | None
+    drift: list[MergeParticipantDrift]
+    error: GwzError | None
+
+@dataclass(slots=True)
 class PlannedChange:
     action: PlannedAction
     from_ref: str | None
@@ -637,6 +776,7 @@ class OperationEvent:
     attribution: OperationAttribution | None
     progress: GitTransferProgress | None
     target_kind: TargetKind | None
+    merge_state: MergeOperationState | None
 
 @dataclass(slots=True)
 class OperationResult:
@@ -830,6 +970,16 @@ class BranchRequest:
     switch_after_create: bool | None
 
 @dataclass(slots=True)
+class MergeRequest:
+    meta: RequestMeta
+    op: MergeOp
+    source_ref: str | None
+    merge_id: str | None
+    mode: MergeMode | None
+    message: str | None
+    preserve: bool | None
+
+@dataclass(slots=True)
 class CreateWorkspaceResponse:
     response: ResponseEnvelope
 
@@ -933,6 +1083,18 @@ class StashResponse:
 class BranchResponse:
     response: ResponseEnvelope
     repos: list[BranchRepoSummary] | None
+
+@dataclass(slots=True)
+class MergeResponse:
+    response: ResponseEnvelope
+    merge_id: str | None
+    state: MergeOperationState
+    open: bool
+    participant_counts: MergeParticipantCounts
+    repos: list[MergeRepoSummary]
+    operation_drift: list[MergeOperationDrift]
+    preservation: list[MergePreservation] | None
+    publication_step: MergePublicationStep | None
 
 @dataclass(slots=True)
 class DiffComparison:

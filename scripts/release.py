@@ -43,7 +43,7 @@ RELEASE_PYTHON_DEPS = (
     "pytest>=8",
     "pytest-asyncio>=0.23",
     "setuptools-scm>=8",
-    "taut-proto>=0.6.0",
+    "taut-proto==0.8.1",
 )
 
 

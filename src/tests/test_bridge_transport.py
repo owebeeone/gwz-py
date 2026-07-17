@@ -77,6 +77,7 @@ def operation_event() -> OperationEvent:
         attribution=None,
         progress=None,
         target_kind=None,
+        merge_state=None,
     )
 
 

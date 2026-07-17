@@ -111,14 +111,8 @@ fn diff_log_read(
     let stream_id = stream_id.to_owned();
     let timeout = diff_logs::timeout_from_ms(timeout_ms);
     py.detach(move || {
-        let (records, next_cursor, state) = diff_logs::read(
-            &log_id,
-            &stream_id,
-            cursor,
-            max_records,
-            max_bytes,
-            timeout,
-        )?;
+        let (records, next_cursor, state) =
+            diff_logs::read(&log_id, &stream_id, cursor, max_records, max_bytes, timeout)?;
         Ok((records, next_cursor, state.to_owned()))
     })
 }

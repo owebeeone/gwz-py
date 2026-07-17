@@ -42,7 +42,5 @@ fn call_diff(
     let outcome = shims::no_backend(&request_id, |operation_id| {
         gwz_core::diff::handle_diff(&start, request, operation_id, diff_logs::registry())
     })?;
-    codec::encode_message("encode DiffManifestResponse", || {
-        outcome.response.to_cbor()
-    })
+    codec::encode_message("encode DiffManifestResponse", || outcome.response.to_cbor())
 }

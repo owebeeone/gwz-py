@@ -22,11 +22,13 @@ def run(cmd: list[str]) -> None:
     env["PYTHONPATH"] = os.pathsep.join(paths)
     env.setdefault("SETUPTOOLS_SCM_PRETEND_VERSION", "0.0.0")
     env.setdefault("SETUPTOOLS_SCM_PRETEND_VERSION_FOR_TAUT_PROTO", "0.0.0")
-    print("+", " ".join(cmd))
+    print("+", " ".join(cmd), flush=True)
     subprocess.run(cmd, check=True, cwd=ROOT, env=env)
 
 
 def main() -> None:
+    # Never let a stale editable native extension satisfy the Python parity gate.
+    run([sys.executable, "-m", "maturin", "develop"])
     run([sys.executable, "scripts/regen_protocol.py", "--check"])
     run([sys.executable, "-m", "pytest", "src/tests", "-q"])
 

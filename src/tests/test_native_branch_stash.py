@@ -3,6 +3,10 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
+import pytest
+
+from gwz.errors import GwzBridgeError
+
 from gwz.protocol.generated import (
     AggregateStatus,
     BranchActionResult,
@@ -13,7 +17,7 @@ from gwz.protocol.generated import (
 from native_helpers import commit_file, create_workspace_with_member, git, native_client
 
 
-def test_native_branch_create_list_and_merge_source_ref(tmp_path: Path) -> None:
+def test_native_branch_create_list_and_direct_merge_deprecation(tmp_path: Path) -> None:
     repo, _ = create_workspace_with_member(tmp_path)
     client = native_client(tmp_path)
 
@@ -32,14 +36,8 @@ def test_native_branch_create_list_and_merge_source_ref(tmp_path: Path) -> None:
     git(repo, "checkout", "main")
     commit_file(repo, "local.txt", "local\n", "local")
 
-    merged = asyncio.run(client.branch(op="merge", source_ref="feature/source", paths=["repos/app"]))
-
-    assert merged.response.meta.aggregate_status is AggregateStatus.ok
-    assert merged.repos is not None
-    merged_repo = merged.repos[0]
-    assert merged_repo.result is BranchActionResult.merged
-    assert merged_repo.source_ref == "feature/source"
-    assert merged_repo.resulting_commit == git(repo, "rev-parse", "HEAD")
+    with pytest.raises(GwzBridgeError, match="DeprecatedOperation.*first-class merge"):
+        asyncio.run(client.branch(op="merge", source_ref="feature/source", paths=["repos/app"]))
 
 
 def test_native_stash_push_list_apply_pop_and_drop(tmp_path: Path) -> None:
