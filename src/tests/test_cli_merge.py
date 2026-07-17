@@ -118,7 +118,7 @@ def merge_response() -> MergeResponse:
              merge_repo("docs", MergeParticipantState.conflicted)]
     repos[0].predicted = MergeAnalysisKind.true_merge
     repos[1].conflict_paths = ["guide.md"]
-    return MergeResponse(envelope, None, MergeOperationState.awaiting_resolution, False,
+    return MergeResponse(envelope, None, MergeOperationState.awaiting_resolution, True,
                          MergeParticipantCounts(2, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0),
                          repos, [], None, None)
 
