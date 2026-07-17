@@ -28,6 +28,7 @@ from .cli_shared import (
 )
 from .client import Client
 from .errors import GwzError, GwzOperationError
+from .protocol.generated import MergeResponse
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -89,6 +90,8 @@ async def run(args: argparse.Namespace) -> int:
 
 def _renderable_operation_response(args: argparse.Namespace, exc: GwzOperationError) -> object | None:
     response = exc.response
+    if isinstance(response, MergeResponse):
+        return response
     if (
         getattr(args, "command", None) == "status"
         and response is not None

@@ -7,7 +7,7 @@ from gwz import cli
 from gwz.cli import build_parser
 from gwz.cli_render import render_response
 from gwz.cli_shared import CliUsageError, CommandContext, meta_kwargs, validate_args
-from gwz.errors import GwzBridgeError
+from gwz.errors import GwzBridgeError, GwzOperationError
 from gwz.protocol.generated import (
     ActionKind, AggregateStatus, MergeAnalysisKind, MergeOperationState, MergeOp,
     MergeParticipantCounts, MergeParticipantState, MergeRepoSummary, MergeResponse,
@@ -93,6 +93,21 @@ def test_native_machine_errors_are_structured(
     assert cli.main([flag, "merge", "feature/x", "--ff-only"]) == 1
     error = json.loads(capsys.readouterr().out)["errors"][0]
     assert (error["code"], error["message"]) == ("MergePhaseUnsupported", "reserved")
+
+def test_halted_merge_response_unwraps_without_changing_generic_failures() -> None:
+    response = merge_response()
+    response.state = MergeOperationState.halted
+    response.response.meta.aggregate_status = AggregateStatus.failed
+    error = GwzOperationError("halted", response=response)
+    args = build_parser().parse_args(["merge", "feature/x"])
+    assert cli._renderable_operation_response(args, error) is response
+    assert cli._exit_code_for_cli_response(args, response) == 1
+    rendered = json.loads(render_response(response, json_mode=True))
+    assert (rendered["meta"]["aggregate_status"], rendered["merge"]["state"]) == (
+        "Failed", "Halted")
+    assert cli._renderable_operation_response(
+        args, GwzOperationError("other", response=object())
+    ) is None
 
 def merge_response() -> MergeResponse:
     envelope = ResponseEnvelope(ResponseMeta(

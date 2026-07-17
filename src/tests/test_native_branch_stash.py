@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 
 import pytest
 
+from gwz import cli as cli_module
 from gwz.errors import GwzBridgeError
 
 from gwz.protocol.generated import (
     AggregateStatus,
     BranchActionResult,
+    MergeParticipantState,
     StashPushLifecycle,
     StashRestoreState,
 )
@@ -39,6 +42,15 @@ def test_native_branch_create_list_and_direct_merge_deprecation(tmp_path: Path) 
     with pytest.raises(GwzBridgeError, match="DeprecatedOperation.*first-class merge"):
         asyncio.run(client.branch(op="merge", source_ref="feature/source", paths=["repos/app"]))
 
+    before = git(repo, "rev-parse", "HEAD")
+    planned = asyncio.run(client.merge("feature/source", dry_run=True, paths=["repos/app"]))
+    assert planned.repos[0].state is MergeParticipantState.planned
+    assert git(repo, "rev-parse", "HEAD") == before
+
+    merged = asyncio.run(client.merge("feature/source", paths=["repos/app"]))
+    assert merged.response.meta.aggregate_status is AggregateStatus.ok
+    assert merged.repos[0].state is MergeParticipantState.merged
+
 
 def test_native_first_class_merge_dispatch_reaches_core_validation(tmp_path: Path) -> None:
     create_workspace_with_member(tmp_path)
@@ -46,6 +58,44 @@ def test_native_first_class_merge_dispatch_reaches_core_validation(tmp_path: Pat
 
     with pytest.raises(GwzBridgeError, match="MergeValidationFailed.*source_ref"):
         asyncio.run(client.merge("", paths=["repos/app"]))
+
+
+@pytest.mark.parametrize(
+    ("machine_flag", "command"),
+    [
+        (None, ["branch", "--merge"]),
+        ("--json", ["merge"]),
+        ("--jsonl", ["merge"]),
+    ],
+)
+def test_native_cli_merge_conflict_preserves_structured_response(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    machine_flag: str | None,
+    command: list[str],
+) -> None:
+    repo, _ = create_workspace_with_member(tmp_path)
+    git(repo, "checkout", "-b", "feature/source")
+    commit_file(repo, "README.md", "source\n", "source")
+    git(repo, "checkout", "main")
+    commit_file(repo, "README.md", "target\n", "target")
+
+    argv = ["--root", str(tmp_path)]
+    if machine_flag is not None:
+        argv.append(machine_flag)
+    assert cli_module.main([*argv, *command, "feature/source"]) == 1
+    output = capsys.readouterr().out
+
+    if machine_flag is None:
+        assert "repos/app  feature/source -> main  conflicted" in output
+        assert "README.md" in output
+        assert "ordinary Git commands in repos/app/." in output
+        return
+    payload = json.loads(output)
+    assert payload["meta"]["aggregate_status"] == "Conflicted"
+    assert payload["merge"]["state"] == "AwaitingResolution"
+    assert payload["merge"]["repos"][0]["state"] == "Conflicted"
+    assert payload["merge"]["repos"][0]["conflict_paths"] == ["README.md"]
 
 
 def test_native_stash_push_list_apply_pop_and_drop(tmp_path: Path) -> None:
