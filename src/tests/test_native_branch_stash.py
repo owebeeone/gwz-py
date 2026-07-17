@@ -40,6 +40,14 @@ def test_native_branch_create_list_and_direct_merge_deprecation(tmp_path: Path) 
         asyncio.run(client.branch(op="merge", source_ref="feature/source", paths=["repos/app"]))
 
 
+def test_native_first_class_merge_dispatch_reaches_core_validation(tmp_path: Path) -> None:
+    create_workspace_with_member(tmp_path)
+    client = native_client(tmp_path)
+
+    with pytest.raises(GwzBridgeError, match="MergeValidationFailed.*source_ref"):
+        asyncio.run(client.merge("", paths=["repos/app"]))
+
+
 def test_native_stash_push_list_apply_pop_and_drop(tmp_path: Path) -> None:
     repo, _ = create_workspace_with_member(tmp_path)
     client = native_client(tmp_path)

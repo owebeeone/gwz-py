@@ -2,6 +2,7 @@ mod branch_stash;
 mod diff;
 mod git_mutation;
 mod materialize;
+mod merge;
 mod read;
 
 use std::env;
@@ -40,6 +41,7 @@ pub(crate) fn call(
         "branch" | "stash" => {
             branch_stash::call(method, request_message, response_message, request_bytes)
         }
+        "merge" => merge::call(method, request_message, response_message, request_bytes),
         "diff" => diff::call(method, request_message, response_message, request_bytes),
         other => Err(error::unsupported_method(other)),
     }
@@ -264,6 +266,7 @@ fn submit_accepted(
     codec::encode_message("encode accepted response", || encode_response(envelope))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn spawn_call(
     method: &str,
     request_message: &str,

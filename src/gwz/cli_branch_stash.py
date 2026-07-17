@@ -60,12 +60,7 @@ async def handle_branch(context: CommandContext) -> Any:
             **context.meta,
         )
     if context.args.merge is not None:
-        return await context.client.branch(
-            None,
-            op=BranchOp.merge,
-            start_ref=context.args.merge,
-            **context.meta,
-        )
+        return await context.client.merge(context.args.merge, **context.meta)
     return await context.client.branch(op=BranchOp.list, **context.meta)
 
 

@@ -5,7 +5,14 @@ import asyncio
 import sys
 
 from . import __version__
-from . import cli_branch_stash, cli_diff, cli_local, cli_mutation, cli_read
+from . import (
+    cli_branch_stash,
+    cli_diff,
+    cli_local,
+    cli_merge,
+    cli_mutation,
+    cli_read,
+)
 from .cli_render import render_error, render_response
 from .cli_shared import (
     CliUsageError,
@@ -50,6 +57,7 @@ def register_commands(registry: CommandRegistry) -> None:
     cli_diff.register_commands(registry)
     cli_mutation.register_commands(registry)
     cli_branch_stash.register_commands(registry)
+    cli_merge.register_commands(registry)
     cli_local.register_commands(registry)
 
 
@@ -105,7 +113,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return asyncio.run(run(args))
     except (CliUsageError, GwzError) as exc:
-        print(render_error(exc), file=sys.stderr)
+        machine = args.json or getattr(args, "jsonl", False)
+        print(render_error(exc, json_mode=machine), file=sys.stdout if machine else sys.stderr)
         return exit_code_for_error(exc)
 
 

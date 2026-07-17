@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import re
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -47,6 +48,9 @@ def render_response(
             return _render_status_porcelain(workspace_git_status)
         return _render_status_response(response, workspace_git_status)
 
+    if _is_response(response, "MergeResponse", "merge"):
+        return _render_merge_response(response)
+
     repos = getattr(response, "repos", None)
     if repos is not None:
         return _render_branch_response(response, repos)
@@ -63,7 +67,24 @@ def render_response(
     return str(value)
 
 
-def render_error(error: BaseException) -> str:
+def render_error(error: BaseException, *, json_mode: bool = False) -> str:
+    if json_mode:
+        message = str(error)
+        match = re.search(r"(?:^|: )([A-Z][A-Za-z0-9]+): (.*)$", message)
+        return json.dumps(
+            {
+                "kind": "response",
+                "meta": None,
+                "members": [],
+                "errors": [
+                    {
+                        "code": match.group(1) if match else None,
+                        "message": match.group(2) if match else message,
+                    }
+                ],
+            },
+            sort_keys=True,
+        )
     return f"gwz: {error}"
 
 
@@ -363,6 +384,43 @@ def _render_branch_response(response: Any, repos: list[Any]) -> str:
             line += f" conflicts: {','.join(repo.conflict_paths)}"
         lines.append(line)
     _append_errors(lines, response)
+    return "\n".join(lines)
+
+
+def _render_merge_response(response: Any) -> str:
+    lines = ["action: merge", _status_line(response)]
+    conflicted: list[Any] = []
+    for repo in response.repos:
+        state = _enum_name(repo.state).replace("_", "-")
+        outcome = state
+        if state == "planned" and repo.predicted is not None:
+            prediction = {
+                "up_to_date": "up-to-date",
+                "fast_forward": "fast-forward",
+                "true_merge": "merge commit",
+                "unknown": "unknown",
+            }[_enum_name(repo.predicted)]
+            outcome = f"{state} ({prediction})"
+        line = f"{repo.path}  {repo.source_ref} -> {repo.target_branch}  {outcome}"
+        commit = repo.resulting_commit or repo.live_commit
+        if commit is not None:
+            line += f"  {commit}"
+        if repo.conflict_paths:
+            line += f"  {', '.join(repo.conflict_paths)}"
+        if repo.error is not None:
+            line += f"  {_enum_label(repo.error.code)}: {repo.error.message}"
+        lines.append(line)
+        if state == "conflicted":
+            conflicted.append(repo)
+    _append_errors(lines, response)
+    for repo in conflicted:
+        _push_blank(lines)
+        lines.append(
+            f"Resolve or abort this member with ordinary Git commands in {repo.path.rstrip('/')}/."
+        )
+    if conflicted:
+        lines.append("Other members may already have changed; M0 has no coordinated continue or")
+        lines.append("rollback. The workspace lock reflects clean member outcomes.")
     return "\n".join(lines)
 
 

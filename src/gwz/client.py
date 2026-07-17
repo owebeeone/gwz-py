@@ -58,6 +58,10 @@ from .protocol.generated import (
     MaterializeResponse,
     MaterializeTarget,
     MaterializeTargetKind,
+    MergeMode,
+    MergeOp,
+    MergeRequest,
+    MergeResponse,
     OperationAttribution,
     OperationEvent,
     OperationPolicy,
@@ -704,6 +708,29 @@ class Client:
             switch_after_create=switch_after_create,
         )
         return await self._call("branch", request, BranchResponse)
+
+    async def merge(
+        self,
+        source_ref: str | None = None,
+        *,
+        op: MergeOp | str = MergeOp.start,
+        merge_id: str | None = None,
+        mode: MergeMode | str | None = None,
+        message: str | None = None,
+        preserve: bool | None = None,
+        dry_run: bool | None = None,
+        **meta: Any,
+    ) -> MergeResponse:
+        request = MergeRequest(
+            meta=self.meta(dry_run=dry_run, **meta),
+            op=_enum_value(MergeOp, op),
+            source_ref=source_ref,
+            merge_id=merge_id,
+            mode=_enum_value(MergeMode, mode),
+            message=message,
+            preserve=preserve,
+        )
+        return await self._call("merge", request, MergeResponse)
 
     async def diff(
         self,

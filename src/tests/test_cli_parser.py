@@ -24,6 +24,7 @@ from gwz.protocol.generated import SyncBehavior
         (["ls", "--materialized-only"], "ls"),
         (["init", "https://example.invalid/repo.git"], "init"),
         (["materialize", "--snapshot", "snap_1"], "materialize"),
+        (["merge", "feature/refactor", "--dry-run"], "merge"),
         (["add", "-A", "src/file.py"], "add"),
     ],
 )
