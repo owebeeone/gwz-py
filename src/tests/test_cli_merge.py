@@ -13,8 +13,9 @@ from gwz.protocol.generated import (
     MergeOperationDrift, MergeOperationDriftKind, MergeParticipantCounts,
     MergeParticipantDrift, MergeParticipantDriftKind, MergeParticipantState,
     MergePreservation, MergePublicationStep, MergeRepoSummary, MergeResponse,
-    ResponseEnvelope, ResponseMeta, TargetKind,
+    GwzError, GwzErrorCode, ResponseEnvelope, ResponseMeta, TargetKind,
 )
+from native_helpers import commit_file, git, native_client
 
 class FakeClient:
     def __init__(self, *args: Any, response: Any = "merge", **kwargs: Any) -> None:
@@ -97,6 +98,34 @@ def test_native_machine_errors_are_structured(
     error = json.loads(capsys.readouterr().out)["errors"][0]
     assert (error["code"], error["message"]) == ("MergePhaseUnsupported", "reserved")
 
+
+@pytest.mark.parametrize("flag", ["--json", "--jsonl"])
+def test_native_preflight_machine_error_retains_second_member_context(
+    flag: str,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    client = native_client(tmp_path)
+    asyncio.run(client.create_workspace(workspace_id="ws_merge_error"))
+    asyncio.run(client.create_repo("app", member_id="mem_app", source_id="src_app"))
+    asyncio.run(client.create_repo("lib", member_id="mem_lib", source_id="src_lib"))
+    app = tmp_path / "app"
+    lib = tmp_path / "lib"
+    commit_file(app, "README.md", "app\n", "initial")
+    commit_file(lib, "README.md", "lib\n", "initial")
+    asyncio.run(client.capture(paths=["app", "lib"]))
+    git(app, "checkout", "-b", "feature/source")
+    commit_file(app, "source.txt", "source\n", "source")
+    git(app, "checkout", "main")
+
+    assert cli.main(["--root", str(tmp_path), flag, "merge", "feature/source"]) == 1
+
+    error = json.loads(capsys.readouterr().out)["errors"][0]
+    assert error["code"] == "GitCommandFailed"
+    assert error["member_id"] == "mem_lib"
+    assert error["member_path"] == "lib"
+    assert error["target_kind"] == "Member"
+
 def test_halted_merge_response_unwraps_without_changing_generic_failures() -> None:
     response = merge_response()
     response.state = MergeOperationState.halted
@@ -114,7 +143,7 @@ def test_halted_merge_response_unwraps_without_changing_generic_failures() -> No
 
 def merge_response() -> MergeResponse:
     envelope = ResponseEnvelope(ResponseMeta(
-        "req-parity-1", "gwz.protocol/v0", ActionKind.merge, AggregateStatus.conflicted,
+        "req-parity-1", "gwz.protocol/v0", ActionKind.merge, AggregateStatus.failed,
         "op-parity-1", None, None,
     ), [], [])
     repos = [
@@ -123,6 +152,7 @@ def merge_response() -> MergeResponse:
         merge_repo("api", MergeParticipantState.continued),
         merge_repo("tools", MergeParticipantState.aborted),
         merge_repo("web", MergeParticipantState.rolled_back),
+        merge_repo("worker", MergeParticipantState.failed),
     ]
     repos[0].predicted = MergeAnalysisKind.true_merge
     repos[1].conflict_paths = ["guide.md"]
@@ -141,12 +171,24 @@ def merge_response() -> MergeResponse:
         repos[index].abort_eligible = False
         repos[index].resulting_commit = commit
         repos[index].live_commit = commit
+    member_error = GwzError(
+        GwzErrorCode.git_command_failed,
+        "member 'mem_worker' at 'worker': revspec 'feature/x' not found",
+        "mem_worker",
+        "worker",
+        "source ref was not found in the member repository",
+        TargetKind.member,
+    )
+    repos[5].prediction_complete = False
+    repos[5].continue_eligible = False
+    repos[5].abort_eligible = False
+    repos[5].error = member_error
     return MergeResponse(
-        envelope,
+        ResponseEnvelope(envelope.meta, envelope.members, [member_error]),
         "merge-parity-1",
-        MergeOperationState.awaiting_resolution,
+        MergeOperationState.halted,
         True,
-        MergeParticipantCounts(5, 1, 0, 0, 0, 1, 0, 0, 1, 1, 1),
+        MergeParticipantCounts(6, 1, 0, 0, 0, 1, 1, 0, 1, 1, 1),
         repos,
         [MergeOperationDrift(
             MergeOperationDriftKind.baseline_manifest_changed,

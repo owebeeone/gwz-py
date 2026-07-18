@@ -139,7 +139,7 @@ class NativeCoreBridge:
         except GwzBridgeError:
             raise
         except Exception as exc:
-            raise GwzBridgeError(f"native bridge call failed for {method}: {exc}") from exc
+            raise _native_bridge_error(f"native bridge call failed for {method}", exc) from exc
         return decode_message(response_message, _bytes(response_bytes, response_message))
 
     async def submit(
@@ -164,7 +164,7 @@ class NativeCoreBridge:
         except GwzBridgeError:
             raise
         except Exception as exc:
-            raise GwzBridgeError(f"native bridge submit failed for {method}: {exc}") from exc
+            raise _native_bridge_error(f"native bridge submit failed for {method}", exc) from exc
         return decode_message(response_message, _bytes(response_bytes, response_message))
 
     def subscribe_events(self, operation_id: str) -> AsyncIterator[Any]:
@@ -286,4 +286,16 @@ def _bytes(value: NativeBytePayload, message_name: str) -> bytes:
         return value.tobytes()
     raise GwzProtocolError(
         f"native bridge returned {type(value).__name__} for {message_name}; expected bytes-like payload"
+    )
+
+
+def _native_bridge_error(prefix: str, error: BaseException) -> GwzBridgeError:
+    return GwzBridgeError(
+        f"{prefix}: {error}",
+        code=getattr(error, "code", None),
+        member_id=getattr(error, "member_id", None),
+        member_path=getattr(error, "member_path", None),
+        target_kind=getattr(error, "target_kind", None),
+        detail=getattr(error, "detail", None),
+        machine_message=getattr(error, "machine_message", None),
     )

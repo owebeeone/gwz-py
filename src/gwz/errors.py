@@ -15,6 +15,25 @@ class GwzProtocolError(GwzError):
 class GwzBridgeError(GwzError):
     """Raised when the Python/Rust bridge fails outside normal GWZ operation handling."""
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str | None = None,
+        member_id: str | None = None,
+        member_path: str | None = None,
+        target_kind: str | None = None,
+        detail: str | None = None,
+        machine_message: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.code = code
+        self.member_id = member_id
+        self.member_path = member_path
+        self.target_kind = target_kind
+        self.detail = detail
+        self.machine_message = machine_message
+
 
 class GwzCoreLoadError(GwzBridgeError):
     """Raised when the native gwz-core extension cannot be imported or initialized."""

@@ -190,6 +190,37 @@ def test_native_bridge_maps_native_failures_to_bridge_error() -> None:
         asyncio.run(bridge.call("status", "StatusRequest", "StatusResponse", status_request()))
 
 
+def test_native_bridge_preserves_structured_model_error_attributes() -> None:
+    class FailingNative(FakeNative):
+        def call(self, *args: Any) -> bytes:
+            error = RuntimeError(
+                "GitCommandFailed: member 'mem_a' at 'a': revspec 'feature/x' not found"
+            )
+            error.code = "GitCommandFailed"  # type: ignore[attr-defined]
+            error.member_id = "mem_a"  # type: ignore[attr-defined]
+            error.member_path = "a"  # type: ignore[attr-defined]
+            error.target_kind = "Member"  # type: ignore[attr-defined]
+            error.detail = None  # type: ignore[attr-defined]
+            error.machine_message = (  # type: ignore[attr-defined]
+                "member 'mem_a' at 'a': revspec 'feature/x' not found"
+            )
+            raise error
+
+    bridge = NativeCoreBridge(native=FailingNative())
+
+    with pytest.raises(GwzBridgeError) as exc_info:
+        asyncio.run(bridge.call("merge", "StatusRequest", "StatusResponse", status_request()))
+
+    error = exc_info.value
+    assert error.code == "GitCommandFailed"
+    assert error.member_id == "mem_a"
+    assert error.member_path == "a"
+    assert error.target_kind == "Member"
+    assert error.machine_message == (
+        "member 'mem_a' at 'a': revspec 'feature/x' not found"
+    )
+
+
 def test_native_bridge_maps_malformed_response_bytes_to_protocol_error() -> None:
     class BadBytesNative(FakeNative):
         def call(self, *args: Any) -> bytes:
