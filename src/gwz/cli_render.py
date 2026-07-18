@@ -441,9 +441,24 @@ def _merge_response_json(response: Any) -> dict[str, Any]:
         "open": response.open,
         "participant_counts": _json_fields(
             counts, "total", "planned", "up_to_date", "fast_forwarded", "merged",
-            "conflicted", "failed", "unattempted",
+            "conflicted", "failed", "unattempted", "continued", "aborted",
+            "rolled_back",
         ),
         "repos": [_merge_repo_json(repo) for repo in response.repos],
+        "operation_drift": [
+            {"kind": _enum_label(drift.kind), "message": drift.message}
+            for drift in response.operation_drift
+        ],
+        "preservation": (
+            [_merge_preservation_json(entry) for entry in response.preservation]
+            if response.preservation is not None
+            else None
+        ),
+        "publication_step": (
+            _enum_label(response.publication_step)
+            if response.publication_step is not None
+            else None
+        ),
     }
     return {
         "kind": "response",
@@ -470,8 +485,24 @@ def _merge_repo_json(repo: Any) -> dict[str, Any]:
     )
     value.update(target_kind=_enum_label(repo.target_kind), state=_enum_label(repo.state),
                  predicted=_enum_label(repo.predicted) if repo.predicted else None,
+                 drift=[_merge_participant_drift_json(drift) for drift in repo.drift],
                  error=_merge_error_json(repo.error) if repo.error else None)
     return value
+
+
+def _merge_participant_drift_json(drift: Any) -> dict[str, Any]:
+    value = _json_fields(
+        drift, "message", "expected_branch", "live_branch", "expected_head",
+        "live_head", "expected_merge_head", "live_merge_head",
+    )
+    return {"kind": _enum_label(drift.kind), **value}
+
+
+def _merge_preservation_json(entry: Any) -> dict[str, Any]:
+    return _json_fields(
+        entry, "target_id", "path", "backup_ref", "backup_commit", "stash_id",
+        "stash_object_id",
+    )
 
 
 def _merge_error_json(error: Any) -> dict[str, Any]:

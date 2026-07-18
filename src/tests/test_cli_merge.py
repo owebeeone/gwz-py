@@ -10,7 +10,9 @@ from gwz.cli_shared import CliUsageError, CommandContext, meta_kwargs, validate_
 from gwz.errors import GwzBridgeError, GwzOperationError
 from gwz.protocol.generated import (
     ActionKind, AggregateStatus, MergeAnalysisKind, MergeOperationState, MergeOp,
-    MergeParticipantCounts, MergeParticipantState, MergeRepoSummary, MergeResponse,
+    MergeOperationDrift, MergeOperationDriftKind, MergeParticipantCounts,
+    MergeParticipantDrift, MergeParticipantDriftKind, MergeParticipantState,
+    MergePreservation, MergePublicationStep, MergeRepoSummary, MergeResponse,
     ResponseEnvelope, ResponseMeta, TargetKind,
 )
 
@@ -57,7 +59,8 @@ def test_merge_human_rendering_matches_m0_contract() -> None:
     human = render_response(merge_response())
     assert "action: merge" in human
     assert "lib  feature/x -> main  planned (merge commit)" in human
-    assert "docs  feature/x -> main  conflicted  guide.md" in human
+    assert "docs  feature/x -> main  conflicted" in human
+    assert "guide.md" in human
     assert "ordinary Git commands in docs/." in human
     assert "gwz merge --continue" not in human
 
@@ -68,7 +71,7 @@ def test_merge_machine_success_matches_rust_parity_fixture(
     response = merge_response()
     monkeypatch.setattr(cli, "Client", lambda **kwargs: FakeClient(response=response))
     cli.main([flag, "merge", "feature/x"])
-    expected = json.loads((Path(__file__).parent / "fixtures/cli_parity/merge_response.json").read_text())
+    expected = json.loads(canonical_merge_response_fixture().read_text())
     assert json.loads(capsys.readouterr().out) == expected
 
 @pytest.mark.parametrize("flag", ["--json", "--jsonl"])
@@ -111,18 +114,61 @@ def test_halted_merge_response_unwraps_without_changing_generic_failures() -> No
 
 def merge_response() -> MergeResponse:
     envelope = ResponseEnvelope(ResponseMeta(
-        "req", "gwz.protocol/v0", ActionKind.merge, AggregateStatus.conflicted,
-        "op", None, None,
+        "req-parity-1", "gwz.protocol/v0", ActionKind.merge, AggregateStatus.conflicted,
+        "op-parity-1", None, None,
     ), [], [])
-    repos = [merge_repo("lib", MergeParticipantState.planned),
-             merge_repo("docs", MergeParticipantState.conflicted)]
+    repos = [
+        merge_repo("lib", MergeParticipantState.planned),
+        merge_repo("docs", MergeParticipantState.conflicted),
+        merge_repo("api", MergeParticipantState.continued),
+        merge_repo("tools", MergeParticipantState.aborted),
+        merge_repo("web", MergeParticipantState.rolled_back),
+    ]
     repos[0].predicted = MergeAnalysisKind.true_merge
     repos[1].conflict_paths = ["guide.md"]
-    return MergeResponse(envelope, None, MergeOperationState.awaiting_resolution, True,
-                         MergeParticipantCounts(2, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0),
-                         repos, [], None, None)
+    repos[1].prediction_complete = False
+    repos[1].continue_eligible = False
+    repos[1].abort_eligible = True
+    repos[1].live_commit = "before123"
+    repos[1].drift = [MergeParticipantDrift(
+        MergeParticipantDriftKind.head_advanced,
+        "HEAD advanced while merge was open",
+        "main", "main", "before123", "live456", "source123", "source123",
+    )]
+    for index, commit in [(2, "continued123"), (3, "before123"), (4, "before123")]:
+        repos[index].prediction_complete = True
+        repos[index].continue_eligible = False
+        repos[index].abort_eligible = False
+        repos[index].resulting_commit = commit
+        repos[index].live_commit = commit
+    return MergeResponse(
+        envelope,
+        "merge-parity-1",
+        MergeOperationState.awaiting_resolution,
+        True,
+        MergeParticipantCounts(5, 1, 0, 0, 0, 1, 0, 0, 1, 1, 1),
+        repos,
+        [MergeOperationDrift(
+            MergeOperationDriftKind.baseline_manifest_changed,
+            "manifest changed after planning",
+        )],
+        [MergePreservation(
+            "mem_docs", "docs", "refs/gwz/preserve/merge-parity-1/mem_docs",
+            "backup123", "stash-parity-1", "stashobj123",
+        )],
+        MergePublicationStep.verifying_publication,
+    )
 
 def merge_repo(path: str, state: MergeParticipantState) -> MergeRepoSummary:
-    return MergeRepoSummary(f"mem_{path}", TargetKind.member, path, "feature/x", "source",
-                            "main", "before", None, None, state, None, None, [],
+    return MergeRepoSummary(f"mem_{path}", TargetKind.member, path, "feature/x", "source123",
+                            "main", "before123", None, None, state, None, None, [],
                             None, None, [], None)
+
+
+def canonical_merge_response_fixture() -> Path:
+    # Driver development already requires the sibling gwz-core checkout. Keeping the
+    # canonical fixture there lets both suites enforce one contract without copies.
+    return (
+        Path(__file__).resolve().parents[3]
+        / "gwz-core/protocol/fixtures/cli_parity/merge_response.json"
+    )
