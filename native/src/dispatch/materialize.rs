@@ -173,6 +173,14 @@ fn call_tag(
     })?;
     let request_id = request.meta.request_id.clone();
     let start = current_dir()?;
+    super::enforce_open_merge_gate(
+        &start,
+        if request.op == gwz_core::TagOp::List {
+            gwz_core::operation::OpenMergeCommand::TagList
+        } else {
+            gwz_core::operation::OpenMergeCommand::TagMutate
+        },
+    )?;
     let response = shims::backend(&request_id, |backend, operation_id| {
         gwz_core::workspace_ops::handle_tag(backend, &start, request, operation_id)
     })?;

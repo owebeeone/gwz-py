@@ -12,6 +12,7 @@ from gwz.errors import GwzBridgeError
 from gwz.protocol.generated import (
     AggregateStatus,
     BranchActionResult,
+    MergeOperationState,
     MergeParticipantState,
     StashPushLifecycle,
     StashRestoreState,
@@ -48,7 +49,9 @@ def test_native_branch_create_list_and_direct_merge_deprecation(tmp_path: Path) 
     assert git(repo, "rev-parse", "HEAD") == before
 
     merged = asyncio.run(client.merge("feature/source", paths=["repos/app"]))
-    assert merged.response.meta.aggregate_status is AggregateStatus.ok
+    assert merged.response.meta.aggregate_status is AggregateStatus.accepted
+    assert merged.state is MergeOperationState.finalizing
+    assert merged.open is True
     assert merged.repos[0].state is MergeParticipantState.merged
 
 
@@ -87,9 +90,9 @@ def test_native_cli_merge_conflict_preserves_structured_response(
     output = capsys.readouterr().out
 
     if machine_flag is None:
-        assert "repos/app  feature/source -> main  conflicted" in output
+        assert "repos/app (mem_app)  conflicted" in output
+        assert "source: feature/source @" in output
         assert "README.md" in output
-        assert "ordinary Git commands in repos/app/." in output
         return
     payload = json.loads(output)
     assert payload["meta"]["aggregate_status"] == "Conflicted"

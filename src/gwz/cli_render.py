@@ -407,11 +407,28 @@ def _render_branch_response(response: Any, repos: list[Any]) -> str:
 
 
 def _render_merge_response(response: Any) -> str:
-    lines = ["action: merge", _status_line(response)]
-    conflicted: list[Any] = []
+    state = _enum_name(response.state).replace("_", "-")
+    lines = ["action: merge", _status_line(response), f"state: {state}"]
+    if state == "idle":
+        lines.append("No coordinated merge is open.")
+        return "\n".join(lines)
+
+    lines.append(f"merge: {response.merge_id or 'unknown'} ({'open' if response.open else 'closed'})")
+    lines.append(_merge_participant_counts(response.participant_counts))
+    if response.publication_step is not None:
+        lines.append(f"publication: {_enum_name(response.publication_step).replace('_', '-')}")
+    lines.append("recovery: participant eligibility shown below")
+    if response.operation_drift:
+        lines.append("operation drift:")
+        for drift in response.operation_drift:
+            lines.append(
+                f"  {_enum_name(drift.kind).replace('_', '-')}: {drift.message}"
+            )
+    if response.repos:
+        lines.append("participants:")
     for repo in response.repos:
         state = _enum_name(repo.state).replace("_", "-")
-        outcome = state
+        outcome = f"  {repo.path} ({repo.target_id})  {state}"
         if state == "planned" and repo.predicted is not None:
             prediction = {
                 "up_to_date": "up-to-date",
@@ -419,30 +436,45 @@ def _render_merge_response(response: Any) -> str:
                 "true_merge": "merge commit",
                 "unknown": "unknown",
             }[_enum_name(repo.predicted)]
-            outcome = f"{state} ({prediction})"
-        line = f"{repo.path}  {repo.source_ref} -> {repo.target_branch}  {outcome}"
-        commit = repo.resulting_commit or repo.live_commit
-        if commit is not None:
-            line += f"  {commit}"
+            outcome += f" ({prediction})"
+        lines.append(outcome)
+        lines.append(f"    source: {repo.source_ref} @ {repo.source_commit}")
+        lines.append(
+            f"    recorded: branch {repo.target_branch}; before {repo.before_commit}; "
+            f"result {repo.resulting_commit or '-'}"
+        )
+        lines.append(f"    live: commit {repo.live_commit or 'unknown'}")
+        lines.append(
+            "    recovery: continue "
+            f"{_merge_eligibility_label(repo.continue_eligible)}; abort "
+            f"{_merge_eligibility_label(repo.abort_eligible)}"
+        )
         if repo.conflict_paths:
-            line += f"  {', '.join(repo.conflict_paths)}"
+            lines.append(f"    conflicts: {', '.join(repo.conflict_paths)}")
+        for drift in repo.drift:
+            lines.append(
+                f"    drift: {_enum_name(drift.kind).replace('_', '-')}: {drift.message}"
+            )
         if repo.error is not None:
-            line += f"  {_enum_label(repo.error.code)}: {repo.error.message}"
-        lines.append(line)
-        if state == "conflicted":
-            conflicted.append(repo)
+            lines.append(f"    error: {_enum_label(repo.error.code)}: {repo.error.message}")
     _append_errors(lines, response)
-    for repo in conflicted:
-        _push_blank(lines)
-        lines.append(
-            f"Resolve or abort this member with ordinary Git commands in {repo.path.rstrip('/')}/."
-        )
-    if conflicted:
-        lines.append(
-            "Other members may already have changed; coordinated continue and rollback are"
-        )
-        lines.append("not yet available. The workspace lock reflects clean member outcomes.")
     return "\n".join(lines)
+
+
+def _merge_participant_counts(counts: Any) -> str:
+    values = (
+        ("planned", counts.planned), ("up-to-date", counts.up_to_date),
+        ("fast-forwarded", counts.fast_forwarded), ("merged", counts.merged),
+        ("conflicted", counts.conflicted), ("failed", counts.failed),
+        ("unattempted", counts.unattempted), ("continued", counts.continued),
+        ("aborted", counts.aborted), ("rolled-back", counts.rolled_back),
+    )
+    details = "; ".join(f"{label} {count}" for label, count in values if count)
+    return f"participants: total {counts.total}" + (f"; {details}" if details else "")
+
+
+def _merge_eligibility_label(value: bool | None) -> str:
+    return "eligible" if value is True else "blocked" if value is False else "unknown"
 
 
 def _merge_response_json(response: Any) -> dict[str, Any]:

@@ -45,6 +45,11 @@ def test_merge_routes_start_reserved_fields_and_rejects_ambiguity() -> None:
     reserved = client.calls[1][1]
     assert (reserved["op"], reserved["preserve"], reserved["message"]) == (
         MergeOp.resume, True, "custom")
+    run_handler(["merge", "--status"], client)
+    assert client.calls[2] == ((None,), {
+        "op": MergeOp.status, "merge_id": None, "mode": None, "message": None,
+        "preserve": None,
+    })
     with pytest.raises(CliUsageError, match="one lifecycle"):
         run_handler(["merge", "--continue", "--abort"], client)
     with pytest.raises(CliUsageError, match="mutually exclusive"):
@@ -54,18 +59,40 @@ def test_merge_help_hides_lifecycle_flags(capsys: pytest.CaptureFixture[str]) ->
     with pytest.raises(SystemExit):
         build_parser().parse_args(["merge", "--help"])
     help_text = capsys.readouterr().out
-    assert "--continue" not in help_text and "--abort" not in help_text
+    assert "--continue" not in help_text
+    assert "--abort" not in help_text
+    assert "--status" not in help_text
 
-def test_merge_human_rendering_matches_interim_contract() -> None:
+def test_merge_human_rendering_reports_open_status_and_structured_drift() -> None:
     human = render_response(merge_response())
-    assert "action: merge" in human
-    assert "lib  feature/x -> main  planned (merge commit)" in human
-    assert "docs  feature/x -> main  conflicted" in human
-    assert "guide.md" in human
-    assert "ordinary Git commands in docs/." in human
-    assert "coordinated continue and rollback are" in human
-    assert "M0" not in human
+    assert human == canonical_merge_status_human_fixture().read_text().rstrip()
     assert "gwz merge --continue" not in human
+    assert "gwz merge --abort" not in human
+
+
+def test_merge_human_and_machine_render_idle_without_fabricated_operation() -> None:
+    response = MergeResponse(
+        ResponseEnvelope(ResponseMeta(
+            "req-idle", "gwz.protocol/v0", ActionKind.merge, AggregateStatus.noop,
+            "op-idle", None, None,
+        ), [], []),
+        None,
+        MergeOperationState.idle,
+        False,
+        MergeParticipantCounts(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+        [], [], None, None,
+    )
+
+    assert render_response(response) == (
+        "action: merge\nstatus: Noop\nstate: idle\nNo coordinated merge is open."
+    )
+    machine = json.loads(render_response(response, json_mode=True))["merge"]
+    assert machine["merge_id"] is None
+    assert machine["state"] == "Idle"
+    assert machine["open"] is False
+    assert machine["participant_counts"]["total"] == 0
+    assert machine["repos"] == []
+    assert machine["operation_drift"] == []
 
 @pytest.mark.parametrize("flag", ["--json", "--jsonl"])
 def test_merge_machine_success_matches_rust_parity_fixture(
@@ -215,4 +242,11 @@ def canonical_merge_response_fixture() -> Path:
     return (
         Path(__file__).resolve().parents[3]
         / "gwz-core/protocol/fixtures/cli_parity/merge_response.json"
+    )
+
+
+def canonical_merge_status_human_fixture() -> Path:
+    return (
+        Path(__file__).resolve().parents[3]
+        / "gwz-cli/tests/fixtures/merge_status_human.txt"
     )
