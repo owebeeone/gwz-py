@@ -56,13 +56,15 @@ def test_merge_help_hides_lifecycle_flags(capsys: pytest.CaptureFixture[str]) ->
     help_text = capsys.readouterr().out
     assert "--continue" not in help_text and "--abort" not in help_text
 
-def test_merge_human_rendering_matches_m0_contract() -> None:
+def test_merge_human_rendering_matches_interim_contract() -> None:
     human = render_response(merge_response())
     assert "action: merge" in human
     assert "lib  feature/x -> main  planned (merge commit)" in human
     assert "docs  feature/x -> main  conflicted" in human
     assert "guide.md" in human
     assert "ordinary Git commands in docs/." in human
+    assert "coordinated continue and rollback are" in human
+    assert "M0" not in human
     assert "gwz merge --continue" not in human
 
 @pytest.mark.parametrize("flag", ["--json", "--jsonl"])

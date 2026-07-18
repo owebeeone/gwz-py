@@ -111,6 +111,7 @@ class MergeOperationState(Enum):
     completed = 6
     aborted = 7
     recovery_required = 8
+    idle = 9
 
 class MergeParticipantDriftKind(Enum):
     branch_changed = 0

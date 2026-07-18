@@ -438,8 +438,10 @@ def _render_merge_response(response: Any) -> str:
             f"Resolve or abort this member with ordinary Git commands in {repo.path.rstrip('/')}/."
         )
     if conflicted:
-        lines.append("Other members may already have changed; M0 has no coordinated continue or")
-        lines.append("rollback. The workspace lock reflects clean member outcomes.")
+        lines.append(
+            "Other members may already have changed; coordinated continue and rollback are"
+        )
+        lines.append("not yet available. The workspace lock reflects clean member outcomes.")
     return "\n".join(lines)
 
 
