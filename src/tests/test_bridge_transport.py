@@ -78,6 +78,8 @@ def operation_event() -> OperationEvent:
         progress=None,
         target_kind=None,
         merge_state=None,
+        merge_member=None,
+        artifact_path=None,
     )
 
 

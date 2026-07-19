@@ -5,15 +5,17 @@ from typing import Any
 import pytest
 from gwz import cli
 from gwz.cli import build_parser
-from gwz.cli_render import render_response
+from gwz.cli_render import operation_event_json, render_response
 from gwz.cli_shared import CliUsageError, CommandContext, meta_kwargs, validate_args
 from gwz.errors import GwzBridgeError, GwzOperationError
 from gwz.protocol.generated import (
-    ActionKind, AggregateStatus, MergeAnalysisKind, MergeOperationState, MergeOp,
+    ActionKind, AggregateStatus, EventKind, MergeAnalysisKind, MergeOperationState, MergeOp,
     MergeOperationDrift, MergeOperationDriftKind, MergeParticipantCounts,
     MergeParticipantDrift, MergeParticipantDriftKind, MergeParticipantState,
+    MergePendingActionKind, MergePendingActionState, MergePendingActionSummary,
     MergePreservation, MergePublicationStep, MergeRepoSummary, MergeResponse,
-    GwzError, GwzErrorCode, ResponseEnvelope, ResponseMeta, TargetKind,
+    GwzError, GwzErrorCode, OperationEvent, ResponseEnvelope, ResponseMeta, Severity,
+    TargetKind,
 )
 from native_helpers import commit_file, git, native_client
 
@@ -104,6 +106,50 @@ def test_merge_machine_success_matches_rust_parity_fixture(
     expected = json.loads(canonical_merge_response_fixture().read_text())
     assert json.loads(capsys.readouterr().out) == expected
 
+
+def test_merge_event_json_matches_rust_canonical_fixture() -> None:
+    member = MergeRepoSummary(
+        target_id="mem_app",
+        target_kind=TargetKind.member,
+        path="repos/app",
+        source_ref="feature/x",
+        source_commit="source123",
+        target_branch="main",
+        before_commit="before123",
+        resulting_commit="merge123",
+        live_commit="merge123",
+        state=MergeParticipantState.merged,
+        predicted=None,
+        prediction_complete=None,
+        conflict_paths=[],
+        continue_eligible=None,
+        abort_eligible=None,
+        drift=[],
+        error=None,
+        pending_action=None,
+    )
+    event = OperationEvent(
+        operation_id="op_render",
+        request_id="req_render",
+        sequence=0,
+        timestamp_ms=1,
+        kind=EventKind.member_finished,
+        severity=Severity.info,
+        member_id="mem_app",
+        member_path="repos/app",
+        message=None,
+        member=None,
+        error=None,
+        attribution=None,
+        progress=None,
+        target_kind=TargetKind.member,
+        merge_state=MergeOperationState.finalizing,
+        merge_member=member,
+        artifact_path=".gwz/merge/merge_1.yaml",
+    )
+    expected = json.loads(canonical_merge_event_fixture().read_text())
+    assert operation_event_json(event) == expected
+
 @pytest.mark.parametrize("flag", ["--json", "--jsonl"])
 @pytest.mark.parametrize("options", [["--continue", "--abort"], ["--ff-only", "--no-ff"]])
 def test_merge_semantic_errors_are_typed_invalid_request(
@@ -184,6 +230,11 @@ def merge_response() -> MergeResponse:
         merge_repo("worker", MergeParticipantState.failed),
     ]
     repos[0].predicted = MergeAnalysisKind.true_merge
+    repos[0].pending_action = MergePendingActionSummary(
+        MergePendingActionKind.true_merge,
+        MergePendingActionState.not_started,
+        "Git action is durably journaled and has not started",
+    )
     repos[1].conflict_paths = ["guide.md"]
     repos[1].prediction_complete = False
     repos[1].continue_eligible = False
@@ -233,7 +284,7 @@ def merge_response() -> MergeResponse:
 def merge_repo(path: str, state: MergeParticipantState) -> MergeRepoSummary:
     return MergeRepoSummary(f"mem_{path}", TargetKind.member, path, "feature/x", "source123",
                             "main", "before123", None, None, state, None, None, [],
-                            None, None, [], None)
+                            None, None, [], None, None)
 
 
 def canonical_merge_response_fixture() -> Path:
@@ -242,6 +293,13 @@ def canonical_merge_response_fixture() -> Path:
     return (
         Path(__file__).resolve().parents[3]
         / "gwz-core/protocol/fixtures/cli_parity/merge_response.json"
+    )
+
+
+def canonical_merge_event_fixture() -> Path:
+    return (
+        Path(__file__).resolve().parents[3]
+        / "gwz-core/protocol/fixtures/cli_parity/merge_event.json"
     )
 
 

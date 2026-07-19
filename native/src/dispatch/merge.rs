@@ -17,17 +17,6 @@ pub(crate) fn call(
     })?;
     let request_id = request.meta.request_id.clone();
     let start = current_dir()?;
-    super::enforce_open_merge_gate(
-        &start,
-        match request.op {
-            gwz_core::MergeOp::Start => gwz_core::operation::OpenMergeCommand::MergeStart,
-            gwz_core::MergeOp::Status => gwz_core::operation::OpenMergeCommand::MergeStatus,
-            gwz_core::MergeOp::Resume | gwz_core::MergeOp::Abort => {
-                gwz_core::operation::OpenMergeCommand::MergeRecovery
-            }
-            gwz_core::MergeOp::Gc => gwz_core::operation::OpenMergeCommand::MergeGc,
-        },
-    )?;
     let (response, recorder) =
         shims::backend_with_events(&request_id, |backend, operation_id, events| {
             gwz_core::workspace_ops::handle_merge_with_events(

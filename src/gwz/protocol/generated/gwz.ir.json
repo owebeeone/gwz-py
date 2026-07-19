@@ -194,6 +194,24 @@
       }
     },
     {
+      "name": "MergePendingActionKind",
+      "members": {
+        "verify_up_to_date": 0,
+        "fast_forward": 1,
+        "true_merge": 2,
+        "resolve_conflict": 3
+      }
+    },
+    {
+      "name": "MergePendingActionState",
+      "members": {
+        "not_started": 0,
+        "expected_conflict": 1,
+        "completed_exactly": 2,
+        "ambiguous": 3
+      }
+    },
+    {
       "name": "MergeParticipantState",
       "members": {
         "planned": 0,
@@ -235,7 +253,11 @@
         "merge_state_missing": 6,
         "merge_head_changed": 7,
         "new_integration_state": 8,
-        "repository_missing": 9
+        "repository_missing": 9,
+        "head_diverged": 10,
+        "object_missing": 11,
+        "foreign_integration_state": 12,
+        "pending_action_ambiguous": 13
       }
     },
     {
@@ -3384,6 +3406,47 @@
       ]
     },
     {
+      "name": "MergePendingActionSummary",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "kind",
+          "tag": 1,
+          "type": {
+            "k": "enum",
+            "name": "MergePendingActionKind"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "state",
+          "tag": 2,
+          "type": {
+            "k": "enum",
+            "name": "MergePendingActionState"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "message",
+          "tag": 3,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
       "name": "MergeRepoSummary",
       "reserved_tags": [],
       "reserved_names": [],
@@ -3577,6 +3640,17 @@
           "type": {
             "k": "msg",
             "name": "GwzError"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "pending_action",
+          "tag": 18,
+          "type": {
+            "k": "msg",
+            "name": "MergePendingActionSummary"
           },
           "optional": true,
           "transient": false,
@@ -3967,6 +4041,28 @@
           "type": {
             "k": "enum",
             "name": "MergeOperationState"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "merge_member",
+          "tag": 16,
+          "type": {
+            "k": "msg",
+            "name": "MergeRepoSummary"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "artifact_path",
+          "tag": 17,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
           },
           "optional": true,
           "transient": false,

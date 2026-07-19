@@ -89,6 +89,18 @@ class MergeAnalysisKind(Enum):
     true_merge = 2
     unknown = 3
 
+class MergePendingActionKind(Enum):
+    verify_up_to_date = 0
+    fast_forward = 1
+    true_merge = 2
+    resolve_conflict = 3
+
+class MergePendingActionState(Enum):
+    not_started = 0
+    expected_conflict = 1
+    completed_exactly = 2
+    ambiguous = 3
+
 class MergeParticipantState(Enum):
     planned = 0
     up_to_date = 1
@@ -124,6 +136,10 @@ class MergeParticipantDriftKind(Enum):
     merge_head_changed = 7
     new_integration_state = 8
     repository_missing = 9
+    head_diverged = 10
+    object_missing = 11
+    foreign_integration_state = 12
+    pending_action_ambiguous = 13
 
 class MergeOperationDriftKind(Enum):
     baseline_lock_changed = 0
@@ -716,6 +732,12 @@ class MergePreservation:
     stash_object_id: str | None
 
 @dataclass(slots=True)
+class MergePendingActionSummary:
+    kind: MergePendingActionKind
+    state: MergePendingActionState
+    message: str | None
+
+@dataclass(slots=True)
 class MergeRepoSummary:
     target_id: str
     target_kind: TargetKind
@@ -734,6 +756,7 @@ class MergeRepoSummary:
     abort_eligible: bool | None
     drift: list[MergeParticipantDrift]
     error: GwzError | None
+    pending_action: MergePendingActionSummary | None
 
 @dataclass(slots=True)
 class PlannedChange:
@@ -778,6 +801,8 @@ class OperationEvent:
     progress: GitTransferProgress | None
     target_kind: TargetKind | None
     merge_state: MergeOperationState | None
+    merge_member: MergeRepoSummary | None
+    artifact_path: str | None
 
 @dataclass(slots=True)
 class OperationResult:

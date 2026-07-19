@@ -18,6 +18,56 @@ def json_default(value: Any) -> Any:
     raise TypeError(f"{type(value).__name__} is not JSON serializable")
 
 
+def operation_event_json(event: Any) -> dict[str, Any]:
+    """Render the shared JSONL event shape used by the Rust CLI."""
+    return {
+        "kind": "event",
+        "operation_id": event.operation_id,
+        "request_id": event.request_id,
+        "sequence": event.sequence,
+        "timestamp_ms": event.timestamp_ms,
+        "event_kind": _enum_label(event.kind),
+        "severity": _enum_label(event.severity),
+        "member_id": event.member_id,
+        "member_path": event.member_path,
+        "message": event.message,
+        "member": _protocol_json(event.member),
+        "error": _protocol_json(event.error),
+        "attribution": _protocol_json(event.attribution),
+        "progress": _protocol_json(event.progress),
+        "target_kind": (
+            _enum_label(event.target_kind) if event.target_kind is not None else None
+        ),
+        "merge_state": (
+            _enum_label(event.merge_state) if event.merge_state is not None else None
+        ),
+        "merge_member": (
+            _merge_repo_json(event.merge_member)
+            if event.merge_member is not None else None
+        ),
+        "artifact_path": event.artifact_path,
+    }
+
+
+def _protocol_json(value: Any) -> Any:
+    if value is None:
+        return None
+    if isinstance(value, Enum):
+        return _enum_label(value)
+    if dataclasses.is_dataclass(value):
+        return {
+            field.name: _protocol_json(getattr(value, field.name))
+            for field in dataclasses.fields(value)
+        }
+    if isinstance(value, (list, tuple)):
+        return [_protocol_json(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _protocol_json(item) for key, item in value.items()}
+    if isinstance(value, Path):
+        return str(value)
+    return value
+
+
 def render_response(
     response: Any,
     *,
@@ -449,6 +499,14 @@ def _render_merge_response(response: Any) -> str:
             f"{_merge_eligibility_label(repo.continue_eligible)}; abort "
             f"{_merge_eligibility_label(repo.abort_eligible)}"
         )
+        if repo.pending_action is not None:
+            pending = repo.pending_action
+            detail = f": {pending.message}" if pending.message else ""
+            lines.append(
+                "    pending action: "
+                f"{_enum_name(pending.kind).replace('_', '-')} "
+                f"({_enum_name(pending.state).replace('_', '-')}){detail}"
+            )
         if repo.conflict_paths:
             lines.append(f"    conflicts: {', '.join(repo.conflict_paths)}")
         for drift in repo.drift:
@@ -531,7 +589,15 @@ def _merge_repo_json(repo: Any) -> dict[str, Any]:
     value.update(target_kind=_enum_label(repo.target_kind), state=_enum_label(repo.state),
                  predicted=_enum_label(repo.predicted) if repo.predicted else None,
                  drift=[_merge_participant_drift_json(drift) for drift in repo.drift],
-                 error=_merge_error_json(repo.error) if repo.error else None)
+                 error=_merge_error_json(repo.error) if repo.error else None,
+                 pending_action=(
+                     {
+                         "kind": _enum_label(repo.pending_action.kind),
+                         "state": _enum_label(repo.pending_action.state),
+                         "message": repo.pending_action.message,
+                     }
+                     if repo.pending_action is not None else None
+                 ))
     return value
 
 

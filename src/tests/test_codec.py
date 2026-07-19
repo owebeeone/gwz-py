@@ -243,6 +243,7 @@ def test_merge_reserved_lifecycle_shape_round_trip() -> None:
                 abort_eligible=True,
                 drift=[],
                 error=None,
+                pending_action=None,
             )
         ],
         operation_drift=[],

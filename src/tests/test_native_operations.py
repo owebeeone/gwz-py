@@ -7,7 +7,13 @@ from pathlib import Path
 import pytest
 
 from gwz.errors import GwzBridgeError
-from gwz.protocol.generated import ActionKind, AggregateStatus, EventKind, OperationEvent
+from gwz.protocol.generated import (
+    ActionKind,
+    AggregateStatus,
+    EventKind,
+    MergeOp,
+    OperationEvent,
+)
 
 from native_helpers import (
     commit_file,
@@ -21,6 +27,22 @@ from native_helpers import (
 
 async def collect(events: AsyncIterator[OperationEvent]) -> list[OperationEvent]:
     return [event async for event in events]
+
+
+def test_native_merge_status_closes_one_event_stream(tmp_path: Path) -> None:
+    client = native_client(tmp_path)
+    asyncio.run(client.create_workspace(workspace_id="ws_merge_events"))
+
+    response = asyncio.run(client.merge(op=MergeOp.status))
+    operation_id = response.response.meta.operation_id
+    assert operation_id is not None
+    events = asyncio.run(collect(client.events(operation_id)))
+
+    assert [event.kind for event in events] == [
+        EventKind.operation_started,
+        EventKind.operation_finished,
+    ]
+    assert [event.sequence for event in events] == [0, 1]
 
 
 def test_native_operation_events_and_result_round_trip(tmp_path: Path) -> None:

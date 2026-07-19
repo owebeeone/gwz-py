@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from gwz import cli as cli_module
-from gwz.errors import GwzBridgeError
+from gwz.errors import GwzBridgeError, GwzOperationError
 
 from gwz.protocol.generated import (
     AggregateStatus,
@@ -61,6 +61,46 @@ def test_native_first_class_merge_dispatch_reaches_core_validation(tmp_path: Pat
 
     with pytest.raises(GwzBridgeError, match="MergeValidationFailed.*source_ref"):
         asyncio.run(client.merge("", paths=["repos/app"]))
+
+
+def test_native_gate_uses_explicit_root_outside_cwd_and_stage_is_conditional(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, _ = create_workspace_with_member(tmp_path)
+    client = native_client(tmp_path)
+    git(repo, "checkout", "-b", "feature/source")
+    commit_file(repo, "README.md", "source\n", "source")
+    git(repo, "checkout", "main")
+    commit_file(repo, "README.md", "target\n", "target")
+    with pytest.raises(GwzOperationError) as conflict:
+        asyncio.run(client.merge("feature/source", paths=["repos/app"]))
+    started = conflict.value.response
+    assert started.state is MergeOperationState.awaiting_resolution
+
+    outside = tmp_path.parent / f"{tmp_path.name}-outside"
+    outside.mkdir()
+    monkeypatch.chdir(outside)
+
+    with pytest.raises(GwzBridgeError, match="OpenOperation"):
+        asyncio.run(
+            client.branch(
+                "must-not-exist",
+                op="create",
+                start_ref="HEAD",
+                paths=["repos/app"],
+            )
+        )
+    assert "must-not-exist" not in git(repo, "branch", "--format=%(refname:short)").splitlines()
+
+    (repo / "README.md").write_text("resolved\n", encoding="utf-8")
+    staged = asyncio.run(client.stage(["repos/app/README.md"], cwd=tmp_path))
+    assert staged.response.meta.aggregate_status is AggregateStatus.ok
+    assert "README.md" in git(repo, "diff", "--cached", "--name-only")
+
+    (tmp_path / "root-new.txt").write_text("blocked\n", encoding="utf-8")
+    with pytest.raises(GwzBridgeError, match="OpenOperation"):
+        asyncio.run(client.stage(["root-new.txt"], cwd=tmp_path))
+    assert "root-new.txt" not in git(tmp_path, "diff", "--cached", "--name-only")
 
 
 @pytest.mark.parametrize(

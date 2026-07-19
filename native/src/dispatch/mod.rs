@@ -26,9 +26,6 @@ pub(crate) fn call(
     response_message: &str,
     request_bytes: &[u8],
 ) -> PyResult<Vec<u8>> {
-    if let Some(command) = static_open_merge_command(method) {
-        enforce_open_merge_gate(&current_dir()?, command)?;
-    }
     match method {
         "create_workspace" | "init_from_sources" | "add_existing_repo" | "create_repo"
         | "repo_sync" | "detach_repo_member" | "status" | "ls" | "list_snapshots" => {
@@ -48,39 +45,6 @@ pub(crate) fn call(
         "diff" => diff::call(method, request_message, response_message, request_bytes),
         other => Err(error::unsupported_method(other)),
     }
-}
-
-fn static_open_merge_command(method: &str) -> Option<gwz_core::operation::OpenMergeCommand> {
-    use gwz_core::operation::OpenMergeCommand as Command;
-
-    Some(match method {
-        "init_from_sources" => Command::InitExistingPlan,
-        "add_existing_repo" | "create_repo" | "repo_sync" | "detach_repo_member"
-        | "clone_repo_member" | "attach_repo_member" => Command::RepoMutate,
-        "status" => Command::Status,
-        "ls" => Command::Ls,
-        "list_snapshots" => Command::SnapshotList,
-        "materialize" => Command::Materialize,
-        "snapshot" => Command::Snapshot,
-        "capture" => Command::Capture,
-        "commit" => Command::Commit,
-        "stage" => Command::StageConflictResolution,
-        "pull_head" | "pull_snapshot" => Command::Pull,
-        "push" => Command::Push,
-        "diff" => Command::Diff,
-        "create_workspace" | "clone_workspace" | "tag" | "branch" | "stash" | "merge" => {
-            return None;
-        }
-        _ => return None,
-    })
-}
-
-pub(super) fn enforce_open_merge_gate(
-    start: &std::path::Path,
-    command: gwz_core::operation::OpenMergeCommand,
-) -> PyResult<()> {
-    gwz_core::workspace_ops::enforce_workspace_open_merge_gate(start, None, command)
-        .map_err(error::model)
 }
 
 pub(crate) fn submit(

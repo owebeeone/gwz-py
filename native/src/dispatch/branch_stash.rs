@@ -31,14 +31,6 @@ fn call_branch(
     })?;
     let request_id = request.meta.request_id.clone();
     let start = current_dir()?;
-    super::enforce_open_merge_gate(
-        &start,
-        if request.op == gwz_core::BranchOp::List {
-            gwz_core::operation::OpenMergeCommand::BranchList
-        } else {
-            gwz_core::operation::OpenMergeCommand::BranchMutate
-        },
-    )?;
     let response = shims::backend(&request_id, |backend, operation_id| {
         gwz_core::workspace_ops::handle_branch(backend, &start, request, operation_id)
     })?;
@@ -59,14 +51,6 @@ fn call_stash(
     })?;
     let request_id = request.meta.request_id.clone();
     let start = current_dir()?;
-    super::enforce_open_merge_gate(
-        &start,
-        if request.op == gwz_core::StashOp::List {
-            gwz_core::operation::OpenMergeCommand::StashList
-        } else {
-            gwz_core::operation::OpenMergeCommand::StashMutate
-        },
-    )?;
     let response = shims::backend(&request_id, |backend, operation_id| {
         gwz_core::workspace_ops::handle_stash(backend, &start, request, operation_id)
     })?;
