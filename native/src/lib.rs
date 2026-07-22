@@ -139,6 +139,15 @@ fn try_operation_result(operation_id: &str) -> PyResult<Option<Vec<u8>>> {
         .transpose()
 }
 
+#[pyfunction]
+fn merge_operation_response(py: Python<'_>, operation_id: &str) -> PyResult<Vec<u8>> {
+    let operation_id = operation_id.to_owned();
+    py.detach(move || {
+        let response = operations::merge_response(&operation_id)?;
+        codec::encode_message("encode MergeResponse", || response.to_cbor())
+    })
+}
+
 #[pymodule]
 fn _gwz_core(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(health, module)?)?;
@@ -149,6 +158,7 @@ fn _gwz_core(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(wait_events, module)?)?;
     module.add_function(wrap_pyfunction!(operation_result, module)?)?;
     module.add_function(wrap_pyfunction!(try_operation_result, module)?)?;
+    module.add_function(wrap_pyfunction!(merge_operation_response, module)?)?;
     module.add_function(wrap_pyfunction!(diff_log_read, module)?)?;
     module.add_function(wrap_pyfunction!(diff_log_end_stream, module)?)?;
     Ok(())

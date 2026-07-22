@@ -1,10 +1,28 @@
 from __future__ import annotations
 
 import argparse
+import json
+import sys
+from dataclasses import dataclass
 from typing import Any
 
-from .cli_shared import CliUsageError, CommandContext, CommandRegistry
+from .cli_render import operation_event_json, render_response
+from .cli_shared import (
+    CliUsageError,
+    CommandContext,
+    CommandRegistry,
+    exit_code_for_response,
+)
 from .protocol.generated import MergeMode, MergeOp
+
+
+@dataclass(frozen=True, slots=True)
+class MergeCliResult:
+    exit_code: int
+
+
+def is_merge_result(value: object) -> bool:
+    return isinstance(value, MergeCliResult)
 
 
 def register_commands(registry: CommandRegistry) -> None:
@@ -66,12 +84,32 @@ async def handle_merge(context: CommandContext) -> Any:
         if context.args.no_ff
         else None
     )
-    return await context.client.merge(
-        context.args.source,
-        op=op,
-        merge_id=context.args.gc or None,
-        mode=mode,
-        message=context.args.message,
-        preserve=True if context.args.preserve else None,
+    merge_args = (context.args.source,)
+    merge_kwargs = {
+        "op": op,
+        "merge_id": context.args.gc or None,
+        "mode": mode,
+        "message": context.args.message,
+        "preserve": True if context.args.preserve else None,
         **context.meta,
+    }
+    if context.args.jsonl:
+        handle = await context.client.merge_stream(*merge_args, **merge_kwargs)
+        async for event in handle.events():
+            _write_jsonl(operation_event_json(event))
+        response = await handle.result()
+        _write_stdout(render_response(response, json_mode=True) + "\n")
+        return MergeCliResult(exit_code=exit_code_for_response(response))
+    return await context.client.merge(
+        *merge_args,
+        **merge_kwargs,
     )
+
+
+def _write_jsonl(value: dict[str, Any]) -> None:
+    _write_stdout(json.dumps(value, sort_keys=True) + "\n")
+
+
+def _write_stdout(value: str) -> None:
+    sys.stdout.write(value)
+    sys.stdout.flush()

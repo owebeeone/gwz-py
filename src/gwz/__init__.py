@@ -1,5 +1,5 @@
 from ._version import __version__
-from .client import Client, status
+from .client import Client, MergeOperationHandle, status
 from .errors import (
     GwzBridgeError,
     GwzCoreLoadError,
@@ -15,6 +15,7 @@ __all__ = [
     "GwzError",
     "GwzOperationError",
     "GwzProtocolError",
+    "MergeOperationHandle",
     "__version__",
     "status",
 ]

@@ -71,6 +71,7 @@ pub(crate) fn submit(
             submit_pull_snapshot(method, request_message, response_message, request_bytes)
         }
         "push" => submit_push(method, request_message, response_message, request_bytes),
+        "merge" => merge::submit(method, request_message, response_message, request_bytes),
         other => Err(error::unsupported_method(other)),
     }
 }
@@ -283,7 +284,7 @@ fn spawn_call(
     let request_bytes = request_bytes.to_vec();
     thread::spawn(move || {
         if let Err(err) = call(&method, &request_message, &response_message, &request_bytes) {
-            recorder.finish_error(request_id, schema_version, action, err.to_string());
+            let _ = recorder.finish_error(request_id, schema_version, action, err.to_string());
         }
     });
 }

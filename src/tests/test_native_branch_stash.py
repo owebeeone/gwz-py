@@ -64,7 +64,9 @@ def test_native_first_class_merge_dispatch_reaches_core_validation(tmp_path: Pat
 
 
 def test_native_gate_uses_explicit_root_outside_cwd_and_stage_is_conditional(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     repo, _ = create_workspace_with_member(tmp_path)
     client = native_client(tmp_path)
@@ -80,6 +82,32 @@ def test_native_gate_uses_explicit_root_outside_cwd_and_stage_is_conditional(
     outside = tmp_path.parent / f"{tmp_path.name}-outside"
     outside.mkdir()
     monkeypatch.chdir(outside)
+
+    for dry_run in [True, False]:
+        with pytest.raises(GwzBridgeError, match="OpenOperation"):
+            asyncio.run(
+                client.merge(
+                    "feature/source",
+                    dry_run=dry_run,
+                    paths=["repos/app"],
+                )
+            )
+
+    for machine_flag in ["--json", "--jsonl"]:
+        assert (
+            cli_module.main(
+                [
+                    "--root",
+                    str(tmp_path),
+                    machine_flag,
+                    "merge",
+                    "feature/source",
+                ]
+            )
+            == 1
+        )
+        records = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+        assert records[-1]["errors"][0]["code"] == "OpenOperation"
 
     with pytest.raises(GwzBridgeError, match="OpenOperation"):
         asyncio.run(
@@ -134,7 +162,14 @@ def test_native_cli_merge_conflict_preserves_structured_response(
         assert "source: feature/source @" in output
         assert "README.md" in output
         return
-    payload = json.loads(output)
+    records = [json.loads(line) for line in output.splitlines()]
+    if machine_flag == "--jsonl":
+        assert records[0]["kind"] == "event"
+        assert records[-1]["kind"] == "response"
+        assert all(record["kind"] == "event" for record in records[:-1])
+    else:
+        assert len(records) == 1
+    payload = records[-1]
     assert payload["meta"]["aggregate_status"] == "Conflicted"
     assert payload["merge"]["state"] == "AwaitingResolution"
     assert payload["merge"]["repos"][0]["state"] == "Conflicted"

@@ -5,13 +5,19 @@ from typing import Any
 
 import pytest
 
+from gwz import Client, MergeOperationHandle
 from gwz.bridge import NativeCoreBridge, _EVENT_WAIT_TIMEOUT_MS
-from gwz.errors import GwzBridgeError, GwzProtocolError
+from gwz.errors import GwzBridgeError, GwzOperationError, GwzProtocolError
 from gwz.protocol.codec import decode_message, encode_message
 from gwz.protocol.generated import (
     ActionKind,
     AggregateStatus,
     EventKind,
+    GwzError,
+    GwzErrorCode,
+    MergeOperationState,
+    MergeParticipantCounts,
+    MergeResponse,
     OperationEvent,
     OperationResult,
     RequestMeta,
@@ -21,6 +27,7 @@ from gwz.protocol.generated import (
     StatusMode,
     StatusRequest,
     StatusResponse,
+    TargetKind,
 )
 
 
@@ -97,11 +104,40 @@ def operation_result() -> OperationResult:
     )
 
 
+def merge_response(
+    aggregate_status: AggregateStatus = AggregateStatus.ok,
+) -> MergeResponse:
+    return MergeResponse(
+        response=ResponseEnvelope(
+            meta=ResponseMeta(
+                request_id="req_transport",
+                schema_version="gwz.protocol/v0",
+                action=ActionKind.merge,
+                aggregate_status=aggregate_status,
+                operation_id="op_transport",
+                message=None,
+                attribution=None,
+            ),
+            members=[],
+            errors=[],
+        ),
+        merge_id="merge_transport",
+        state=MergeOperationState.completed,
+        open=False,
+        participant_counts=MergeParticipantCounts(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+        repos=[],
+        operation_drift=[],
+        preservation=None,
+        publication_step=None,
+    )
+
+
 class FakeNative:
     def __init__(self) -> None:
         self.calls: list[tuple[str, str, str, bytes]] = []
         self.subscriptions: list[str] = []
         self.result_requests: list[str] = []
+        self.merge_response_requests: list[str] = []
 
     def call(
         self,
@@ -121,6 +157,10 @@ class FakeNative:
     def operation_result(self, operation_id: str) -> bytes:
         self.result_requests.append(operation_id)
         return encode_message("OperationResult", operation_result())
+
+    def merge_operation_response(self, operation_id: str) -> bytes:
+        self.merge_response_requests.append(operation_id)
+        return encode_message("MergeResponse", merge_response())
 
 
 def test_native_bridge_encodes_request_bytes_and_decodes_response() -> None:
@@ -153,6 +193,11 @@ def test_native_bridge_decodes_event_and_result_bytes() -> None:
 
     assert result == operation_result()
     assert native.result_requests == ["op_transport"]
+
+    response = asyncio.run(bridge.merge_operation_response("op_transport"))
+
+    assert response == merge_response()
+    assert native.merge_response_requests == ["op_transport"]
 
 
 def test_native_bridge_uses_wait_events_when_available() -> None:
@@ -232,3 +277,95 @@ def test_native_bridge_maps_malformed_response_bytes_to_protocol_error() -> None
 
     with pytest.raises(GwzProtocolError, match="failed to decode StatusResponse"):
         asyncio.run(bridge.call("status", "StatusRequest", "StatusResponse", status_request()))
+
+
+class SubmittedMergeBridge:
+    def __init__(self, terminal: OperationResult | None = None) -> None:
+        self.submissions: list[tuple[str, str, str, object]] = []
+        self.response_lookups: list[str] = []
+        self.terminal = terminal or OperationResult(
+            operation_id="op_transport",
+            request_id="req_transport",
+            action=ActionKind.merge,
+            aggregate_status=AggregateStatus.ok,
+            started_at_ms=1,
+            finished_at_ms=2,
+            members=[],
+            errors=[],
+            attribution=None,
+        )
+
+    async def submit(
+        self,
+        method: str,
+        request_message: str,
+        response_message: str,
+        request: object,
+    ) -> MergeResponse:
+        self.submissions.append((method, request_message, response_message, request))
+        return merge_response(AggregateStatus.accepted)
+
+    def subscribe_events(self, operation_id: str):
+        async def events():
+            yield operation_event()
+
+        return events()
+
+    async def operation_result(self, operation_id: str) -> OperationResult:
+        return self.terminal
+
+    async def merge_operation_response(self, operation_id: str) -> MergeResponse:
+        self.response_lookups.append(operation_id)
+        if self.terminal.aggregate_status is AggregateStatus.failed:
+            raise GwzBridgeError("operation completed without a merge response")
+        return merge_response()
+
+
+def test_merge_stream_returns_handle_events_and_retained_response() -> None:
+    bridge = SubmittedMergeBridge()
+    client = Client(root="/tmp/workspace", bridge=bridge)
+
+    async def exercise() -> tuple[MergeOperationHandle, list[OperationEvent], MergeResponse]:
+        handle = await client.merge_stream("feature/x", dry_run=True)
+        events = [event async for event in handle.events()]
+        return handle, events, await handle.result()
+
+    handle, events, response = asyncio.run(exercise())
+
+    assert handle.operation_id == "op_transport"
+    assert events == [operation_event()]
+    assert response == merge_response()
+    assert bridge.submissions[0][:3] == ("merge", "MergeRequest", "MergeResponse")
+    assert bridge.response_lookups == ["op_transport"]
+
+
+def test_merge_stream_raises_from_structured_terminal_result() -> None:
+    error = GwzError(
+        code=GwzErrorCode.git_command_failed,
+        message="member source is missing",
+        member_id="mem_lib",
+        member_path="lib",
+        detail="source ref was not found",
+        target_kind=TargetKind.member,
+    )
+    terminal = OperationResult(
+        operation_id="op_transport",
+        request_id="req_transport",
+        action=ActionKind.merge,
+        aggregate_status=AggregateStatus.failed,
+        started_at_ms=1,
+        finished_at_ms=2,
+        members=[],
+        errors=[error],
+        attribution=None,
+    )
+    client = Client(root="/tmp/workspace", bridge=SubmittedMergeBridge(terminal))
+
+    async def exercise() -> None:
+        handle = await client.merge_stream("feature/x")
+        with pytest.raises(GwzOperationError) as exc_info:
+            await handle.result()
+        assert exc_info.value.response is terminal
+        assert exc_info.value.member_errors == [error]
+
+    asyncio.run(exercise())

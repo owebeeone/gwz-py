@@ -1,5 +1,8 @@
 import asyncio
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 import pytest
@@ -14,15 +17,35 @@ from gwz.protocol.generated import (
     MergeParticipantDrift, MergeParticipantDriftKind, MergeParticipantState,
     MergePendingActionKind, MergePendingActionState, MergePendingActionSummary,
     MergePreservation, MergePublicationStep, MergeRepoSummary, MergeResponse,
-    GwzError, GwzErrorCode, OperationEvent, ResponseEnvelope, ResponseMeta, Severity,
+    GwzError, GwzErrorCode, OperationEvent, OperationResult, ResponseEnvelope, ResponseMeta, Severity,
     TargetKind,
 )
 from native_helpers import commit_file, git, native_client
 
+class FakeMergeHandle:
+    def __init__(self, response: Any, events: list[OperationEvent] | None = None) -> None:
+        self.operation_id = "op-fake"
+        self.response = response
+        self.stream_events = events or []
+    def events(self):
+        async def iterate():
+            for event in self.stream_events:
+                yield event
+        return iterate()
+    async def result(self) -> Any:
+        return self.response
+
 class FakeClient:
-    def __init__(self, *args: Any, response: Any = "merge", **kwargs: Any) -> None:
+    def __init__(
+        self,
+        *args: Any,
+        response: Any = "merge",
+        events: list[OperationEvent] | None = None,
+        **kwargs: Any,
+    ) -> None:
         self.calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
         self.response = response
+        self.events = events or []
     async def __aenter__(self) -> "FakeClient":
         return self
     async def __aexit__(self, *args: Any) -> None:
@@ -30,6 +53,9 @@ class FakeClient:
     async def merge(self, *args: Any, **kwargs: Any) -> Any:
         self.calls.append((args, kwargs))
         return self.response
+    async def merge_stream(self, *args: Any, **kwargs: Any) -> FakeMergeHandle:
+        self.calls.append((args, kwargs))
+        return FakeMergeHandle(self.response, self.events)
 
 def run_handler(argv: list[str], client: FakeClient) -> Any:
     args = build_parser().parse_args(argv)
@@ -96,18 +122,132 @@ def test_merge_human_and_machine_render_idle_without_fabricated_operation() -> N
     assert machine["repos"] == []
     assert machine["operation_drift"] == []
 
-@pytest.mark.parametrize("flag", ["--json", "--jsonl"])
-def test_merge_machine_success_matches_rust_parity_fixture(
-    flag: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+def test_merge_json_success_matches_rust_parity_fixture(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     response = merge_response()
     monkeypatch.setattr(cli, "Client", lambda **kwargs: FakeClient(response=response))
-    cli.main([flag, "merge", "feature/x"])
+    cli.main(["--json", "merge", "feature/x"])
     expected = json.loads(canonical_merge_response_fixture().read_text())
     assert json.loads(capsys.readouterr().out) == expected
 
 
+def test_merge_jsonl_streams_events_then_one_final_response(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    response = merge_response()
+    event = merge_event()
+    monkeypatch.setattr(
+        cli,
+        "Client",
+        lambda **kwargs: FakeClient(response=response, events=[event]),
+    )
+
+    assert cli.main(["--jsonl", "merge", "feature/x"]) == 1
+
+    records = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert records == [
+        operation_event_json(event),
+        json.loads(canonical_merge_response_fixture().read_text()),
+    ]
+
+
+def test_merge_jsonl_flushes_event_before_operation_completes(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    event = merge_event()
+    response = merge_response()
+
+    class PausedHandle(FakeMergeHandle):
+        def __init__(self) -> None:
+            super().__init__(response)
+            self.waiting = asyncio.Event()
+            self.release = asyncio.Event()
+
+        def events(self):
+            async def iterate():
+                yield event
+                self.waiting.set()
+                await self.release.wait()
+
+            return iterate()
+
+    handle = PausedHandle()
+
+    class PausedClient(FakeClient):
+        async def merge_stream(self, *args: Any, **kwargs: Any) -> FakeMergeHandle:
+            return handle
+
+    monkeypatch.setattr(cli, "Client", PausedClient)
+
+    async def exercise() -> None:
+        args = build_parser().parse_args(["--jsonl", "merge", "feature/x"])
+        task = asyncio.create_task(cli.run(args))
+        await asyncio.wait_for(handle.waiting.wait(), timeout=1)
+
+        early_records = [
+            json.loads(line) for line in capsys.readouterr().out.splitlines()
+        ]
+        assert early_records == [operation_event_json(event)]
+        assert not task.done()
+
+        handle.release.set()
+        assert await task == 1
+
+    asyncio.run(exercise())
+
+    final_records = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert final_records == [json.loads(canonical_merge_response_fixture().read_text())]
+
+
+def test_native_merge_jsonl_subprocess_flushes_before_completion(tmp_path: Path) -> None:
+    client = native_client(tmp_path)
+    asyncio.run(client.create_workspace(workspace_id="ws_jsonl_live"))
+    environment = dict(os.environ)
+    environment["GWZ_PY_TEST_EVENT_DELAY_MS"] = "750"
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "gwz.cli",
+            "--root",
+            str(tmp_path),
+            "--jsonl",
+            "merge",
+            "--status",
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=environment,
+    )
+    try:
+        assert process.stdout is not None
+        first_line = process.stdout.readline()
+        first = json.loads(first_line)
+        assert first["kind"] == "event"
+        assert first["event_kind"] == "OperationStarted"
+        assert process.poll() is None
+
+        remaining, stderr = process.communicate(timeout=5)
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5)
+
+    assert process.returncode == 0, stderr
+    records = [first, *(json.loads(line) for line in remaining.splitlines())]
+    assert all(record["kind"] == "event" for record in records[:-1])
+    assert records[-1]["kind"] == "response"
+    assert records[-1]["merge"]["state"] == "Idle"
+
+
 def test_merge_event_json_matches_rust_canonical_fixture() -> None:
+    expected = json.loads(canonical_merge_event_fixture().read_text())
+    assert operation_event_json(merge_event()) == expected
+
+
+def merge_event() -> OperationEvent:
     member = MergeRepoSummary(
         target_id="mem_app",
         target_kind=TargetKind.member,
@@ -128,7 +268,7 @@ def test_merge_event_json_matches_rust_canonical_fixture() -> None:
         error=None,
         pending_action=None,
     )
-    event = OperationEvent(
+    return OperationEvent(
         operation_id="op_render",
         request_id="req_render",
         sequence=0,
@@ -147,8 +287,6 @@ def test_merge_event_json_matches_rust_canonical_fixture() -> None:
         merge_member=member,
         artifact_path=".gwz/merge/merge_1.yaml",
     )
-    expected = json.loads(canonical_merge_event_fixture().read_text())
-    assert operation_event_json(event) == expected
 
 @pytest.mark.parametrize("flag", ["--json", "--jsonl"])
 @pytest.mark.parametrize("options", [["--continue", "--abort"], ["--ff-only", "--no-ff"]])
@@ -168,9 +306,11 @@ def test_native_machine_errors_are_structured(
     class FailingClient(FakeClient):
         async def merge(self, *args: Any, **kwargs: Any) -> None:
             raise GwzBridgeError("call failed: MergePhaseUnsupported: reserved")
+        async def merge_stream(self, *args: Any, **kwargs: Any) -> FakeMergeHandle:
+            raise GwzBridgeError("call failed: MergePhaseUnsupported: reserved")
     monkeypatch.setattr(cli, "Client", FailingClient)
     assert cli.main([flag, "merge", "feature/x", "--ff-only"]) == 1
-    error = json.loads(capsys.readouterr().out)["errors"][0]
+    error = json.loads(capsys.readouterr().out.splitlines()[-1])["errors"][0]
     assert (error["code"], error["message"]) == ("MergePhaseUnsupported", "reserved")
 
 
@@ -195,11 +335,61 @@ def test_native_preflight_machine_error_retains_second_member_context(
 
     assert cli.main(["--root", str(tmp_path), flag, "merge", "feature/source"]) == 1
 
-    error = json.loads(capsys.readouterr().out)["errors"][0]
+    error = json.loads(capsys.readouterr().out.splitlines()[-1])["errors"][0]
     assert error["code"] == "GitCommandFailed"
     assert error["member_id"] == "mem_lib"
     assert error["member_path"] == "lib"
     assert error["target_kind"] == "Member"
+
+
+def test_merge_jsonl_failure_ends_with_structured_terminal_error(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    event = merge_event()
+    member_error = GwzError(
+        GwzErrorCode.git_command_failed,
+        "member source is missing",
+        "mem_lib",
+        "lib",
+        "source ref was not found",
+        TargetKind.member,
+    )
+    terminal = OperationResult(
+        "op-fake", "req-fake", ActionKind.merge, AggregateStatus.failed,
+        1, 2, [], [member_error], None,
+    )
+
+    class FailingHandle(FakeMergeHandle):
+        async def result(self) -> Any:
+            raise GwzOperationError(
+                "gwz operation returned failed",
+                response=terminal,
+                aggregate_status=terminal.aggregate_status,
+                operation_id=terminal.operation_id,
+                request_id=terminal.request_id,
+                member_errors=terminal.errors,
+            )
+
+    class FailingStreamClient(FakeClient):
+        async def merge_stream(self, *args: Any, **kwargs: Any) -> FakeMergeHandle:
+            return FailingHandle(None, [event])
+
+    monkeypatch.setattr(cli, "Client", FailingStreamClient)
+
+    assert cli.main(["--jsonl", "merge", "feature/x"]) == 1
+
+    records = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert records[0] == operation_event_json(event)
+    assert records[-1]["kind"] == "response"
+    assert records[-1]["errors"] == [{
+        "code": "GitCommandFailed",
+        "message": "member source is missing",
+        "member_id": "mem_lib",
+        "member_path": "lib",
+        "detail": "source ref was not found",
+        "target_kind": "Member",
+    }]
+    assert len(records) == 2
 
 def test_halted_merge_response_unwraps_without_changing_generic_failures() -> None:
     response = merge_response()

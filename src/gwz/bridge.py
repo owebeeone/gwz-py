@@ -31,11 +31,23 @@ class CoreBridge(Protocol):
     ) -> Any:
         """Run one GWZ core operation and return a generated response object."""
 
+    async def submit(
+        self,
+        method: str,
+        request_message: str,
+        response_message: str,
+        request: Any,
+    ) -> Any:
+        """Submit one GWZ core operation and return its accepted response."""
+
     def subscribe_events(self, operation_id: str) -> AsyncIterator[Any]:
         """Yield generated OperationEvent objects for a submitted operation."""
 
     async def operation_result(self, operation_id: str) -> Any:
         """Return the generated OperationResult for a submitted operation."""
+
+    async def merge_operation_response(self, operation_id: str) -> Any:
+        """Return the retained successful MergeResponse for an operation."""
 
     async def diff_log_read(
         self,
@@ -88,6 +100,9 @@ class NativeModule(Protocol):
 
     def try_operation_result(self, operation_id: str) -> NativeBytePayload | None:
         """Return encoded OperationResult bytes if a submitted operation is complete."""
+
+    def merge_operation_response(self, operation_id: str) -> NativeBytePayload:
+        """Return encoded retained MergeResponse bytes for a successful merge."""
 
     def diff_log_read(
         self,
@@ -230,6 +245,21 @@ class NativeCoreBridge:
                 f"native operation result lookup failed for {operation_id}: {exc}"
             ) from exc
         return decode_message(result_message_name(), _bytes(result_bytes, result_message_name()))
+
+    async def merge_operation_response(self, operation_id: str) -> Any:
+        message_name = "MergeResponse"
+        try:
+            response_bytes = await asyncio.to_thread(
+                self._native.merge_operation_response,
+                operation_id,
+            )
+        except GwzBridgeError:
+            raise
+        except Exception as exc:
+            raise GwzBridgeError(
+                f"native merge response lookup failed for {operation_id}: {exc}"
+            ) from exc
+        return decode_message(message_name, _bytes(response_bytes, message_name))
 
     async def diff_log_read(
         self,

@@ -76,6 +76,8 @@ async def run(args: argparse.Namespace) -> int:
 
     if cli_diff.is_diff_result(response):
         return response.exit_code
+    if cli_merge.is_merge_result(response):
+        return response.exit_code
 
     rendered = render_response(
         response,
