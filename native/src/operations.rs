@@ -549,4 +549,90 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn failure_finish_event_precedes_completion_and_wakes_all_waiters() {
+        let record = Arc::new(OperationRecord::new());
+        let (sender, receiver) = mpsc::channel();
+        record.push(gwz_core::OperationEvent {
+            operation_id: "op_test".to_owned(),
+            request_id: "req_failed".to_owned(),
+            sequence: 0,
+            kind: gwz_core::EventKind::OperationStarted,
+            ..gwz_core::OperationEvent::default()
+        });
+
+        for _ in 0..2 {
+            let record = Arc::clone(&record);
+            let sender = sender.clone();
+            thread::spawn(move || {
+                let result = record.result().unwrap();
+                sender
+                    .send(format!("result:{:?}", result.errors[0].code))
+                    .unwrap();
+            });
+        }
+        for _ in 0..2 {
+            let record = Arc::clone(&record);
+            let sender = sender.clone();
+            thread::spawn(move || {
+                let mut kinds = Vec::new();
+                let mut next_sequence = 0;
+                loop {
+                    let (events, complete) =
+                        record.wait_events(next_sequence, Duration::from_secs(5));
+                    if let Some(last) = events.last() {
+                        next_sequence = last.sequence + 1;
+                    }
+                    kinds.extend(events.into_iter().map(|event| event.kind));
+                    if complete {
+                        sender.send(format!("events:{kinds:?}")).unwrap();
+                        break;
+                    }
+                }
+            });
+        }
+        drop(sender);
+
+        record.push(gwz_core::OperationEvent {
+            operation_id: "op_test".to_owned(),
+            request_id: "req_failed".to_owned(),
+            sequence: 1,
+            kind: gwz_core::EventKind::OperationFinished,
+            ..gwz_core::OperationEvent::default()
+        });
+        assert!(
+            record.try_result().is_none(),
+            "the finish event must be stored before completion is published"
+        );
+        record
+            .finish_model_error(
+                "op_test".to_owned(),
+                &request_meta("req_failed"),
+                gwz_core::ActionKind::Merge,
+                &gwz_core::model::ModelError::new(
+                    gwz_core::model::ErrorCode::InvalidRequest,
+                    "invalid attribution",
+                ),
+            )
+            .unwrap();
+
+        let messages = (0..4)
+            .map(|_| receiver.recv_timeout(Duration::from_secs(2)).unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            messages
+                .iter()
+                .filter(|message| *message == "result:InvalidRequest")
+                .count(),
+            2
+        );
+        assert_eq!(
+            messages
+                .iter()
+                .filter(|message| { *message == "events:[OperationStarted, OperationFinished]" })
+                .count(),
+            2
+        );
+    }
 }

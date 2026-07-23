@@ -12,6 +12,7 @@ from gwz.errors import GwzBridgeError, GwzOperationError
 from gwz.protocol.generated import (
     AggregateStatus,
     BranchActionResult,
+    EventKind,
     MergeOperationState,
     MergeParticipantState,
     StashPushLifecycle,
@@ -84,14 +85,21 @@ def test_native_gate_uses_explicit_root_outside_cwd_and_stage_is_conditional(
     monkeypatch.chdir(outside)
 
     for dry_run in [True, False]:
+        request_id = f"req_client_open_{dry_run}"
         with pytest.raises(GwzBridgeError, match="OpenOperation"):
             asyncio.run(
                 client.merge(
                     "feature/source",
                     dry_run=dry_run,
                     paths=["repos/app"],
+                    request_id=request_id,
                 )
             )
+        events = asyncio.run(collect_events(client.events(f"op_{request_id}")))
+        assert [event.kind for event in events] == [
+            EventKind.operation_started,
+            EventKind.operation_finished,
+        ]
 
     for machine_flag in ["--json", "--jsonl"]:
         assert (
@@ -107,6 +115,12 @@ def test_native_gate_uses_explicit_root_outside_cwd_and_stage_is_conditional(
             == 1
         )
         records = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+        if machine_flag == "--jsonl":
+            assert [
+                record["event_kind"]
+                for record in records
+                if record.get("kind") == "event"
+            ] == ["OperationStarted", "OperationFinished"]
         assert records[-1]["errors"][0]["code"] == "OpenOperation"
 
     with pytest.raises(GwzBridgeError, match="OpenOperation"):
@@ -129,6 +143,10 @@ def test_native_gate_uses_explicit_root_outside_cwd_and_stage_is_conditional(
     with pytest.raises(GwzBridgeError, match="OpenOperation"):
         asyncio.run(client.stage(["root-new.txt"], cwd=tmp_path))
     assert "root-new.txt" not in git(tmp_path, "diff", "--cached", "--name-only")
+
+
+async def collect_events(events):
+    return [event async for event in events]
 
 
 @pytest.mark.parametrize(

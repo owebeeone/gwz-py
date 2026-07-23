@@ -12,6 +12,13 @@ from typing import Any
 
 import pytest
 
+from gwz.errors import GwzBridgeError
+from gwz.protocol.generated import (
+    AggregateStatus,
+    EventKind,
+    GwzErrorCode,
+)
+
 from native_helpers import (
     commit_file,
     create_workspace_with_member,
@@ -79,6 +86,8 @@ def run_cli(
     rust_binary: Path,
     root: Path,
     command: list[str],
+    *,
+    cwd: Path | None = None,
 ) -> tuple[int, list[dict[str, Any]]]:
     executable = (
         [str(rust_binary)]
@@ -87,7 +96,7 @@ def run_cli(
     )
     result = subprocess.run(
         [*executable, "--root", str(root), "--jsonl", *command],
-        cwd=root,
+        cwd=cwd or root.parent,
         check=False,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -99,6 +108,121 @@ def run_cli(
     assert records, driver
     assert all(isinstance(record, dict) for record in records)
     return result.returncode, records
+
+
+def workspace_bytes(root: Path) -> dict[str, bytes]:
+    return {
+        str(path.relative_to(root)): path.read_bytes()
+        for path in sorted(root.rglob("*"))
+        if path.is_file()
+    }
+
+
+def write_open_record(root: Path, state: str) -> None:
+    record_dir = root / ".gwz" / "merge"
+    record_dir.mkdir(parents=True, exist_ok=True)
+    (record_dir / "merge_test.yaml").write_text(
+        f"""schema: gwz.merge-operation/v0
+record_schema_version: 0
+writer_version: test
+workspace_id: ws_test
+merge_id: merge_test
+operation_id: op_original
+state: {state}
+source_ref: feature/source
+created_at: now
+baseline: {{ lock_sha256: lock, manifest_sha256: manifest }}
+selected_targets: []
+participants: {{}}
+""",
+        encoding="utf-8",
+    )
+
+
+async def collect_events(events):
+    return [event async for event in events]
+
+
+def assert_open_gate_jsonl(
+    code: int,
+    records: list[dict[str, Any]],
+) -> None:
+    assert code == 1
+    assert [record["kind"] for record in records] == [
+        "event",
+        "event",
+        "response",
+    ]
+    assert [record["event_kind"] for record in records[:-1]] == [
+        "OperationStarted",
+        "OperationFinished",
+    ]
+    assert len(records[-1]["errors"]) == 1
+    assert records[-1]["errors"][0]["code"] == "OpenOperation"
+    assert "merge_test" in records[-1]["errors"][0]["message"]
+
+
+@pytest.mark.parametrize(
+    "state",
+    ["awaiting_resolution", "halted", "recovery_required", "finalizing"],
+)
+def test_open_merge_gate_public_surface_matrix_from_unrelated_cwd(
+    state: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    rust_gwz_binary: Path,
+) -> None:
+    root = tmp_path / "workspace"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    client = native_client(root)
+    asyncio.run(client.create_workspace(workspace_id=f"ws_public_gate_{state}"))
+    write_open_record(root, state)
+    monkeypatch.chdir(outside)
+
+    for dry_run in [False, True]:
+        mode = "dry_run" if dry_run else "real"
+        before = workspace_bytes(root)
+        request_id = f"req_public_gate_{state}_{mode}"
+        with pytest.raises(GwzBridgeError) as failure:
+            asyncio.run(
+                client.merge(
+                    "feature/source",
+                    dry_run=dry_run,
+                    request_id=request_id,
+                )
+            )
+        assert failure.value.code == "OpenOperation"
+        operation_id = f"op_{request_id}"
+        events = asyncio.run(collect_events(client.events(operation_id)))
+        result = asyncio.run(client.bridge.operation_result(operation_id))
+        assert [event.kind for event in events] == [
+            EventKind.operation_started,
+            EventKind.operation_finished,
+        ]
+        assert [event.sequence for event in events] == [0, 1]
+        assert result.aggregate_status is AggregateStatus.failed
+        assert len(result.errors) == 1
+        assert result.errors[0].code is GwzErrorCode.open_operation
+        assert "merge_test" in result.errors[0].message
+        assert workspace_bytes(root) == before
+
+        command = [
+            *(["--dry-run"] if dry_run else []),
+            "merge",
+            "feature/source",
+        ]
+        for driver in ["rust", "python"]:
+            before = workspace_bytes(root)
+            code, records = run_cli(
+                driver,
+                rust_gwz_binary,
+                root,
+                command,
+                cwd=outside,
+            )
+            assert_open_gate_jsonl(code, records)
+            assert workspace_bytes(root) == before
 
 
 def dynamic_values(records: list[dict[str, Any]]) -> dict[str, set[str]]:
