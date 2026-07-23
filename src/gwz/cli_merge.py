@@ -35,15 +35,30 @@ def register_commands(registry: CommandRegistry) -> None:
 
 
 def configure_merge(parser: argparse.ArgumentParser) -> None:
-    parser.usage = "gwz-py merge <source> [--dry-run]"
+    parser.usage = (
+        "gwz-py merge [source] [--dry-run] [--status | --continue | --abort]"
+    )
     parser.add_argument(
         "source",
         nargs="?",
         help="Source ref resolved independently in each selected member",
     )
-    parser.add_argument("--continue", dest="resume", action="store_true", help=argparse.SUPPRESS)
-    parser.add_argument("--abort", action="store_true", help=argparse.SUPPRESS)
-    parser.add_argument("--status", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--continue",
+        dest="resume",
+        action="store_true",
+        help="Continue the open coordinated merge after resolving conflicts",
+    )
+    parser.add_argument(
+        "--abort",
+        action="store_true",
+        help="Safely roll back the open coordinated merge",
+    )
+    parser.add_argument(
+        "--status",
+        action="store_true",
+        help="Inspect coordinated merge state without changing it",
+    )
     parser.add_argument("--preserve", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--gc", nargs="?", const="", help=argparse.SUPPRESS)
     parser.add_argument("--ff-only", action="store_true", help=argparse.SUPPRESS)

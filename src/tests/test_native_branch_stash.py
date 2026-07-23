@@ -50,9 +50,9 @@ def test_native_branch_create_list_and_direct_merge_deprecation(tmp_path: Path) 
     assert git(repo, "rev-parse", "HEAD") == before
 
     merged = asyncio.run(client.merge("feature/source", paths=["repos/app"]))
-    assert merged.response.meta.aggregate_status is AggregateStatus.accepted
-    assert merged.state is MergeOperationState.finalizing
-    assert merged.open is True
+    assert merged.response.meta.aggregate_status is AggregateStatus.ok
+    assert merged.state is MergeOperationState.completed
+    assert merged.open is False
     assert merged.repos[0].state is MergeParticipantState.merged
 
 

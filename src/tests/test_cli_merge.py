@@ -62,7 +62,7 @@ def run_handler(argv: list[str], client: FakeClient) -> Any:
     validate_args(args)
     return asyncio.run(args.command_handler(CommandContext(args, client, meta_kwargs(args))))
 
-def test_merge_routes_start_reserved_fields_and_rejects_ambiguity() -> None:
+def test_merge_routes_lifecycle_and_reserved_fields_and_rejects_ambiguity() -> None:
     client = FakeClient()
     run_handler(["merge", "feature/x", "--dry-run"], client)
     assert client.calls[0] == (("feature/x",), {
@@ -78,24 +78,35 @@ def test_merge_routes_start_reserved_fields_and_rejects_ambiguity() -> None:
         "op": MergeOp.status, "merge_id": None, "mode": None, "message": None,
         "preserve": None,
     })
+    run_handler(["merge", "--continue"], client)
+    assert client.calls[3] == ((None,), {
+        "op": MergeOp.resume, "merge_id": None, "mode": None, "message": None,
+        "preserve": None,
+    })
+    run_handler(["merge", "--abort"], client)
+    assert client.calls[4] == ((None,), {
+        "op": MergeOp.abort, "merge_id": None, "mode": None, "message": None,
+        "preserve": None,
+    })
     with pytest.raises(CliUsageError, match="one lifecycle"):
         run_handler(["merge", "--continue", "--abort"], client)
     with pytest.raises(CliUsageError, match="mutually exclusive"):
         run_handler(["merge", "feature/x", "--ff-only", "--no-ff"], client)
 
-def test_merge_help_hides_lifecycle_flags(capsys: pytest.CaptureFixture[str]) -> None:
+def test_merge_help_exposes_lifecycle_flags(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit):
         build_parser().parse_args(["merge", "--help"])
     help_text = capsys.readouterr().out
-    assert "--continue" not in help_text
-    assert "--abort" not in help_text
-    assert "--status" not in help_text
+    assert "--continue" in help_text
+    assert "--abort" in help_text
+    assert "--status" in help_text
 
 def test_merge_human_rendering_reports_open_status_and_structured_drift() -> None:
     human = render_response(merge_response())
     assert human == canonical_merge_status_human_fixture().read_text().rstrip()
-    assert "gwz merge --continue" not in human
-    assert "gwz merge --abort" not in human
+    assert "gwz merge --status" in human
+    assert "gwz merge --continue" in human
+    assert "gwz merge --abort" in human
 
 
 def test_merge_human_and_machine_render_idle_without_fabricated_operation() -> None:

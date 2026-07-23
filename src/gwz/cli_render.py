@@ -472,7 +472,13 @@ def _render_merge_response(response: Any) -> str:
     lines.append(_merge_participant_counts(response.participant_counts))
     if response.publication_step is not None:
         lines.append(f"publication: {_enum_name(response.publication_step).replace('_', '-')}")
-    lines.append("recovery: participant eligibility shown below")
+    if response.open:
+        lines.extend([
+            "recovery commands:",
+            "  inspect:  gwz merge --status",
+            "  continue: gwz merge --continue",
+            "  abort:    gwz merge --abort",
+        ])
     if response.operation_drift:
         lines.append("operation drift:")
         for drift in response.operation_drift:
