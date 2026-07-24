@@ -475,9 +475,9 @@ def _render_merge_response(response: Any) -> str:
     if response.open:
         lines.extend([
             "recovery commands:",
-            "  inspect:  gwz merge --status",
-            "  continue: gwz merge --continue",
-            "  abort:    gwz merge --abort",
+            "  inspect:  gwz-py merge --status",
+            "  continue: gwz-py merge --continue",
+            "  abort:    gwz-py merge --abort",
         ])
     if response.operation_drift:
         lines.append("operation drift:")

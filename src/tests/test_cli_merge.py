@@ -103,10 +103,16 @@ def test_merge_help_exposes_lifecycle_flags(capsys: pytest.CaptureFixture[str]) 
 
 def test_merge_human_rendering_reports_open_status_and_structured_drift() -> None:
     human = render_response(merge_response())
-    assert human == canonical_merge_status_human_fixture().read_text().rstrip()
-    assert "gwz merge --status" in human
-    assert "gwz merge --continue" in human
-    assert "gwz merge --abort" in human
+    expected = (
+        canonical_merge_status_human_fixture()
+        .read_text()
+        .rstrip()
+        .replace("gwz merge --", "gwz-py merge --")
+    )
+    assert human == expected
+    assert "gwz-py merge --status" in human
+    assert "gwz-py merge --continue" in human
+    assert "gwz-py merge --abort" in human
 
 
 def test_merge_human_and_machine_render_idle_without_fabricated_operation() -> None:

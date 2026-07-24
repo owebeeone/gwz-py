@@ -273,6 +273,13 @@ def normalize(records: list[dict[str, Any]], root: Path) -> list[dict[str, Any]]
         normalized = value.replace(str(root), "<root>")
         for dynamic, replacement in replacements:
             normalized = normalized.replace(dynamic, replacement)
+        normalized = re.sub(
+            r"(?<![0-9a-f])[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-"
+            r"[0-9a-f]{4}-[0-9a-f]{12}(?![0-9a-f])",
+            "<uuid>",
+            normalized,
+            flags=re.IGNORECASE,
+        )
         normalized = re.sub(r"(?<![0-9a-f])[0-9a-f]{40}(?![0-9a-f])", "<oid>", normalized)
         return normalized
 
@@ -383,3 +390,39 @@ def test_actual_rust_and_python_merge_jsonl_are_semantically_equivalent(
         else:
             command = ["merge", "--abort"]
         assert_parity(rust_gwz_binary, rust_root, python_root, command)
+
+
+def test_clean_merge_jsonl_reports_verified_publication_artifacts_in_order(
+    tmp_path: Path,
+    rust_gwz_binary: Path,
+) -> None:
+    template = tmp_path / "template"
+    fast_forward_workspace(template)
+    rust_root, python_root = copy_pair(template, tmp_path)
+
+    for driver, root in [("rust", rust_root), ("python", python_root)]:
+        code, records = run_cli(
+            driver,
+            rust_gwz_binary,
+            root,
+            ["merge", "feature/source"],
+        )
+        assert code == 0
+        artifact_paths = [
+            record["artifact_path"]
+            for record in records
+            if record.get("event_kind") == "ArtifactWritten"
+            and (
+                str(record.get("artifact_path", "")).startswith("git:@root/")
+                or str(record.get("artifact_path", "")).startswith("gwz.conf/markers/")
+                or record.get("artifact_path")
+                in {"gwz.conf/gwz.lock.yml", ".git/info/exclude"}
+            )
+        ]
+        assert len(artifact_paths) == 4
+        assert artifact_paths[0].startswith("git:@root/")
+        assert artifact_paths[1].startswith("gwz.conf/markers/")
+        assert artifact_paths[2:] == [
+            "gwz.conf/gwz.lock.yml",
+            ".git/info/exclude",
+        ]
