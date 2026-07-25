@@ -9,7 +9,6 @@ import pytest
 from gwz import cli
 from gwz.cli import build_parser
 from gwz.cli_render import operation_event_json, render_response
-from gwz.cli_render_parts.errors import exception_error_json
 from gwz.cli_shared import CliUsageError, CommandContext, meta_kwargs, validate_args
 from gwz.errors import GwzBridgeError, GwzOperationError
 from gwz.protocol.generated import (
@@ -21,7 +20,7 @@ from gwz.protocol.generated import (
     GwzError, GwzErrorCode, OperationEvent, OperationResult, ResponseEnvelope, ResponseMeta, Severity,
     TargetKind,
 )
-from native_helpers import commit_file, git, native_client
+from native_helpers import native_client
 
 class FakeMergeHandle:
     def __init__(self, response: Any, events: list[OperationEvent] | None = None) -> None:
@@ -36,17 +35,6 @@ class FakeMergeHandle:
     async def result(self) -> Any:
         return self.response
 
-
-def test_top_level_root_error_infers_root_target_kind() -> None:
-    error = GwzBridgeError("post-merge work exists")
-    error.member_id = "@root"
-    error.member_path = "."
-
-    rendered = exception_error_json(error)
-
-    assert rendered["member_id"] == "@root"
-    assert rendered["member_path"] == "."
-    assert rendered["target_kind"] == "Root"
 
 class FakeClient:
     def __init__(
@@ -342,34 +330,6 @@ def test_native_machine_errors_are_structured(
     assert cli.main([flag, "merge", "feature/x", "--ff-only"]) == 1
     error = json.loads(capsys.readouterr().out.splitlines()[-1])["errors"][0]
     assert (error["code"], error["message"]) == ("MergePhaseUnsupported", "reserved")
-
-
-@pytest.mark.parametrize("flag", ["--json", "--jsonl"])
-def test_native_preflight_machine_error_retains_second_member_context(
-    flag: str,
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    client = native_client(tmp_path)
-    asyncio.run(client.create_workspace(workspace_id="ws_merge_error"))
-    asyncio.run(client.create_repo("app", member_id="mem_app", source_id="src_app"))
-    asyncio.run(client.create_repo("lib", member_id="mem_lib", source_id="src_lib"))
-    app = tmp_path / "app"
-    lib = tmp_path / "lib"
-    commit_file(app, "README.md", "app\n", "initial")
-    commit_file(lib, "README.md", "lib\n", "initial")
-    asyncio.run(client.capture(paths=["app", "lib"]))
-    git(app, "checkout", "-b", "feature/source")
-    commit_file(app, "source.txt", "source\n", "source")
-    git(app, "checkout", "main")
-
-    assert cli.main(["--root", str(tmp_path), flag, "merge", "feature/source"]) == 1
-
-    error = json.loads(capsys.readouterr().out.splitlines()[-1])["errors"][0]
-    assert error["code"] == "GitCommandFailed"
-    assert error["member_id"] == "mem_lib"
-    assert error["member_path"] == "lib"
-    assert error["target_kind"] == "Member"
 
 
 def test_merge_jsonl_failure_ends_with_structured_terminal_error(

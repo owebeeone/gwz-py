@@ -15,7 +15,13 @@ pub(crate) fn model(error: gwz_core::model::ModelError) -> PyErr {
     let code = format!("{:?}", error.code);
     let member_id = error.member_id;
     let member_path = error.member_path;
-    let target_kind = (member_id.is_some() || member_path.is_some()).then(|| "Member".to_owned());
+    let target_kind = if member_id.as_deref() == Some("@root")
+        && member_path.as_deref() == Some(".")
+    {
+        Some("Root".to_owned())
+    } else {
+        (member_id.is_some() || member_path.is_some()).then(|| "Member".to_owned())
+    };
     let machine_message = error.message;
     let exception = PyRuntimeError::new_err(display.clone());
     let attached = Python::attach(|py| -> PyResult<()> {
