@@ -52,6 +52,17 @@ def fast_forward_workspace(root: Path) -> None:
     git(repo, "checkout", "main")
 
 
+def root_fast_forward_workspace(root: Path) -> None:
+    create_workspace_with_member(root)
+    git(root, "config", "user.name", "GWZ Test")
+    git(root, "config", "user.email", "gwz@example.invalid")
+    git(root, "add", "gwz.conf")
+    commit_file(root, "root.txt", "baseline\n", "root baseline")
+    git(root, "checkout", "-b", "feature/source")
+    commit_file(root, "root-source.txt", "source\n", "root source")
+    git(root, "checkout", "main")
+
+
 def conflict_workspace(root: Path) -> None:
     repo, _ = create_workspace_with_member(root)
     git(repo, "checkout", "-b", "feature/source")
@@ -426,3 +437,27 @@ def test_clean_merge_jsonl_reports_verified_publication_artifacts_in_order(
             "gwz.conf/gwz.lock.yml",
             ".git/info/exclude",
         ]
+
+
+def test_explicit_root_merge_is_equivalent_across_both_drivers(
+    tmp_path: Path,
+    rust_gwz_binary: Path,
+) -> None:
+    template = tmp_path / "template"
+    root_fast_forward_workspace(template)
+    rust_root, python_root = copy_pair(template, tmp_path)
+    command = ["--target", "@root", "merge", "feature/source"]
+
+    rust_code, rust_records = run_cli("rust", rust_gwz_binary, rust_root, command)
+    python_code, python_records = run_cli("python", rust_gwz_binary, python_root, command)
+    assert rust_code == python_code == 0
+    assert normalize(rust_records, rust_root) == normalize(python_records, python_root)
+
+    for records in [rust_records, python_records]:
+        terminal = records[-1]
+        root_result = terminal["merge"]["repos"][0]
+        assert root_result["target_id"] == "@root"
+        assert root_result["target_kind"] == "Root"
+        assert root_result["path"] == "."
+        assert root_result["state"] == "FastForwarded"
+        assert terminal["merge"]["state"] == "Completed"

@@ -28,7 +28,7 @@ def is_merge_result(value: object) -> bool:
 def register_commands(registry: CommandRegistry) -> None:
     registry.register(
         "merge",
-        help="Merge a source ref across selected workspace members",
+        help="Merge a source ref across selected workspace repositories",
         configure=configure_merge,
         handler=handle_merge,
     )
@@ -41,7 +41,7 @@ def configure_merge(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "source",
         nargs="?",
-        help="Source ref resolved independently in each selected member",
+        help="Source ref resolved independently in each selected repository",
     )
     parser.add_argument(
         "--continue",

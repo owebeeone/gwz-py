@@ -39,7 +39,7 @@ def exception_error_json(error: BaseException) -> dict[str, Any]:
     member_path = getattr(error, "member_path", None)
     target_kind = getattr(error, "target_kind", None)
     if target_kind is None and (member_id is not None or member_path is not None):
-        target_kind = "Member"
+        target_kind = "Root" if member_id == "@root" and member_path == "." else "Member"
     return {
         "code": code,
         "message": message,

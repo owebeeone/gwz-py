@@ -9,6 +9,7 @@ import pytest
 from gwz import cli
 from gwz.cli import build_parser
 from gwz.cli_render import operation_event_json, render_response
+from gwz.cli_render_parts.errors import exception_error_json
 from gwz.cli_shared import CliUsageError, CommandContext, meta_kwargs, validate_args
 from gwz.errors import GwzBridgeError, GwzOperationError
 from gwz.protocol.generated import (
@@ -34,6 +35,18 @@ class FakeMergeHandle:
         return iterate()
     async def result(self) -> Any:
         return self.response
+
+
+def test_top_level_root_error_infers_root_target_kind() -> None:
+    error = GwzBridgeError("post-merge work exists")
+    error.member_id = "@root"
+    error.member_path = "."
+
+    rendered = exception_error_json(error)
+
+    assert rendered["member_id"] == "@root"
+    assert rendered["member_path"] == "."
+    assert rendered["target_kind"] == "Root"
 
 class FakeClient:
     def __init__(
