@@ -8,14 +8,15 @@ pinned ``git`` + ``tag`` source.
 
 For a release tag ``vX.Y.Z`` this script:
 
-  1. Verifies the matching gwz-core tag exists at the release branch's
-     configured gwz-core git URL.
+  1. Verifies the matching gwz-core and gwz-cli tags exist. The core tag is
+     read from the release branch's configured dependency URL; the CLI tag
+     supplies the cross-driver release fixtures and binary.
   2. Creates a temporary worktree on ``release`` and merges ``main`` into it.
   3. Sets the gwz-py Cargo package version to ``X.Y.Z`` and pins the gwz-core
      dependency tag to ``vX.Y.Z``.
   4. Checks protocol drift against gwz-core at the same tag, runs cargo/Python
-     tests, builds an installable wheel, and smoke-tests the installed
-     ``gwz-py`` command.
+     and Rust/Python cross-driver tests, builds an installable wheel, and
+     smoke-tests the installed ``gwz-py`` command.
   5. Commits the reconciled release branch and creates the lightweight
      ``vX.Y.Z`` tag without ever moving an existing tag.
 
@@ -38,12 +39,13 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 DEFAULT_GWZ_CORE_URL = "https://github.com/owebeeone/gwz-core"
+DEFAULT_GWZ_CLI_URL = "https://github.com/owebeeone/gwz-cli"
 RELEASE_PYTHON_DEPS = (
     "maturin>=1.13,<2",
     "pytest>=8",
     "pytest-asyncio>=0.23",
     "setuptools-scm>=8",
-    "taut-proto>=0.6.0",
+    "taut-proto==0.8.1",
 )
 
 
@@ -163,11 +165,11 @@ def gwz_core_url(release: str) -> str:
     return match.group(1)
 
 
-def verify_remote_tag(url: str, tag: str) -> None:
+def verify_remote_tag(project: str, url: str, tag: str) -> None:
     result = run(["git", "ls-remote", "--tags", url, f"refs/tags/{tag}"], capture=True)
     if not result.stdout.strip():
-        fail(f"gwz-core tag {tag} not found at {url}; release gwz-core first")
-    log(f"verified gwz-core {tag} exists at {url}")
+        fail(f"{project} tag {tag} not found at {url}; release {project} first")
+    log(f"verified {project} {tag} exists at {url}")
 
 
 def release_branch_is_free(release: str) -> None:
@@ -288,7 +290,7 @@ def verify_locked_git_pin(worktree: Path, tag: str) -> None:
     log(f"verified Cargo.lock pins gwz-core via {source}")
 
 
-def checkout_gwz_core(url: str, tag: str, target: Path) -> None:
+def checkout_release_dependency(url: str, tag: str, target: Path) -> None:
     run(["git", "clone", "--depth", "1", "--branch", tag, url, target])
 
 
@@ -366,11 +368,13 @@ def bootstrap_release(args: argparse.Namespace, tag: str, version: str) -> int:
         fail(f"tag {tag} already exists at {existing[:10]}; refusing to bootstrap")
 
     core_url = args.gwz_core_url
-    verify_remote_tag(core_url, tag)
+    verify_remote_tag("gwz-core", core_url, tag)
+    verify_remote_tag("gwz-cli", args.gwz_cli_url, tag)
 
     temp_root = Path(tempfile.mkdtemp(prefix=f"gwz-py-{tag}-bootstrap-"))
     worktree = temp_root / "gwz-py"
     core_checkout = temp_root / "gwz-core"
+    cli_checkout = temp_root / "gwz-cli"
     committed = False
 
     git(["branch", args.release, args.main])
@@ -378,7 +382,8 @@ def bootstrap_release(args: argparse.Namespace, tag: str, version: str) -> int:
         release_branch_is_free(args.release)
         git(["worktree", "add", worktree, args.release])
         reconcile_cargo_toml(worktree, tag, version, core_url=core_url)
-        checkout_gwz_core(core_url, tag, core_checkout)
+        checkout_release_dependency(core_url, tag, core_checkout)
+        checkout_release_dependency(args.gwz_cli_url, tag, cli_checkout)
         run_release_checks(worktree, args, tag=tag, version=version)
         git_wt(worktree, ["add", "Cargo.toml", "Cargo.lock"])
         staged = git_wt(
@@ -426,6 +431,11 @@ def main() -> int:
         default=DEFAULT_GWZ_CORE_URL,
         help="gwz-core git URL used when bootstrapping the release branch",
     )
+    parser.add_argument(
+        "--gwz-cli-url",
+        default=DEFAULT_GWZ_CLI_URL,
+        help="gwz-cli git URL used for matching cross-driver release tests",
+    )
     parser.add_argument("--no-test", action="store_true", help="skip python run_tests.py")
     parser.add_argument("--no-package-smoke", action="store_true", help="skip wheel smoke test")
     parser.add_argument("--push", action="store_true", help="push release branch and tag")
@@ -456,7 +466,8 @@ def main() -> int:
     warn_if_behind_upstream(args.release)
 
     core_url = gwz_core_url(args.release)
-    verify_remote_tag(core_url, tag)
+    verify_remote_tag("gwz-core", core_url, tag)
+    verify_remote_tag("gwz-cli", args.gwz_cli_url, tag)
 
     existing = tag_commit(tag)
     if existing is not None:
@@ -471,12 +482,14 @@ def main() -> int:
     temp_root = Path(tempfile.mkdtemp(prefix=f"gwz-py-{tag}-"))
     worktree = temp_root / "gwz-py"
     core_checkout = temp_root / "gwz-core"
+    cli_checkout = temp_root / "gwz-cli"
     git(["worktree", "add", worktree, args.release])
     try:
         do_merge(worktree, args.main, args.release)
         merged = merge_head_exists(worktree)
         changed = reconcile_cargo_toml(worktree, tag, version)
-        checkout_gwz_core(core_url, tag, core_checkout)
+        checkout_release_dependency(core_url, tag, core_checkout)
+        checkout_release_dependency(args.gwz_cli_url, tag, cli_checkout)
         if merged or changed:
             run_release_checks(worktree, args, tag=tag, version=version)
             git_wt(worktree, ["add", "-A"])

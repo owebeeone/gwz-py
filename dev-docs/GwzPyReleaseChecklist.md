@@ -31,6 +31,9 @@ python run_tests.py
 python scripts/package_smoke.py
 ```
 
+The Python test gate requires sibling `gwz-core` and `gwz-cli` checkouts. Release
+verification checks out both repositories at the exact shared release tag.
+
 The release script must run from a clean working tree. Commit or stash local
 changes first; bootstrap and normal release work from committed branch refs.
 

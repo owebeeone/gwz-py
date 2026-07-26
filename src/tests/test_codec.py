@@ -96,13 +96,16 @@ def test_generated_registry_service_lookup_and_metadata() -> None:
     assert classes["StatusRequest"] is generated.StatusRequest
     assert classes["ListSnapshotsResponse"] is generated.ListSnapshotsResponse
     assert classes["BranchResponse"] is generated.BranchResponse
+    assert classes["MergeResponse"] is generated.MergeResponse
     assert classes["StashResponse"] is generated.StashResponse
     assert request_message_name("status") == "StatusRequest"
     assert request_message_name("list_snapshots") == "ListSnapshotsRequest"
     assert response_message_name("status") == "StatusResponse"
     assert response_message_name("list_snapshots") == "ListSnapshotsResponse"
     assert request_message_names()["branch"] == "BranchRequest"
+    assert request_message_names()["merge"] == "MergeRequest"
     assert response_message_names()["stash"] == "StashResponse"
+    assert response_message_names()["merge"] == "MergeResponse"
     assert event_message_name() == "OperationEvent"
     assert result_message_name() == "OperationResult"
 
@@ -167,6 +170,87 @@ def test_branch_generated_response_round_trip() -> None:
     )
 
     _assert_cbor_round_trip("BranchResponse", response)
+
+
+def test_merge_reserved_lifecycle_shape_round_trip() -> None:
+    request = generated.MergeRequest(
+        meta=_request_meta("req_merge"),
+        op=generated.MergeOp.start,
+        source_ref="feature/protocol",
+        merge_id=None,
+        mode=generated.MergeMode.normal,
+        message=None,
+        preserve=None,
+    )
+    _assert_cbor_round_trip("MergeRequest", request)
+
+    parity_request = generated.MergeRequest(
+        meta=generated.RequestMeta(
+            request_id="req_merge",
+            schema_version="gwz.v0",
+            workspace=None,
+            selection=None,
+            policy=None,
+            dry_run=None,
+            attribution=None,
+        ),
+        op=generated.MergeOp.start,
+        source_ref="feature/x",
+        merge_id=None,
+        mode=generated.MergeMode.normal,
+        message=None,
+        preserve=None,
+    )
+    assert encode_message("MergeRequest", parity_request).hex() == (
+        "a701a701697265715f6d65726765026667777a2e763003f604f605f606f607f6"
+        "02000369666561747572652f7804f6050006f607f6"
+    )
+
+    response = generated.MergeResponse(
+        response=_response_envelope(generated.ActionKind.merge),
+        merge_id="merge_1",
+        state=generated.MergeOperationState.awaiting_resolution,
+        open=True,
+        participant_counts=generated.MergeParticipantCounts(
+            total=1,
+            planned=0,
+            up_to_date=0,
+            fast_forwarded=0,
+            merged=0,
+            conflicted=1,
+            failed=0,
+            unattempted=0,
+            continued=0,
+            aborted=0,
+            rolled_back=0,
+        ),
+        repos=[
+            generated.MergeRepoSummary(
+                target_id="mem_core",
+                target_kind=generated.TargetKind.member,
+                path="repos/core",
+                source_ref="feature/protocol",
+                source_commit="222",
+                target_branch="main",
+                before_commit="111",
+                resulting_commit=None,
+                live_commit="111",
+                state=generated.MergeParticipantState.conflicted,
+                predicted=generated.MergeAnalysisKind.true_merge,
+                prediction_complete=False,
+                conflict_paths=["src/lib.rs"],
+                continue_eligible=False,
+                abort_eligible=True,
+                drift=[],
+                error=None,
+                pending_action=None,
+            )
+        ],
+        operation_drift=[],
+        preservation=[],
+        publication_step=None,
+    )
+    _assert_cbor_round_trip("MergeResponse", response)
 
 
 def test_stash_generated_response_round_trip() -> None:

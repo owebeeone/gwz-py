@@ -2,6 +2,7 @@ mod branch_stash;
 mod diff;
 mod git_mutation;
 mod materialize;
+mod merge;
 mod read;
 
 use std::env;
@@ -40,6 +41,7 @@ pub(crate) fn call(
         "branch" | "stash" => {
             branch_stash::call(method, request_message, response_message, request_bytes)
         }
+        "merge" => merge::call(method, request_message, response_message, request_bytes),
         "diff" => diff::call(method, request_message, response_message, request_bytes),
         other => Err(error::unsupported_method(other)),
     }
@@ -69,6 +71,7 @@ pub(crate) fn submit(
             submit_pull_snapshot(method, request_message, response_message, request_bytes)
         }
         "push" => submit_push(method, request_message, response_message, request_bytes),
+        "merge" => merge::submit(method, request_message, response_message, request_bytes),
         other => Err(error::unsupported_method(other)),
     }
 }
@@ -264,6 +267,7 @@ fn submit_accepted(
     codec::encode_message("encode accepted response", || encode_response(envelope))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn spawn_call(
     method: &str,
     request_message: &str,
@@ -280,7 +284,7 @@ fn spawn_call(
     let request_bytes = request_bytes.to_vec();
     thread::spawn(move || {
         if let Err(err) = call(&method, &request_message, &response_message, &request_bytes) {
-            recorder.finish_error(request_id, schema_version, action, err.to_string());
+            let _ = recorder.finish_error(request_id, schema_version, action, err.to_string());
         }
     });
 }

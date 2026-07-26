@@ -146,6 +146,9 @@ def test_repo_clone_human_output_uses_stream_route() -> None:
                     attribution=None,
                     progress=None,
                     target_kind=None,
+                    merge_state=None,
+                    merge_member=None,
+                    artifact_path=None,
                 )
 
             return events()

@@ -18,6 +18,10 @@ class FakeClient:
         self.calls.append(("branch", args, kwargs))
         return "branch"
 
+    async def merge(self, *args: Any, **kwargs: Any) -> str:
+        self.calls.append(("merge", args, kwargs))
+        return "merge"
+
     async def stash(self, **kwargs: Any) -> str:
         self.calls.append(("stash", (), kwargs))
         return "stash"
@@ -46,15 +50,15 @@ def test_branch_create_from_switch_calls_client() -> None:
     )
 
 
-def test_branch_merge_uses_start_ref() -> None:
+def test_branch_merge_alias_uses_first_class_merge() -> None:
     client = FakeClient()
 
     run_handler(["branch", "--merge", "origin/main"], client)
 
     assert client.calls[0] == (
-        "branch",
-        (None,),
-        {"op": BranchOp.merge, "start_ref": "origin/main"},
+        "merge",
+        ("origin/main",),
+        {},
     )
 
 

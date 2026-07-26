@@ -161,11 +161,14 @@ python scripts/regen_protocol.py
 ```
 
 Release builds should use a released `taut-proto` version and a released
-`gwz-core` schema artifact. Local development may point at sibling checkouts.
+`gwz-core` schema artifact. Protocol generation is currently frozen to
+`taut-proto==0.8.1`; a generator upgrade is a separate interface checkpoint.
+Local development may point at sibling checkouts.
 
 The generated API must stay current with the service declared in
 `gwz-core/protocol/gwz.taut.py`. As of this plan, that includes
-`repo_sync`, `stash`, `branch`, `events.subscribe`, and `operation.result`.
+`repo_sync`, `stash`, `branch`, `merge`, `events.subscribe`, and
+`operation.result`.
 `ExecRequest` and `ExecResponse` remain generated protocol data only because
 taut module splitting is not available yet; they are not service methods.
 

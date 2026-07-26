@@ -58,6 +58,10 @@ from .protocol.generated import (
     MaterializeResponse,
     MaterializeTarget,
     MaterializeTargetKind,
+    MergeMode,
+    MergeOp,
+    MergeRequest,
+    MergeResponse,
     OperationAttribution,
     OperationEvent,
     OperationPolicy,
@@ -705,6 +709,89 @@ class Client:
         )
         return await self._call("branch", request, BranchResponse)
 
+    async def merge(
+        self,
+        source_ref: str | None = None,
+        *,
+        op: MergeOp | str = MergeOp.start,
+        merge_id: str | None = None,
+        mode: MergeMode | str | None = None,
+        message: str | None = None,
+        preserve: bool | None = None,
+        dry_run: bool | None = None,
+        **meta: Any,
+    ) -> MergeResponse:
+        request = self._merge_request(
+            source_ref,
+            op=op,
+            merge_id=merge_id,
+            mode=mode,
+            message=message,
+            preserve=preserve,
+            dry_run=dry_run,
+            **meta,
+        )
+        return await self._call("merge", request, MergeResponse)
+
+    async def merge_stream(
+        self,
+        source_ref: str | None = None,
+        *,
+        op: MergeOp | str = MergeOp.start,
+        merge_id: str | None = None,
+        mode: MergeMode | str | None = None,
+        message: str | None = None,
+        preserve: bool | None = None,
+        dry_run: bool | None = None,
+        **meta: Any,
+    ) -> "MergeOperationHandle":
+        """Submit a merge and return a handle for its live events and result."""
+        request = self._merge_request(
+            source_ref,
+            op=op,
+            merge_id=merge_id,
+            mode=mode,
+            message=message,
+            preserve=preserve,
+            dry_run=dry_run,
+            **meta,
+        )
+        submit = getattr(self.bridge, "submit", None)
+        if submit is None:
+            raise GwzBridgeError("bridge does not support submitted merge operations")
+        accepted = await submit("merge", "MergeRequest", "MergeResponse", request)
+        raise_for_response(accepted)
+        operation_id = getattr(
+            getattr(getattr(accepted, "response", None), "meta", None),
+            "operation_id",
+            None,
+        )
+        if not operation_id:
+            raise GwzBridgeError("submitted merge response is missing operation_id")
+        return MergeOperationHandle(self.bridge, operation_id)
+
+    def _merge_request(
+        self,
+        source_ref: str | None,
+        *,
+        op: MergeOp | str,
+        merge_id: str | None,
+        mode: MergeMode | str | None,
+        message: str | None,
+        preserve: bool | None,
+        dry_run: bool | None,
+        **meta: Any,
+    ) -> MergeRequest:
+        return MergeRequest(
+            meta=self.meta(dry_run=dry_run, **meta),
+            op=_enum_value(MergeOp, op),
+            source_ref=source_ref,
+            merge_id=merge_id,
+            mode=_enum_value(MergeMode, mode),
+            message=message,
+            preserve=preserve,
+        )
+
     async def diff(
         self,
         operands: Sequence[str] = (),
@@ -851,9 +938,42 @@ class Client:
         return result
 
 
+class MergeOperationHandle:
+    """Live submitted-merge operation and its retained final response."""
+
+    def __init__(self, bridge: CoreBridge, operation_id: str) -> None:
+        self._bridge = bridge
+        self.operation_id = operation_id
+
+    def events(self) -> AsyncIterator[OperationEvent]:
+        """Yield each merge event once in native sequence order."""
+        return self._bridge.subscribe_events(self.operation_id)
+
+    async def result(self) -> MergeResponse:
+        """Return the final response or raise from the structured terminal result."""
+        result = await self._bridge.operation_result(self.operation_id)
+        response_lookup = getattr(self._bridge, "merge_operation_response", None)
+        if response_lookup is None:
+            raise GwzBridgeError("bridge does not support retained merge responses")
+        try:
+            return await response_lookup(self.operation_id)
+        except GwzBridgeError:
+            # Model-level failures have a structured OperationResult but no
+            # retained MergeResponse. Prefer that typed failure over the
+            # bridge's response-lookup diagnostic.
+            raise_for_response(result)
+            raise
+
+
 async def status(root: str | Path | None = None, **kwargs: Any) -> StatusResponse:
     async with Client(root=root) as client:
         return await client.status(**kwargs)
 
 
-__all__ = ["Client", "GwzErrorDetail", "SCHEMA_VERSION", "status"]
+__all__ = [
+    "Client",
+    "GwzErrorDetail",
+    "MergeOperationHandle",
+    "SCHEMA_VERSION",
+    "status",
+]

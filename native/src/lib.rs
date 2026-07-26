@@ -111,14 +111,8 @@ fn diff_log_read(
     let stream_id = stream_id.to_owned();
     let timeout = diff_logs::timeout_from_ms(timeout_ms);
     py.detach(move || {
-        let (records, next_cursor, state) = diff_logs::read(
-            &log_id,
-            &stream_id,
-            cursor,
-            max_records,
-            max_bytes,
-            timeout,
-        )?;
+        let (records, next_cursor, state) =
+            diff_logs::read(&log_id, &stream_id, cursor, max_records, max_bytes, timeout)?;
         Ok((records, next_cursor, state.to_owned()))
     })
 }
@@ -145,6 +139,15 @@ fn try_operation_result(operation_id: &str) -> PyResult<Option<Vec<u8>>> {
         .transpose()
 }
 
+#[pyfunction]
+fn merge_operation_response(py: Python<'_>, operation_id: &str) -> PyResult<Vec<u8>> {
+    let operation_id = operation_id.to_owned();
+    py.detach(move || {
+        let response = operations::merge_response(&operation_id)?;
+        codec::encode_message("encode MergeResponse", || response.to_cbor())
+    })
+}
+
 #[pymodule]
 fn _gwz_core(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(health, module)?)?;
@@ -155,6 +158,7 @@ fn _gwz_core(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(wait_events, module)?)?;
     module.add_function(wrap_pyfunction!(operation_result, module)?)?;
     module.add_function(wrap_pyfunction!(try_operation_result, module)?)?;
+    module.add_function(wrap_pyfunction!(merge_operation_response, module)?)?;
     module.add_function(wrap_pyfunction!(diff_log_read, module)?)?;
     module.add_function(wrap_pyfunction!(diff_log_end_stream, module)?)?;
     Ok(())

@@ -29,6 +29,7 @@
     ["push"],
     ["push", "--target", "@root"],
     ["branch", "--create", "feature", "--from", "main", "--switch"],
+    ["merge", "feature/refactor", "--dry-run"],
     ["stash", "push", "-u", "-m", "work"],
     ["stash", "push", "--target", "@root", "-u"],
     ["forall", "repos/app", "--", "echo", "{@}"],
@@ -61,7 +62,8 @@
     ["forall", "--command-string", "echo hi"],
     ["repo", "clone", "https://example.invalid/shared.git", "libs/shared", "--member-id", "mem_shared", "--source-id", "src_shared"],
     ["repo", "detach", "libs/shared"],
-    ["repo", "attach", "mem_shared"]
+    ["repo", "attach", "mem_shared"],
+    ["merge", "feature/refactor", "--dry-run"]
   ],
   "rust_version": [
     ["-V"],

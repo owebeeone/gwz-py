@@ -72,6 +72,9 @@ class FakeClient:
                 attribution=None,
                 progress=None,
                 target_kind=None,
+                merge_state=None,
+                merge_member=None,
+                artifact_path=None,
             )
 
         return _events()
@@ -312,6 +315,9 @@ def test_clone_stream_renders_warning_events(capsys: pytest.CaptureFixture[str])
             attribution=None,
             progress=None,
             target_kind=None,
+            merge_state=None,
+            merge_member=None,
+            artifact_path=None,
         )
     )
 

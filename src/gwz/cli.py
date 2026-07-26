@@ -5,7 +5,14 @@ import asyncio
 import sys
 
 from . import __version__
-from . import cli_branch_stash, cli_diff, cli_local, cli_mutation, cli_read
+from . import (
+    cli_branch_stash,
+    cli_diff,
+    cli_local,
+    cli_merge,
+    cli_mutation,
+    cli_read,
+)
 from .cli_render import render_error, render_response
 from .cli_shared import (
     CliUsageError,
@@ -21,6 +28,7 @@ from .cli_shared import (
 )
 from .client import Client
 from .errors import GwzError, GwzOperationError
+from .protocol.generated import MergeResponse
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -50,6 +58,7 @@ def register_commands(registry: CommandRegistry) -> None:
     cli_diff.register_commands(registry)
     cli_mutation.register_commands(registry)
     cli_branch_stash.register_commands(registry)
+    cli_merge.register_commands(registry)
     cli_local.register_commands(registry)
 
 
@@ -67,6 +76,8 @@ async def run(args: argparse.Namespace) -> int:
 
     if cli_diff.is_diff_result(response):
         return response.exit_code
+    if cli_merge.is_merge_result(response):
+        return response.exit_code
 
     rendered = render_response(
         response,
@@ -81,6 +92,8 @@ async def run(args: argparse.Namespace) -> int:
 
 def _renderable_operation_response(args: argparse.Namespace, exc: GwzOperationError) -> object | None:
     response = exc.response
+    if isinstance(response, MergeResponse):
+        return response
     if (
         getattr(args, "command", None) == "status"
         and response is not None
@@ -105,7 +118,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return asyncio.run(run(args))
     except (CliUsageError, GwzError) as exc:
-        print(render_error(exc), file=sys.stderr)
+        machine = args.json or getattr(args, "jsonl", False)
+        print(render_error(exc, json_mode=machine), file=sys.stdout if machine else sys.stderr)
         return exit_code_for_error(exc)
 
 

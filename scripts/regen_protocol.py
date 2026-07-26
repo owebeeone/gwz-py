@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import filecmp
+import importlib.metadata
 import json
 import os
 import shutil
@@ -24,6 +25,7 @@ DEFAULT_SCHEMA = ROOT.parent / "gwz-core" / "protocol" / "gwz.taut.py"
 DEFAULT_OUT = ROOT / "src" / "gwz" / "protocol" / "generated"
 IR_NAME = "gwz.ir.json"
 PYTHON_INIT = "from .api import *  # noqa: F401,F403\n"
+TAUT_GENERATOR_VERSION = "0.8.1"
 
 
 def fail(message: str) -> None:
@@ -33,14 +35,9 @@ def fail(message: str) -> None:
 
 def child_env() -> dict[str, str]:
     env = dict(os.environ)
-    paths: list[str] = []
-    local_taut = ROOT.parent / "taut" / "src"
-    if local_taut.exists():
-        paths.append(str(local_taut))
-    if env.get("PYTHONPATH"):
-        paths.append(env["PYTHONPATH"])
-    if paths:
-        env["PYTHONPATH"] = os.pathsep.join(paths)
+    # Protocol generation is frozen to the installed taut-proto 0.8.1 release;
+    # a sibling development checkout must never shadow that checkpoint.
+    env.pop("PYTHONPATH", None)
     env.setdefault("SETUPTOOLS_SCM_PRETEND_VERSION", "0.0.0")
     env.setdefault("SETUPTOOLS_SCM_PRETEND_VERSION_FOR_TAUT_PROTO", "0.0.0")
     env["PYTHONUTF8"] = "1"
@@ -51,6 +48,15 @@ def child_env() -> dict[str, str]:
 def run(cmd: list[str], *, cwd: Path = ROOT) -> subprocess.CompletedProcess:
     print("+", " ".join(cmd))
     return subprocess.run(cmd, cwd=cwd, env=child_env())
+
+
+def verify_generator_version() -> None:
+    installed = importlib.metadata.version("taut-proto")
+    if installed != TAUT_GENERATOR_VERSION:
+        fail(
+            f"taut-proto {TAUT_GENERATOR_VERSION} is required for protocol generation; "
+            f"found {installed}"
+        )
 
 
 def generate_python(schema: Path, temp: Path) -> Path:
@@ -118,6 +124,7 @@ def main() -> int:
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--check", action="store_true", help="verify only; do not write")
     args = parser.parse_args()
+    verify_generator_version()
 
     schema = args.schema.resolve()
     if not schema.exists():

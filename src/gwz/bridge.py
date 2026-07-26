@@ -31,11 +31,23 @@ class CoreBridge(Protocol):
     ) -> Any:
         """Run one GWZ core operation and return a generated response object."""
 
+    async def submit(
+        self,
+        method: str,
+        request_message: str,
+        response_message: str,
+        request: Any,
+    ) -> Any:
+        """Submit one GWZ core operation and return its accepted response."""
+
     def subscribe_events(self, operation_id: str) -> AsyncIterator[Any]:
         """Yield generated OperationEvent objects for a submitted operation."""
 
     async def operation_result(self, operation_id: str) -> Any:
         """Return the generated OperationResult for a submitted operation."""
+
+    async def merge_operation_response(self, operation_id: str) -> Any:
+        """Return the retained successful MergeResponse for an operation."""
 
     async def diff_log_read(
         self,
@@ -89,6 +101,9 @@ class NativeModule(Protocol):
     def try_operation_result(self, operation_id: str) -> NativeBytePayload | None:
         """Return encoded OperationResult bytes if a submitted operation is complete."""
 
+    def merge_operation_response(self, operation_id: str) -> NativeBytePayload:
+        """Return encoded retained MergeResponse bytes for a successful merge."""
+
     def diff_log_read(
         self,
         log_id: str,
@@ -139,7 +154,7 @@ class NativeCoreBridge:
         except GwzBridgeError:
             raise
         except Exception as exc:
-            raise GwzBridgeError(f"native bridge call failed for {method}: {exc}") from exc
+            raise _native_bridge_error(f"native bridge call failed for {method}", exc) from exc
         return decode_message(response_message, _bytes(response_bytes, response_message))
 
     async def submit(
@@ -164,7 +179,7 @@ class NativeCoreBridge:
         except GwzBridgeError:
             raise
         except Exception as exc:
-            raise GwzBridgeError(f"native bridge submit failed for {method}: {exc}") from exc
+            raise _native_bridge_error(f"native bridge submit failed for {method}", exc) from exc
         return decode_message(response_message, _bytes(response_bytes, response_message))
 
     def subscribe_events(self, operation_id: str) -> AsyncIterator[Any]:
@@ -231,6 +246,21 @@ class NativeCoreBridge:
             ) from exc
         return decode_message(result_message_name(), _bytes(result_bytes, result_message_name()))
 
+    async def merge_operation_response(self, operation_id: str) -> Any:
+        message_name = "MergeResponse"
+        try:
+            response_bytes = await asyncio.to_thread(
+                self._native.merge_operation_response,
+                operation_id,
+            )
+        except GwzBridgeError:
+            raise
+        except Exception as exc:
+            raise GwzBridgeError(
+                f"native merge response lookup failed for {operation_id}: {exc}"
+            ) from exc
+        return decode_message(message_name, _bytes(response_bytes, message_name))
+
     async def diff_log_read(
         self,
         log_id: str,
@@ -286,4 +316,16 @@ def _bytes(value: NativeBytePayload, message_name: str) -> bytes:
         return value.tobytes()
     raise GwzProtocolError(
         f"native bridge returned {type(value).__name__} for {message_name}; expected bytes-like payload"
+    )
+
+
+def _native_bridge_error(prefix: str, error: BaseException) -> GwzBridgeError:
+    return GwzBridgeError(
+        f"{prefix}: {error}",
+        code=getattr(error, "code", None),
+        member_id=getattr(error, "member_id", None),
+        member_path=getattr(error, "member_path", None),
+        target_kind=getattr(error, "target_kind", None),
+        detail=getattr(error, "detail", None),
+        machine_message=getattr(error, "machine_message", None),
     )

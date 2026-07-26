@@ -34,6 +34,11 @@ from gwz.protocol.generated import (
     MaterializeRequest,
     MaterializeResponse,
     MaterializeTargetKind,
+    MergeOperationState,
+    MergeOp,
+    MergeParticipantCounts,
+    MergeRequest,
+    MergeResponse,
     OperationResult,
     PullHeadResponse,
     PullSnapshotResponse,
@@ -67,6 +72,7 @@ RESPONSE_TYPES = {
         ListSnapshotsResponse,
         LsResponse,
         MaterializeResponse,
+        MergeResponse,
         PullHeadResponse,
         PullSnapshotResponse,
         PushResponse,
@@ -82,6 +88,16 @@ RESPONSE_EXTRAS = {
     BranchResponse: {"repos": None},
     ListSnapshotsResponse: {"snapshots": None},
     LsResponse: {"members": []},
+    MergeResponse: {
+        "merge_id": None,
+        "state": MergeOperationState.completed,
+        "open": False,
+        "participant_counts": MergeParticipantCounts(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+        "repos": [],
+        "operation_drift": [],
+        "preservation": None,
+        "publication_step": None,
+    },
     StashResponse: {"bundles": None},
     StatusResponse: {"workspace_git_status": None},
     TagResponse: {"tags": None},
@@ -156,6 +172,25 @@ def test_status_builds_taut_request() -> None:
     assert request.meta.schema_version == "gwz.protocol/v0"
     assert request.meta.workspace is not None
     assert request.meta.workspace.root == str(Path("/tmp/workspace").resolve())
+
+
+def test_merge_builds_first_class_start_request() -> None:
+    bridge = FakeBridge()
+    client = Client(root=Path("/tmp/workspace"), bridge=bridge)
+
+    response = asyncio.run(client.merge("feature/refactor", dry_run=True))
+
+    assert isinstance(response, MergeResponse)
+    method, request_message, response_message, request = bridge.calls[0]
+    assert (method, request_message, response_message) == (
+        "merge",
+        "MergeRequest",
+        "MergeResponse",
+    )
+    assert isinstance(request, MergeRequest)
+    assert request.op is MergeOp.start
+    assert request.source_ref == "feature/refactor"
+    assert request.meta.dry_run is True
 
 
 def test_create_workspace_without_root_defaults_to_cwd(tmp_path: Path, monkeypatch) -> None:
