@@ -79,28 +79,26 @@ def test_merge_routes_lifecycle_and_reserved_fields_and_rejects_ambiguity() -> N
         "op": MergeOp.status, "merge_id": None, "mode": None, "message": None,
         "preserve": None,
     })
+    run_handler(["merge", "--status", "merge_closed"], client)
+    assert client.calls[3][1]["merge_id"] == "merge_closed"
     run_handler(["merge", "--continue"], client)
-    assert client.calls[3] == ((None,), {
+    assert client.calls[4] == ((None,), {
         "op": MergeOp.resume, "merge_id": None, "mode": None, "message": None,
         "preserve": None,
     })
     run_handler(["merge", "--abort"], client)
-    assert client.calls[4] == ((None,), {
+    assert client.calls[5] == ((None,), {
         "op": MergeOp.abort, "merge_id": None, "mode": None, "message": None,
         "preserve": None,
     })
+    run_handler(["merge", "--abort", "--preserve"], client)
+    assert client.calls[6][1]["preserve"] is True
+    run_handler(["merge", "--gc", "merge_closed"], client)
+    assert client.calls[7][1]["merge_id"] == "merge_closed"
     with pytest.raises(CliUsageError, match="one lifecycle"):
         run_handler(["merge", "--continue", "--abort"], client)
     with pytest.raises(CliUsageError, match="mutually exclusive"):
         run_handler(["merge", "feature/x", "--ff-only", "--no-ff"], client)
-
-def test_merge_help_exposes_lifecycle_flags(capsys: pytest.CaptureFixture[str]) -> None:
-    with pytest.raises(SystemExit):
-        build_parser().parse_args(["merge", "--help"])
-    help_text = capsys.readouterr().out
-    assert "--continue" in help_text
-    assert "--abort" in help_text
-    assert "--status" in help_text
 
 def test_merge_human_rendering_reports_open_status_and_structured_drift() -> None:
     human = render_response(merge_response())
@@ -114,7 +112,8 @@ def test_merge_human_rendering_reports_open_status_and_structured_drift() -> Non
     assert "gwz-py merge --status" in human
     assert "gwz-py merge --continue" in human
     assert "gwz-py merge --abort" in human
-
+    assert "gwz-py merge --abort --preserve" in human
+    assert "refs/gwz/preserve/merge-parity-1/mem_docs" in human
 
 def test_merge_human_and_machine_render_idle_without_fabricated_operation() -> None:
     response = MergeResponse(

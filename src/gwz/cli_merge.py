@@ -36,7 +36,11 @@ def register_commands(registry: CommandRegistry) -> None:
 
 def configure_merge(parser: argparse.ArgumentParser) -> None:
     parser.usage = (
-        "gwz-py merge [source] [--dry-run] [--status | --continue | --abort]"
+        "gwz-py merge [source] [--dry-run]\n"
+        "       gwz-py merge --status [merge-id]\n"
+        "       gwz-py merge --continue\n"
+        "       gwz-py merge --abort [--preserve]\n"
+        "       gwz-py merge --gc [merge-id]"
     )
     parser.add_argument(
         "source",
@@ -56,11 +60,23 @@ def configure_merge(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--status",
-        action="store_true",
-        help="Inspect coordinated merge state without changing it",
+        nargs="?",
+        const="",
+        metavar="merge-id",
+        help="Inspect the open merge, or a retained closed merge by id",
     )
-    parser.add_argument("--preserve", action="store_true", help=argparse.SUPPRESS)
-    parser.add_argument("--gc", nargs="?", const="", help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--preserve",
+        action="store_true",
+        help="With --abort, preserve safe post-merge commits and local changes",
+    )
+    parser.add_argument(
+        "--gc",
+        nargs="?",
+        const="",
+        metavar="merge-id",
+        help="Apply retention, or remove one retained merge and its backup refs",
+    )
     parser.add_argument("--ff-only", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--no-ff", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("-m", "--message", help=argparse.SUPPRESS)
@@ -71,7 +87,7 @@ async def handle_merge(context: CommandContext) -> Any:
         (
             context.args.resume,
             context.args.abort,
-            context.args.status,
+            context.args.status is not None,
             context.args.gc is not None,
         )
     )
@@ -87,7 +103,7 @@ async def handle_merge(context: CommandContext) -> Any:
         else MergeOp.abort
         if context.args.abort
         else MergeOp.status
-        if context.args.status
+        if context.args.status is not None
         else MergeOp.gc
         if context.args.gc is not None
         else MergeOp.start
@@ -102,7 +118,7 @@ async def handle_merge(context: CommandContext) -> Any:
     merge_args = (context.args.source,)
     merge_kwargs = {
         "op": op,
-        "merge_id": context.args.gc or None,
+        "merge_id": context.args.status or context.args.gc or None,
         "mode": mode,
         "message": context.args.message,
         "preserve": True if context.args.preserve else None,

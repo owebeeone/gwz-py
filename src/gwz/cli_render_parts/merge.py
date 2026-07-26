@@ -28,8 +28,19 @@ def render_merge_response(response: Any) -> str:
                 "  inspect:  gwz-py merge --status",
                 "  continue: gwz-py merge --continue",
                 "  abort:    gwz-py merge --abort",
+                "  preserve: gwz-py merge --abort --preserve",
             ]
         )
+    if response.preservation:
+        lines.append("remaining preservation artifacts:")
+        for entry in response.preservation:
+            lines.append(f"  {entry.path} ({entry.target_id})")
+            if entry.backup_ref is not None and entry.backup_commit is not None:
+                lines.append(
+                    f"    backup ref: {entry.backup_ref} @ {entry.backup_commit}"
+                )
+            if entry.stash_id is not None and entry.stash_object_id is not None:
+                lines.append(f"    stash: {entry.stash_id} @ {entry.stash_object_id}")
     if response.operation_drift:
         lines.append("operation drift:")
         for drift in response.operation_drift:
