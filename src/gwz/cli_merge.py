@@ -36,7 +36,7 @@ def register_commands(registry: CommandRegistry) -> None:
 
 def configure_merge(parser: argparse.ArgumentParser) -> None:
     parser.usage = (
-        "gwz-py merge [source] [--dry-run]\n"
+        "gwz-py merge [source] [--dry-run] [--ff-only]\n"
         "       gwz-py merge --status [merge-id]\n"
         "       gwz-py merge --continue\n"
         "       gwz-py merge --abort [--preserve]\n"
@@ -77,7 +77,11 @@ def configure_merge(parser: argparse.ArgumentParser) -> None:
         metavar="merge-id",
         help="Apply retention, or remove one retained merge and its backup refs",
     )
-    parser.add_argument("--ff-only", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--ff-only",
+        action="store_true",
+        help="Require every selected repository to merge by fast-forward",
+    )
     parser.add_argument("--no-ff", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("-m", "--message", help=argparse.SUPPRESS)
 

@@ -12,7 +12,7 @@ from gwz.cli_render import operation_event_json, render_response
 from gwz.cli_shared import CliUsageError, CommandContext, meta_kwargs, validate_args
 from gwz.errors import GwzBridgeError, GwzOperationError
 from gwz.protocol.generated import (
-    ActionKind, AggregateStatus, EventKind, MergeAnalysisKind, MergeOperationState, MergeOp,
+    ActionKind, AggregateStatus, EventKind, MergeAnalysisKind, MergeMode, MergeOperationState, MergeOp,
     MergeOperationDrift, MergeOperationDriftKind, MergeParticipantCounts,
     MergeParticipantDrift, MergeParticipantDriftKind, MergeParticipantState,
     MergePendingActionKind, MergePendingActionState, MergePendingActionSummary,
@@ -65,9 +65,9 @@ def run_handler(argv: list[str], client: FakeClient) -> Any:
 
 def test_merge_routes_lifecycle_and_reserved_fields_and_rejects_ambiguity() -> None:
     client = FakeClient()
-    run_handler(["merge", "feature/x", "--dry-run"], client)
+    run_handler(["merge", "feature/x", "--dry-run", "--ff-only"], client)
     assert client.calls[0] == (("feature/x",), {
-        "op": MergeOp.start, "merge_id": None, "mode": None, "message": None,
+        "op": MergeOp.start, "merge_id": None, "mode": MergeMode.ff_only, "message": None,
         "preserve": None, "dry_run": True,
     })
     run_handler(["merge", "feature/x", "--continue", "--preserve", "-m", "custom"], client)
@@ -99,6 +99,19 @@ def test_merge_routes_lifecycle_and_reserved_fields_and_rejects_ambiguity() -> N
         run_handler(["merge", "--continue", "--abort"], client)
     with pytest.raises(CliUsageError, match="mutually exclusive"):
         run_handler(["merge", "feature/x", "--ff-only", "--no-ff"], client)
+
+
+def test_merge_help_exposes_ff_only_but_keeps_m5_flags_hidden(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as stopped:
+        build_parser().parse_args(["merge", "--help"])
+    assert stopped.value.code == 0
+    help_text = capsys.readouterr().out
+    assert "--ff-only" in help_text
+    assert "--no-ff" not in help_text
+    assert "--message" not in help_text
+
 
 def test_merge_human_rendering_reports_open_status_and_structured_drift() -> None:
     human = render_response(merge_response())
@@ -409,6 +422,8 @@ def merge_response() -> MergeResponse:
         merge_repo("worker", MergeParticipantState.failed),
     ]
     repos[0].predicted = MergeAnalysisKind.true_merge
+    repos[0].prediction_complete = True
+    repos[0].conflict_paths = ["src/lib.rs"]
     repos[0].pending_action = MergePendingActionSummary(
         MergePendingActionKind.true_merge,
         MergePendingActionState.not_started,
