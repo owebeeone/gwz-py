@@ -11,8 +11,19 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 
 
-def run(cmd: list[str]) -> None:
+def command_environment() -> dict[str, str]:
     env = dict(os.environ)
+    # `python /path/to/run_tests.py` does not imply that its virtualenv was
+    # activated. Maturin requires VIRTUAL_ENV (or a conventional `.venv`
+    # ancestor) for `develop`, so identify the interpreter's environment
+    # explicitly when Python is already running from a venv.
+    if sys.prefix != sys.base_prefix:
+        env.setdefault("VIRTUAL_ENV", sys.prefix)
+    return env
+
+
+def run(cmd: list[str]) -> None:
+    env = command_environment()
     local_taut = ROOT.parent / "taut" / "src"
     paths = [str(ROOT / "src")]
     if local_taut.exists():
