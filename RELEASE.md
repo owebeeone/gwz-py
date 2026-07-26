@@ -47,8 +47,9 @@ need `--bootstrap-release`.
 
 ## Local Release Process
 
-1. **Release the matching gwz-core first** - tag it off gwz-core `main` using
-   the shared tag `vX.Y.Z`.
+1. **Release matching gwz-core and gwz-cli first** - tag them using the shared
+   tag `vX.Y.Z`. The Python release uses the core tag as its native dependency
+   and the CLI tag for cross-driver parity tests.
 2. Make sure gwz-py `main` contains the changes to release.
 3. Commit or stash local changes. The release script refuses to run from a dirty
    working tree because it creates the release branch from committed refs.
@@ -60,8 +61,7 @@ need `--bootstrap-release`.
 
    The script:
 
-   - Verifies the matching gwz-core tag exists at the release branch's configured
-     gwz-core git URL.
+   - Verifies the matching gwz-core and gwz-cli tags exist.
    - Creates a temporary worktree for the gwz-py `release` branch.
    - Merges `main` into `release`.
    - Sets the Cargo package version to `X.Y.Z`.
@@ -69,6 +69,8 @@ need `--bootstrap-release`.
    - Checks the `Cargo.lock` gwz-core git pin.
    - Verifies the PyPI distribution is `gwz` and the installed console script is
      `gwz-py`.
+   - Checks out the matching gwz-core and gwz-cli tags beside the temporary
+     gwz-py worktree.
    - Creates an isolated temporary Python check environment with the release/test
      tools (`taut-proto`, `pytest`, `maturin`, and `setuptools-scm`).
    - Runs protocol drift checks, protocol regeneration checks, `cargo check`,
@@ -101,6 +103,7 @@ The workflow:
 
 - Checks out gwz-py at tag `vX.Y.Z`.
 - Checks out `owebeeone/gwz-core` at the same tag beside it.
+- Checks out `owebeeone/gwz-cli` at the same tag for cross-driver tests.
 - Verifies `Cargo.toml` version is `X.Y.Z`.
 - Verifies `Cargo.toml` and `Cargo.lock` pin gwz-core to tag `vX.Y.Z`.
 - Verifies `pyproject.toml` publishes distribution `gwz` and installs

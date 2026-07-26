@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -28,19 +29,31 @@ from native_helpers import (
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
+GWZ_CLI_ROOT = REPO_ROOT / "gwz-cli"
+RUST_TARGET_ROOT = REPO_ROOT / "target"
 
 
 @pytest.fixture(scope="session")
 def rust_gwz_binary() -> Path:
     subprocess.run(
-        ["cargo", "build", "-p", "gwz", "--bin", "gwz"],
-        cwd=REPO_ROOT,
+        [
+            "cargo",
+            "build",
+            "--manifest-path",
+            str(GWZ_CLI_ROOT / "Cargo.toml"),
+            "--bin",
+            "gwz",
+            "--target-dir",
+            str(RUST_TARGET_ROOT),
+        ],
+        cwd=GWZ_CLI_ROOT,
         check=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
     )
-    binary = REPO_ROOT / "target" / "debug" / "gwz"
+    binary_name = "gwz.exe" if os.name == "nt" else "gwz"
+    binary = RUST_TARGET_ROOT / "debug" / binary_name
     assert binary.is_file()
     return binary
 

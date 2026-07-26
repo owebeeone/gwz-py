@@ -89,6 +89,14 @@ jobs:
           path: gwz-core
           persist-credentials: false
 
+      - name: Checkout matching gwz-cli tag
+        uses: actions/checkout@v5
+        with:
+          repository: owebeeone/gwz-cli
+          ref: ${{ needs.resolve.outputs.tag }}
+          path: gwz-cli
+          persist-credentials: false
+
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
