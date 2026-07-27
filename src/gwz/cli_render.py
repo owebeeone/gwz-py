@@ -6,7 +6,7 @@ import json
 from enum import Enum
 from typing import Any
 
-from .cli_render_parts.common import enum_label, is_response
+from .cli_render_parts.common import is_response
 from .cli_render_parts.errors import render_error
 from .cli_render_parts.listings import (
     render_branch_response,
