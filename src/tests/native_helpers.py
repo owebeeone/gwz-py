@@ -53,6 +53,8 @@ def commit_file(repo: Path, relative_path: str, content: str, message: str) -> s
 def create_workspace_with_member(root: Path) -> tuple[Path, str]:
     client = native_client(root)
     asyncio.run(client.create_workspace(workspace_id="ws_native"))
+    git(root, "config", "user.name", "GWZ Test")
+    git(root, "config", "user.email", "gwz@example.invalid")
     asyncio.run(client.create_repo("repos/app", member_id="mem_app", source_id="src_app"))
     repo = root / "repos" / "app"
     commit = commit_file(repo, "README.md", "one\n", "initial")

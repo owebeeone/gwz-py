@@ -102,6 +102,22 @@ jobs:
         with:
           python-version: "3.10"
 
+      - name: Create Python virtual environment
+        shell: python
+        run: |
+          import os
+          import pathlib
+          import venv
+
+          root = pathlib.Path(".venv").resolve()
+          venv.EnvBuilder(with_pip=True).create(root)
+          scripts = root / ("Scripts" if os.name == "nt" else "bin")
+
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env_file:
+              print(f"VIRTUAL_ENV={root}", file=env_file)
+          with open(os.environ["GITHUB_PATH"], "a", encoding="utf-8") as path_file:
+              print(scripts, file=path_file)
+
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 

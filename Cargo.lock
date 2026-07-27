@@ -135,8 +135,8 @@ dependencies = [
 
 [[package]]
 name = "gwz-core"
-version = "0.10.0"
-source = "git+https://github.com/owebeeone/gwz-core?tag=v0.10.0#4d180c8b57acdeee80b1f16ad033c435d47b1aeb"
+version = "0.10.2"
+source = "git+https://github.com/owebeeone/gwz-core?tag=v0.10.2#a638f8fe1e5c4f5726a2ff64ee303d9fac02aeff"
 dependencies = [
  "getrandom",
  "git2",
@@ -145,11 +145,12 @@ dependencies = [
  "sha2",
  "taut-shape",
  "url",
+ "windows-sys",
 ]
 
 [[package]]
 name = "gwz-py"
-version = "0.10.0"
+version = "0.10.2"
 dependencies = [
  "gwz-core",
  "pyo3",
@@ -663,6 +664,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b67efb37e106e55ce722a510d6b5f9c17f083e5fc79afc2badeb12cc313d9487"
 dependencies = [
  "wit-bindgen",
+]
+
+[[package]]
+name = "windows-link"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f0805222e57f7521d6a62e36fa9163bc891acd422f971defe97d64e70d0a4fe5"
+
+[[package]]
+name = "windows-sys"
+version = "0.61.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ae137229bcbd6cdf0f7b80a31df61766145077ddf49416a728b02cb3921ff3fc"
+dependencies = [
+ "windows-link",
 ]
 
 [[package]]
