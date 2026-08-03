@@ -51,6 +51,13 @@ def render_branch_response(response: Any, repos: list[Any]) -> str:
             line += f" -> {repo.resulting_commit}"
         if repo.conflict_paths:
             line += f" conflicts: {','.join(repo.conflict_paths)}"
+        if any(
+            member.member_id == repo.member_id
+            and member.state is not None
+            and member.state.dirty is True
+            for member in response.response.members
+        ):
+            line += " dirty"
         lines.append(line)
     append_errors(lines, response)
     return "\n".join(lines)
