@@ -12,9 +12,13 @@ from gwz.protocol.generated import (
     BranchActionResult,
     BranchRepoSummary,
     BranchResponse,
+    LockMatch,
     ListSnapshotsResponse,
     LsResponse,
     MemberEntry,
+    MemberResponse,
+    MemberStatus,
+    ResolvedMemberState,
     ResponseEnvelope,
     ResponseMeta,
     SnapshotInfo,
@@ -27,6 +31,7 @@ from gwz.protocol.generated import (
     StashResponse,
     StashRestoreState,
     StatusResponse,
+    TargetKind,
     WorkspaceGitStatus,
     WorkspaceRootFileChange,
     WorkspaceRootGitStatus,
@@ -233,6 +238,63 @@ def test_cli_render_branch_listing_groups_by_current_branch() -> None:
         "main: gwz-py\n"
         "*release: gwz-py\n"
         "release: gwz-cli"
+    )
+
+
+def test_cli_render_branch_switch_reports_observed_dirty_state() -> None:
+    envelope = response_envelope(ActionKind.branch)
+    envelope.members.append(
+        MemberResponse(
+            member_id="mem_app",
+            member_path="app",
+            source_kind=SourceKind.git,
+            status=MemberStatus.ok,
+            error=None,
+            planned=None,
+            state=ResolvedMemberState(
+                member_id="mem_app",
+                path="app",
+                source_id="src_app",
+                source_kind=SourceKind.git,
+                commit="abc123",
+                branch="feature",
+                detached=False,
+                upstream=None,
+                dirty=True,
+                materialized=True,
+                remotes=[],
+            ),
+            git_status=None,
+            lock_match=LockMatch.matches,
+            target_kind=TargetKind.member,
+        )
+    )
+    response = BranchResponse(
+        response=envelope,
+        repos=[
+            BranchRepoSummary(
+                member_id="mem_app",
+                member_path="app",
+                source_kind=SourceKind.git,
+                result=BranchActionResult.switched,
+                branch="feature",
+                current_branch="feature",
+                detached=False,
+                unborn=False,
+                head="abc123",
+                upstream=None,
+                ahead=None,
+                behind=None,
+                source_ref=None,
+                target_branch=None,
+                resulting_commit=None,
+                conflict_paths=[],
+            )
+        ],
+    )
+
+    assert render_response(response) == (
+        "status: Ok\nmem_app app Switched feature abc123 dirty"
     )
 
 
