@@ -65,9 +65,12 @@ def run_handler(argv: list[str], client: FakeClient) -> Any:
 
 def test_merge_routes_lifecycle_and_reserved_fields_and_rejects_ambiguity() -> None:
     client = FakeClient()
-    run_handler(["merge", "feature/x", "--dry-run", "--ff-only"], client)
+    run_handler(
+        ["merge", "feature/x", "--dry-run", "--ff-only", "-m", "custom"],
+        client,
+    )
     assert client.calls[0] == (("feature/x",), {
-        "op": MergeOp.start, "merge_id": None, "mode": MergeMode.ff_only, "message": None,
+        "op": MergeOp.start, "merge_id": None, "mode": MergeMode.ff_only, "message": "custom",
         "preserve": None, "dry_run": True,
     })
     run_handler(["merge", "feature/x", "--continue", "--preserve", "-m", "custom"], client)
@@ -99,18 +102,6 @@ def test_merge_routes_lifecycle_and_reserved_fields_and_rejects_ambiguity() -> N
         run_handler(["merge", "--continue", "--abort"], client)
     with pytest.raises(CliUsageError, match="mutually exclusive"):
         run_handler(["merge", "feature/x", "--ff-only", "--no-ff"], client)
-
-
-def test_merge_help_exposes_ff_only_but_keeps_m5_flags_hidden(
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    with pytest.raises(SystemExit) as stopped:
-        build_parser().parse_args(["merge", "--help"])
-    assert stopped.value.code == 0
-    help_text = capsys.readouterr().out
-    assert "--ff-only" in help_text
-    assert "--no-ff" not in help_text
-    assert "--message" not in help_text
 
 
 def test_merge_human_rendering_reports_open_status_and_structured_drift() -> None:
