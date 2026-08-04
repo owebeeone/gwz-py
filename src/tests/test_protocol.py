@@ -37,6 +37,10 @@ def test_repo_member_lifecycle_protocol_is_pinned() -> None:
     assert generated.GwzErrorCode.source_identity_mismatch.value == 36
     assert generated.ActionKind.merge.value == 25
     assert generated.GwzErrorCode.deprecated_operation.value == 37
+    assert generated.GwzErrorCode.unsupported_record_version.value == 46
+    assert generated.GwzErrorCode.terminal_rollback_mismatch.value == 61
+    assert generated.MergeRecordRequiredWave.a1.value == 0
+    assert generated.MergeRecordRequiredWave.a4.value == 3
 
     request = generated.CloneRepoMemberRequest(
         meta=generated.RequestMeta(
