@@ -800,6 +800,7 @@ class Client:
         workspace_cwd: str | None = None,
         cached: bool | None = None,
         merge_base: bool | None = None,
+        tagged: bool | None = None,
         output_format: DiffOutputFormat | str | None = None,
         manifest_mode: DiffManifestMode | str | None = None,
         context_lines: int | None = None,
@@ -868,6 +869,7 @@ class Client:
             options=options,
             cached=cached,
             merge_base=merge_base,
+            tagged=tagged,
         )
         return await self._call("diff", request, DiffManifestResponse)
 

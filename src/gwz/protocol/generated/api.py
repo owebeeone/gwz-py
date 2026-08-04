@@ -400,6 +400,7 @@ class DiffTargetExclusionReason(Enum):
     snapshot_missing = 0
     snapshot_missing_commit = 1
     root_not_in_snapshot = 2
+    tag_missing = 3
 
 @dataclass(slots=True)
 class WorkspaceRef:
@@ -1164,6 +1165,7 @@ class DiffRequest:
     options: DiffOptions | None
     cached: bool | None
     merge_base: bool | None
+    tagged: bool | None
 
 @dataclass(slots=True)
 class DiffRepoScope:

@@ -610,7 +610,8 @@
       "members": {
         "snapshot_missing": 0,
         "snapshot_missing_commit": 1,
-        "root_not_in_snapshot": 2
+        "root_not_in_snapshot": 2,
+        "tag_missing": 3
       }
     }
   ],
@@ -6632,6 +6633,17 @@
         {
           "name": "merge_base",
           "tag": 7,
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "tagged",
+          "tag": 8,
           "type": {
             "k": "scalar",
             "scalar": "bool"

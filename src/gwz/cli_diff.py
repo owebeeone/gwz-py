@@ -52,6 +52,11 @@ def configure_diff(parser: argparse.ArgumentParser) -> None:
         help="Use the merge base of the operand and HEAD as the old side",
     )
     parser.add_argument(
+        "--tagged",
+        action="store_true",
+        help="Select only repositories containing every supplied local tag",
+    )
+    parser.add_argument(
         "-M",
         "--find-renames",
         nargs="?",
@@ -138,6 +143,7 @@ async def handle_diff(context: CommandContext) -> DiffCliResult:
         pathspecs=getattr(args, "pathspecs", []) or [],
         cached=True if args.cached else None,
         merge_base=True if args.merge_base else None,
+        tagged=True if args.tagged else None,
         output_format=DiffOutputFormat.no_patch if quiet else requested_format,
         manifest_mode=DiffManifestMode.any_difference if quiet else None,
         context_lines=args.unified,

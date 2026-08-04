@@ -18,6 +18,7 @@ from gwz.protocol.generated import (
     DiffOutputFormat,
     DiffOutputRecordKind,
     DiffStatus,
+    DiffTargetExclusionReason,
 )
 
 from native_helpers import commit_file, git, native_client
@@ -152,6 +153,31 @@ def test_native_diff_quiet_no_differences_is_clean(tmp_path: Path) -> None:
         assert response.output is None
         assert response.summary is not None
         assert response.summary.has_differences is False
+
+    asyncio.run(run())
+
+
+def test_native_tagged_diff_selects_the_exact_tag_intersection(tmp_path: Path) -> None:
+    repo = _workspace_with_member(tmp_path)
+    git(repo, "tag", "release-old")
+    commit_file(repo, "README.md", "two\n", "release new")
+    git(repo, "tag", "release-new")
+    client = native_client(tmp_path)
+
+    async def run() -> None:
+        response = await client.diff(
+            ["release-old", "release-new"],
+            tagged=True,
+            output_format=DiffOutputFormat.no_patch,
+        )
+        assert len(response.targets) == 1
+        assert response.targets[0].scope.member_id == "mem_app"
+        assert len(response.excluded_targets) == 1
+        assert response.excluded_targets[0].scope.root is True
+        assert (
+            response.excluded_targets[0].reason
+            is DiffTargetExclusionReason.tag_missing
+        )
 
     asyncio.run(run())
 
