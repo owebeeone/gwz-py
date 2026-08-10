@@ -129,6 +129,7 @@ def merge_response(
         operation_drift=[],
         preservation=None,
         publication_step=None,
+        record=None,
     )
 
 

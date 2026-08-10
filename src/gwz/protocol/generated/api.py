@@ -157,6 +157,82 @@ class MergePublicationStep(Enum):
     verifying_publication = 5
     complete = 6
 
+class MergeRecordVersion(Enum):
+    v0 = 0
+    v1 = 1
+
+class MergeTerminalOutcome(Enum):
+    completed = 0
+    aborted = 1
+
+class MergeAcceptanceKind(Enum):
+    supported_persisted = 0
+    legacy_complete = 1
+    legacy_unavailable = 2
+    not_accepted = 3
+
+class MergeInstalledAcceptedWorkspaceKind(Enum):
+    v1 = 0
+
+class MergeLegacyAcceptanceSource(Enum):
+    candidate = 0
+    baseline_no_publication = 1
+
+class MergeLegacyAcceptanceGap(Enum):
+    exact_lock_bytes = 0
+    complete_member_audit = 1
+    accepted_root_input = 2
+    publication_evidence = 3
+
+class MergeAcceptedMemberKind(Enum):
+    selected = 0
+    unselected_present = 1
+    absent = 2
+
+class MergeAcceptedRootKind(Enum):
+    born_attached = 0
+    born_detached = 1
+    unborn_attached = 2
+
+class MergeAcceptedMetadataSource(Enum):
+    operation_baseline = 0
+    selected_root_result = 1
+
+class MergeRecoveryOriginState(Enum):
+    executing = 0
+    awaiting_resolution = 1
+    halted = 2
+    finalizing = 3
+    preserving = 4
+    rolling_back = 5
+
+class MergeCompatibilityBasePhase(Enum):
+    pre_acceptance = 0
+    pre_candidate = 1
+    candidate_persisted = 2
+    evidence_unrecorded = 3
+    evidence_recorded = 4
+    publishing_prefix = 5
+    published = 6
+    no_publication_complete = 7
+
+class MergeCompatibilityNextAction(Enum):
+    reconcile_pending_participant = 0
+    execute_next_participant = 1
+    await_resolution = 2
+    validate_results = 3
+    persist_acceptance = 4
+    prepare_candidate = 5
+    create_or_adopt_evidence = 6
+    publish_candidate = 7
+    verify_publication = 8
+    complete_no_publication = 9
+    resume_preservation = 10
+    resume_rollback = 11
+    archive_completed = 12
+    archive_aborted = 13
+    report_recovery_required = 14
+
 class BranchActionResult(Enum):
     listed = 0
     created = 1
@@ -770,6 +846,126 @@ class MergePendingActionSummary:
     message: str | None
 
 @dataclass(slots=True)
+class MergeRecordProjection:
+    source_version: MergeRecordVersion
+    archived: bool
+    terminal_outcome: MergeTerminalOutcome | None
+    acceptance: MergeAcceptanceProjection | None
+    recovery: MergeRecoveryProjection | None
+
+@dataclass(slots=True)
+class MergeAcceptanceProjection:
+    kind: MergeAcceptanceKind
+    supported_persisted: MergeInstalledAcceptedWorkspaceProjection | None
+    legacy_complete: MergeLegacyAcceptedWorkspace | None
+    legacy_source: MergeLegacyAcceptanceSource | None
+    legacy_evidence: MergeLegacyAcceptanceEvidence | None
+    missing_gaps: list[MergeLegacyAcceptanceGap]
+
+@dataclass(slots=True)
+class MergeInstalledAcceptedWorkspaceProjection:
+    kind: MergeInstalledAcceptedWorkspaceKind
+    v1: MergeAcceptedWorkspaceV1Projection | None
+
+@dataclass(slots=True)
+class MergeRecoveryProjection:
+    origin_state: MergeRecoveryOriginState
+    base_phase: MergeCompatibilityBasePhase
+    next_action: MergeCompatibilityNextAction
+    resume_action: MergeCompatibilityNextAction
+
+@dataclass(slots=True)
+class MergeAcceptedWorkspaceV1Projection:
+    operation_baseline_lock_sha256: str
+    metadata_base: MergeAcceptedMetadataBaseProjection
+    lock_yaml: str
+    lock_sha256: str
+    members: list[MergeAcceptedMemberV1Projection]
+    root: MergeAcceptedRootProjection
+
+@dataclass(slots=True)
+class MergeAcceptedMetadataBaseProjection:
+    source: MergeAcceptedMetadataSource
+    source_commit: str | None
+    manifest_yaml: str
+    manifest_sha256: str
+    lock_yaml: str
+    lock_sha256: str
+
+@dataclass(slots=True)
+class MergeAcceptedMemberV1Projection:
+    member_id: str
+    kind: MergeAcceptedMemberKind
+    integration: MergeAcceptedIntegrationProjection | None
+    final_checkout: MergeAcceptedCheckoutProjection | None
+    lock_member: MergeAcceptedLockMemberProjection | None
+
+@dataclass(slots=True)
+class MergeAcceptedIntegrationProjection:
+    branch: str
+    before_commit: str
+    resulting_commit: str
+
+@dataclass(slots=True)
+class MergeAcceptedCheckoutProjection:
+    branch: str
+    commit: str
+
+@dataclass(slots=True)
+class MergeAcceptedLockMemberProjection:
+    path: str
+    source_id: str
+    source_kind: SourceKind
+    commit: str | None
+    branch: str | None
+    detached: bool | None
+    upstream: str | None
+    dirty: bool | None
+    materialized: bool | None
+
+@dataclass(slots=True)
+class MergeAcceptedRootProjection:
+    kind: MergeAcceptedRootKind
+    commit: str | None
+    symbolic_branch: str | None
+    publication_branch: str | None
+    lock_worktree_sha256: str
+    manifest_worktree_sha256: str
+    lock_commit_sha256: str | None
+    manifest_commit_sha256: str | None
+
+@dataclass(slots=True)
+class MergeLegacyAcceptedWorkspace:
+    baseline_lock_sha256: str
+    lock_yaml: str
+    lock_sha256: str
+    members: list[MergeAcceptedMemberV1Projection]
+    root: MergeAcceptedRootProjection
+
+@dataclass(slots=True)
+class MergeLegacyAcceptanceEvidence:
+    lock_yaml: str | None
+    lock_sha256: str | None
+    members: list[MergeLegacyMemberEvidence]
+    root: MergeAcceptedRootProjection | None
+    composition_commit: str | None
+    composition_tree: str | None
+    candidate_hashes: list[MergeAcceptedCandidateHashProjection]
+
+@dataclass(slots=True)
+class MergeLegacyMemberEvidence:
+    member_id: str
+    selected: bool
+    state: MergeParticipantState | None
+    integration: MergeAcceptedIntegrationProjection | None
+    lock_member: MergeAcceptedLockMemberProjection | None
+
+@dataclass(slots=True)
+class MergeAcceptedCandidateHashProjection:
+    path: str
+    sha256: str
+
+@dataclass(slots=True)
 class MergeRepoSummary:
     target_id: str
     target_kind: TargetKind
@@ -1153,6 +1349,7 @@ class MergeResponse:
     operation_drift: list[MergeOperationDrift]
     preservation: list[MergePreservation] | None
     publication_step: MergePublicationStep | None
+    record: MergeRecordProjection | None
 
 @dataclass(slots=True)
 class DiffComparison:

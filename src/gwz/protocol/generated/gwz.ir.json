@@ -283,6 +283,118 @@
       }
     },
     {
+      "name": "MergeRecordVersion",
+      "members": {
+        "v0": 0,
+        "v1": 1
+      }
+    },
+    {
+      "name": "MergeTerminalOutcome",
+      "members": {
+        "completed": 0,
+        "aborted": 1
+      }
+    },
+    {
+      "name": "MergeAcceptanceKind",
+      "members": {
+        "supported_persisted": 0,
+        "legacy_complete": 1,
+        "legacy_unavailable": 2,
+        "not_accepted": 3
+      }
+    },
+    {
+      "name": "MergeInstalledAcceptedWorkspaceKind",
+      "members": {
+        "v1": 0
+      }
+    },
+    {
+      "name": "MergeLegacyAcceptanceSource",
+      "members": {
+        "candidate": 0,
+        "baseline_no_publication": 1
+      }
+    },
+    {
+      "name": "MergeLegacyAcceptanceGap",
+      "members": {
+        "exact_lock_bytes": 0,
+        "complete_member_audit": 1,
+        "accepted_root_input": 2,
+        "publication_evidence": 3
+      }
+    },
+    {
+      "name": "MergeAcceptedMemberKind",
+      "members": {
+        "selected": 0,
+        "unselected_present": 1,
+        "absent": 2
+      }
+    },
+    {
+      "name": "MergeAcceptedRootKind",
+      "members": {
+        "born_attached": 0,
+        "born_detached": 1,
+        "unborn_attached": 2
+      }
+    },
+    {
+      "name": "MergeAcceptedMetadataSource",
+      "members": {
+        "operation_baseline": 0,
+        "selected_root_result": 1
+      }
+    },
+    {
+      "name": "MergeRecoveryOriginState",
+      "members": {
+        "executing": 0,
+        "awaiting_resolution": 1,
+        "halted": 2,
+        "finalizing": 3,
+        "preserving": 4,
+        "rolling_back": 5
+      }
+    },
+    {
+      "name": "MergeCompatibilityBasePhase",
+      "members": {
+        "pre_acceptance": 0,
+        "pre_candidate": 1,
+        "candidate_persisted": 2,
+        "evidence_unrecorded": 3,
+        "evidence_recorded": 4,
+        "publishing_prefix": 5,
+        "published": 6,
+        "no_publication_complete": 7
+      }
+    },
+    {
+      "name": "MergeCompatibilityNextAction",
+      "members": {
+        "reconcile_pending_participant": 0,
+        "execute_next_participant": 1,
+        "await_resolution": 2,
+        "validate_results": 3,
+        "persist_acceptance": 4,
+        "prepare_candidate": 5,
+        "create_or_adopt_evidence": 6,
+        "publish_candidate": 7,
+        "verify_publication": 8,
+        "complete_no_publication": 9,
+        "resume_preservation": 10,
+        "resume_rollback": 11,
+        "archive_completed": 12,
+        "archive_aborted": 13,
+        "report_recovery_required": 14
+      }
+    },
+    {
       "name": "BranchActionResult",
       "members": {
         "listed": 0,
@@ -3547,6 +3659,966 @@
       ]
     },
     {
+      "name": "MergeRecordProjection",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "source_version",
+          "tag": 1,
+          "type": {
+            "k": "enum",
+            "name": "MergeRecordVersion"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "archived",
+          "tag": 2,
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "terminal_outcome",
+          "tag": 3,
+          "type": {
+            "k": "enum",
+            "name": "MergeTerminalOutcome"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "acceptance",
+          "tag": 4,
+          "type": {
+            "k": "msg",
+            "name": "MergeAcceptanceProjection"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "recovery",
+          "tag": 5,
+          "type": {
+            "k": "msg",
+            "name": "MergeRecoveryProjection"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "MergeAcceptanceProjection",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "kind",
+          "tag": 1,
+          "type": {
+            "k": "enum",
+            "name": "MergeAcceptanceKind"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "supported_persisted",
+          "tag": 2,
+          "type": {
+            "k": "msg",
+            "name": "MergeInstalledAcceptedWorkspaceProjection"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "legacy_complete",
+          "tag": 3,
+          "type": {
+            "k": "msg",
+            "name": "MergeLegacyAcceptedWorkspace"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "legacy_source",
+          "tag": 4,
+          "type": {
+            "k": "enum",
+            "name": "MergeLegacyAcceptanceSource"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "legacy_evidence",
+          "tag": 5,
+          "type": {
+            "k": "msg",
+            "name": "MergeLegacyAcceptanceEvidence"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "missing_gaps",
+          "tag": 6,
+          "type": {
+            "k": "list",
+            "elem": {
+              "k": "enum",
+              "name": "MergeLegacyAcceptanceGap"
+            }
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "MergeInstalledAcceptedWorkspaceProjection",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "kind",
+          "tag": 1,
+          "type": {
+            "k": "enum",
+            "name": "MergeInstalledAcceptedWorkspaceKind"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "v1",
+          "tag": 2,
+          "type": {
+            "k": "msg",
+            "name": "MergeAcceptedWorkspaceV1Projection"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "MergeRecoveryProjection",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "origin_state",
+          "tag": 1,
+          "type": {
+            "k": "enum",
+            "name": "MergeRecoveryOriginState"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "base_phase",
+          "tag": 2,
+          "type": {
+            "k": "enum",
+            "name": "MergeCompatibilityBasePhase"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "next_action",
+          "tag": 3,
+          "type": {
+            "k": "enum",
+            "name": "MergeCompatibilityNextAction"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "resume_action",
+          "tag": 4,
+          "type": {
+            "k": "enum",
+            "name": "MergeCompatibilityNextAction"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "MergeAcceptedWorkspaceV1Projection",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "operation_baseline_lock_sha256",
+          "tag": 1,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "metadata_base",
+          "tag": 2,
+          "type": {
+            "k": "msg",
+            "name": "MergeAcceptedMetadataBaseProjection"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "lock_yaml",
+          "tag": 3,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "lock_sha256",
+          "tag": 4,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "members",
+          "tag": 5,
+          "type": {
+            "k": "list",
+            "elem": {
+              "k": "msg",
+              "name": "MergeAcceptedMemberV1Projection"
+            }
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "root",
+          "tag": 6,
+          "type": {
+            "k": "msg",
+            "name": "MergeAcceptedRootProjection"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "MergeAcceptedMetadataBaseProjection",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "source",
+          "tag": 1,
+          "type": {
+            "k": "enum",
+            "name": "MergeAcceptedMetadataSource"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "source_commit",
+          "tag": 2,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "manifest_yaml",
+          "tag": 3,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "manifest_sha256",
+          "tag": 4,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "lock_yaml",
+          "tag": 5,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "lock_sha256",
+          "tag": 6,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "MergeAcceptedMemberV1Projection",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "member_id",
+          "tag": 1,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "kind",
+          "tag": 2,
+          "type": {
+            "k": "enum",
+            "name": "MergeAcceptedMemberKind"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "integration",
+          "tag": 3,
+          "type": {
+            "k": "msg",
+            "name": "MergeAcceptedIntegrationProjection"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "final_checkout",
+          "tag": 4,
+          "type": {
+            "k": "msg",
+            "name": "MergeAcceptedCheckoutProjection"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "lock_member",
+          "tag": 5,
+          "type": {
+            "k": "msg",
+            "name": "MergeAcceptedLockMemberProjection"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "MergeAcceptedIntegrationProjection",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "branch",
+          "tag": 1,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "before_commit",
+          "tag": 2,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "resulting_commit",
+          "tag": 3,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "MergeAcceptedCheckoutProjection",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "branch",
+          "tag": 1,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "commit",
+          "tag": 2,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "MergeAcceptedLockMemberProjection",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "path",
+          "tag": 1,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "source_id",
+          "tag": 2,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "source_kind",
+          "tag": 3,
+          "type": {
+            "k": "enum",
+            "name": "SourceKind"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "commit",
+          "tag": 4,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "branch",
+          "tag": 5,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "detached",
+          "tag": 6,
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "upstream",
+          "tag": 7,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "dirty",
+          "tag": 8,
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "materialized",
+          "tag": 9,
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "MergeAcceptedRootProjection",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "kind",
+          "tag": 1,
+          "type": {
+            "k": "enum",
+            "name": "MergeAcceptedRootKind"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "commit",
+          "tag": 2,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "symbolic_branch",
+          "tag": 3,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "publication_branch",
+          "tag": 4,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "lock_worktree_sha256",
+          "tag": 5,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "manifest_worktree_sha256",
+          "tag": 6,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "lock_commit_sha256",
+          "tag": 7,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "manifest_commit_sha256",
+          "tag": 8,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "MergeLegacyAcceptedWorkspace",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "baseline_lock_sha256",
+          "tag": 1,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "lock_yaml",
+          "tag": 2,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "lock_sha256",
+          "tag": 3,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "members",
+          "tag": 4,
+          "type": {
+            "k": "list",
+            "elem": {
+              "k": "msg",
+              "name": "MergeAcceptedMemberV1Projection"
+            }
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "root",
+          "tag": 5,
+          "type": {
+            "k": "msg",
+            "name": "MergeAcceptedRootProjection"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "MergeLegacyAcceptanceEvidence",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "lock_yaml",
+          "tag": 1,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "lock_sha256",
+          "tag": 2,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "members",
+          "tag": 3,
+          "type": {
+            "k": "list",
+            "elem": {
+              "k": "msg",
+              "name": "MergeLegacyMemberEvidence"
+            }
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "root",
+          "tag": 4,
+          "type": {
+            "k": "msg",
+            "name": "MergeAcceptedRootProjection"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "composition_commit",
+          "tag": 5,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "composition_tree",
+          "tag": 6,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "candidate_hashes",
+          "tag": 7,
+          "type": {
+            "k": "list",
+            "elem": {
+              "k": "msg",
+              "name": "MergeAcceptedCandidateHashProjection"
+            }
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "MergeLegacyMemberEvidence",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "member_id",
+          "tag": 1,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "selected",
+          "tag": 2,
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "state",
+          "tag": 3,
+          "type": {
+            "k": "enum",
+            "name": "MergeParticipantState"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "integration",
+          "tag": 4,
+          "type": {
+            "k": "msg",
+            "name": "MergeAcceptedIntegrationProjection"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "lock_member",
+          "tag": 5,
+          "type": {
+            "k": "msg",
+            "name": "MergeAcceptedLockMemberProjection"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "MergeAcceptedCandidateHashProjection",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "path",
+          "tag": 1,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "sha256",
+          "tag": 2,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
       "name": "MergeRepoSummary",
       "reserved_tags": [],
       "reserved_names": [],
@@ -6331,6 +7403,17 @@
           "type": {
             "k": "enum",
             "name": "MergePublicationStep"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "record",
+          "tag": 10,
+          "type": {
+            "k": "msg",
+            "name": "MergeRecordProjection"
           },
           "optional": true,
           "transient": false,

@@ -105,6 +105,7 @@ def merge_response_json(response: Any) -> dict[str, Any]:
             if response.publication_step is not None
             else None
         ),
+        "record": protocol_json(response.record),
     }
     return {
         "kind": "response",

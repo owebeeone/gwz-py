@@ -13,12 +13,20 @@ from gwz.cli_shared import CliUsageError, CommandContext, meta_kwargs, validate_
 from gwz.errors import GwzBridgeError, GwzOperationError
 from gwz.protocol.generated import (
     ActionKind, AggregateStatus, EventKind, MergeAnalysisKind, MergeMode, MergeOperationState, MergeOp,
+    MergeAcceptanceKind, MergeAcceptanceProjection, MergeAcceptedCheckoutProjection,
+    MergeAcceptedIntegrationProjection, MergeAcceptedLockMemberProjection,
+    MergeAcceptedMemberKind, MergeAcceptedMemberV1Projection,
+    MergeAcceptedMetadataBaseProjection, MergeAcceptedMetadataSource,
+    MergeAcceptedRootKind, MergeAcceptedRootProjection, MergeAcceptedWorkspaceV1Projection,
+    MergeCompatibilityBasePhase, MergeCompatibilityNextAction,
+    MergeInstalledAcceptedWorkspaceKind, MergeInstalledAcceptedWorkspaceProjection,
     MergeOperationDrift, MergeOperationDriftKind, MergeParticipantCounts,
     MergeParticipantDrift, MergeParticipantDriftKind, MergeParticipantState,
     MergePendingActionKind, MergePendingActionState, MergePendingActionSummary,
-    MergePreservation, MergePublicationStep, MergeRepoSummary, MergeResponse,
+    MergePreservation, MergePublicationStep, MergeRecordProjection, MergeRecordVersion,
+    MergeRecoveryOriginState, MergeRecoveryProjection, MergeRepoSummary, MergeResponse,
     GwzError, GwzErrorCode, OperationEvent, OperationResult, ResponseEnvelope, ResponseMeta, Severity,
-    TargetKind,
+    SourceKind, TargetKind,
 )
 from native_helpers import native_client
 
@@ -129,7 +137,7 @@ def test_merge_human_and_machine_render_idle_without_fabricated_operation() -> N
         MergeOperationState.idle,
         False,
         MergeParticipantCounts(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
-        [], [], None, None,
+        [], [], None, None, None,
     )
 
     assert render_response(response) == (
@@ -142,6 +150,7 @@ def test_merge_human_and_machine_render_idle_without_fabricated_operation() -> N
     assert machine["participant_counts"]["total"] == 0
     assert machine["repos"] == []
     assert machine["operation_drift"] == []
+    assert machine["record"] is None
 
 def test_merge_json_success_matches_rust_parity_fixture(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
@@ -489,12 +498,72 @@ def merge_response() -> MergeResponse:
             "backup123", "stash-parity-1", "stashobj123",
         )],
         MergePublicationStep.verifying_publication,
+        parity_record_projection(),
     )
 
 def merge_repo(path: str, state: MergeParticipantState) -> MergeRepoSummary:
     return MergeRepoSummary(f"mem_{path}", TargetKind.member, path, "feature/x", "source123",
                             "main", "before123", None, None, state, None, None, [],
                             None, None, [], None, None)
+
+
+def parity_record_projection() -> MergeRecordProjection:
+    lock_member = MergeAcceptedLockMemberProjection(
+        "docs", "src_docs", SourceKind.git, "result123", "main", False,
+        None, False, True,
+    )
+    accepted = MergeAcceptedWorkspaceV1Projection(
+        "baseline-lock-sha",
+        MergeAcceptedMetadataBaseProjection(
+            MergeAcceptedMetadataSource.operation_baseline,
+            None,
+            "schema: gwz.workspace/v0\n",
+            "manifest-sha",
+            "schema: gwz.lock/v0\n",
+            "baseline-lock-sha",
+        ),
+        "schema: gwz.lock/v0\n",
+        "accepted-lock-sha",
+        [MergeAcceptedMemberV1Projection(
+            "mem_docs",
+            MergeAcceptedMemberKind.selected,
+            MergeAcceptedIntegrationProjection("main", "before123", "result123"),
+            MergeAcceptedCheckoutProjection("main", "result123"),
+            lock_member,
+        )],
+        MergeAcceptedRootProjection(
+            MergeAcceptedRootKind.born_attached,
+            "root123",
+            "main",
+            "main",
+            "root-lock-sha",
+            "root-manifest-sha",
+            None,
+            None,
+        ),
+    )
+    return MergeRecordProjection(
+        MergeRecordVersion.v1,
+        False,
+        None,
+        MergeAcceptanceProjection(
+            MergeAcceptanceKind.supported_persisted,
+            MergeInstalledAcceptedWorkspaceProjection(
+                MergeInstalledAcceptedWorkspaceKind.v1,
+                accepted,
+            ),
+            None,
+            None,
+            None,
+            [],
+        ),
+        MergeRecoveryProjection(
+            MergeRecoveryOriginState.finalizing,
+            MergeCompatibilityBasePhase.publishing_prefix,
+            MergeCompatibilityNextAction.report_recovery_required,
+            MergeCompatibilityNextAction.publish_candidate,
+        ),
+    )
 
 
 def canonical_merge_response_fixture() -> Path:
