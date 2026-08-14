@@ -216,6 +216,7 @@ impl OperationRecord {
             member_path: None,
             detail: None,
             target_kind: None,
+            record_context: None,
         };
         self.complete(
             gwz_core::OperationResult {

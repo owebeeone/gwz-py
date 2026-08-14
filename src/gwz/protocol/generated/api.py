@@ -339,6 +339,28 @@ class GwzErrorCode(Enum):
     merge_phase_unsupported = 43
     root_merge_not_yet_supported = 44
     merge_record_unreadable = 45
+    unsupported_record_version = 46
+    unsupported_legacy_mode = 47
+    archived_record_unreadable = 48
+    unexpected_acceptance_evidence = 49
+    acceptance_input_drift = 50
+    candidate_integrity_mismatch = 51
+    ambiguous_evidence_commit = 52
+    recorded_evidence_drift = 53
+    publication_prefix_mismatch = 54
+    published_candidate_mismatch = 55
+    preservation_evidence_mismatch = 56
+    rollback_evidence_mismatch = 57
+    unexpected_publication_evidence = 58
+    terminal_evidence_mismatch = 59
+    recovery_evidence_mismatch = 60
+    terminal_rollback_mismatch = 61
+
+class MergeRecordRequiredWave(Enum):
+    a1 = 0
+    a2 = 1
+    a3 = 2
+    a4 = 3
 
 class DiffComparisonKind(Enum):
     worktree_vs_index = 0
@@ -400,6 +422,7 @@ class DiffTargetExclusionReason(Enum):
     snapshot_missing = 0
     snapshot_missing_commit = 1
     root_not_in_snapshot = 2
+    tag_missing = 3
 
 @dataclass(slots=True)
 class WorkspaceRef:
@@ -467,6 +490,14 @@ class ResponseMeta:
     attribution: OperationAttribution | None
 
 @dataclass(slots=True)
+class MergeRecordCompatibilityContext:
+    merge_id: str
+    schema: str | None
+    record_schema_version: int | None
+    required_wave: MergeRecordRequiredWave | None
+    legacy_mode: str | None
+
+@dataclass(slots=True)
 class GwzError:
     code: GwzErrorCode
     message: str
@@ -474,6 +505,7 @@ class GwzError:
     member_path: str | None
     detail: str | None
     target_kind: TargetKind | None
+    record_context: MergeRecordCompatibilityContext | None
 
 @dataclass(slots=True)
 class RemoteSpec:
@@ -1164,6 +1196,7 @@ class DiffRequest:
     options: DiffOptions | None
     cached: bool | None
     merge_base: bool | None
+    tagged: bool | None
 
 @dataclass(slots=True)
 class DiffRepoScope:

@@ -251,6 +251,13 @@ def test_native_bridge_preserves_structured_model_error_attributes() -> None:
             error.machine_message = (  # type: ignore[attr-defined]
                 "member 'mem_a' at 'a': revspec 'feature/x' not found"
             )
+            error.record_context = {  # type: ignore[attr-defined]
+                "merge_id": "merge_1",
+                "schema": "gwz.merge-operation/v1",
+                "record_schema_version": 1,
+                "required_wave": "A1",
+                "legacy_mode": None,
+            }
             raise error
 
     bridge = NativeCoreBridge(native=FailingNative())
@@ -266,6 +273,13 @@ def test_native_bridge_preserves_structured_model_error_attributes() -> None:
     assert error.machine_message == (
         "member 'mem_a' at 'a': revspec 'feature/x' not found"
     )
+    assert error.record_context == {
+        "merge_id": "merge_1",
+        "schema": "gwz.merge-operation/v1",
+        "record_schema_version": 1,
+        "required_wave": "A1",
+        "legacy_mode": None,
+    }
 
 
 def test_native_bridge_maps_malformed_response_bytes_to_protocol_error() -> None:
@@ -347,6 +361,7 @@ def test_merge_stream_raises_from_structured_terminal_result() -> None:
         member_path="lib",
         detail="source ref was not found",
         target_kind=TargetKind.member,
+        record_context=None,
     )
     terminal = OperationResult(
         operation_id="op_transport",

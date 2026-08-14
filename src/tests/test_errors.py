@@ -53,6 +53,7 @@ def error_detail(member_id: str = "member-1") -> GeneratedGwzError:
         member_path=f"packages/{member_id}",
         detail="git status reported dirty files",
         target_kind=None,
+        record_context=None,
     )
 
 
