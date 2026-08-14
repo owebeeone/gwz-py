@@ -97,6 +97,7 @@ RESPONSE_EXTRAS = {
         "operation_drift": [],
         "preservation": None,
         "publication_step": None,
+        "record": None,
     },
     StashResponse: {"bundles": None},
     StatusResponse: {"workspace_git_status": None},

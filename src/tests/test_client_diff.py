@@ -117,6 +117,7 @@ def test_diff_lowers_options_into_structured_request() -> None:
             workspace_cwd="gwz-core",
             cached=True,
             merge_base=True,
+            tagged=True,
             output_format=DiffOutputFormat.patch,
             context_lines=5,
             find_renames=True,
@@ -129,6 +130,7 @@ def test_diff_lowers_options_into_structured_request() -> None:
     # Parsed flags are first-class request fields, never operand tunnels.
     assert request.cached is True
     assert request.merge_base is True
+    assert request.tagged is True
     assert request.operands == ["A...B"]
     assert request.explicit_pathspecs == ["gwz-core/src"]
     assert request.workspace_cwd == "gwz-core"

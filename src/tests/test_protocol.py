@@ -37,6 +37,26 @@ def test_repo_member_lifecycle_protocol_is_pinned() -> None:
     assert generated.GwzErrorCode.source_identity_mismatch.value == 36
     assert generated.ActionKind.merge.value == 25
     assert generated.GwzErrorCode.deprecated_operation.value == 37
+    assert generated.GwzErrorCode.unsupported_record_version.value == 46
+    assert generated.GwzErrorCode.terminal_rollback_mismatch.value == 61
+    assert generated.MergeRecordRequiredWave.a1.value == 0
+    assert generated.MergeRecordRequiredWave.a4.value == 3
+    pinned = (
+        (generated.MergeRecordVersion, [0, 1]),
+        (generated.MergeTerminalOutcome, [0, 1]),
+        (generated.MergeAcceptanceKind, [0, 1, 2, 3]),
+        (generated.MergeInstalledAcceptedWorkspaceKind, [0]),
+        (generated.MergeLegacyAcceptanceSource, [0, 1]),
+        (generated.MergeLegacyAcceptanceGap, [0, 1, 2, 3]),
+        (generated.MergeAcceptedMemberKind, [0, 1, 2]),
+        (generated.MergeAcceptedRootKind, [0, 1, 2]),
+        (generated.MergeAcceptedMetadataSource, [0, 1]),
+        (generated.MergeRecoveryOriginState, list(range(6))),
+        (generated.MergeCompatibilityBasePhase, list(range(8))),
+        (generated.MergeCompatibilityNextAction, list(range(15))),
+    )
+    for enum, expected in pinned:
+        assert [member.value for member in enum] == expected
 
     request = generated.CloneRepoMemberRequest(
         meta=generated.RequestMeta(
@@ -79,6 +99,34 @@ def test_generated_runtime_artifacts_are_api_only() -> None:
         "__init__.py",
         "api.py",
         "gwz.ir.json",
+    }
+
+
+def test_merge_record_projection_uses_the_frozen_field_names() -> None:
+    projection = generated.MergeRecordProjection(
+        source_version=generated.MergeRecordVersion.v1,
+        archived=False,
+        terminal_outcome=None,
+        acceptance=None,
+        recovery=generated.MergeRecoveryProjection(
+            origin_state=generated.MergeRecoveryOriginState.executing,
+            base_phase=generated.MergeCompatibilityBasePhase.pre_acceptance,
+            next_action=generated.MergeCompatibilityNextAction.report_recovery_required,
+            resume_action=generated.MergeCompatibilityNextAction.reconcile_pending_participant,
+        ),
+    )
+
+    assert to_wire(projection) == {
+        "source_version": "v1",
+        "archived": False,
+        "terminal_outcome": None,
+        "acceptance": None,
+        "recovery": {
+            "origin_state": "executing",
+            "base_phase": "pre_acceptance",
+            "next_action": "report_recovery_required",
+            "resume_action": "reconcile_pending_participant",
+        },
     }
 
 

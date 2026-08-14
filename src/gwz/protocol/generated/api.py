@@ -157,6 +157,82 @@ class MergePublicationStep(Enum):
     verifying_publication = 5
     complete = 6
 
+class MergeRecordVersion(Enum):
+    v0 = 0
+    v1 = 1
+
+class MergeTerminalOutcome(Enum):
+    completed = 0
+    aborted = 1
+
+class MergeAcceptanceKind(Enum):
+    supported_persisted = 0
+    legacy_complete = 1
+    legacy_unavailable = 2
+    not_accepted = 3
+
+class MergeInstalledAcceptedWorkspaceKind(Enum):
+    v1 = 0
+
+class MergeLegacyAcceptanceSource(Enum):
+    candidate = 0
+    baseline_no_publication = 1
+
+class MergeLegacyAcceptanceGap(Enum):
+    exact_lock_bytes = 0
+    complete_member_audit = 1
+    accepted_root_input = 2
+    publication_evidence = 3
+
+class MergeAcceptedMemberKind(Enum):
+    selected = 0
+    unselected_present = 1
+    absent = 2
+
+class MergeAcceptedRootKind(Enum):
+    born_attached = 0
+    born_detached = 1
+    unborn_attached = 2
+
+class MergeAcceptedMetadataSource(Enum):
+    operation_baseline = 0
+    selected_root_result = 1
+
+class MergeRecoveryOriginState(Enum):
+    executing = 0
+    awaiting_resolution = 1
+    halted = 2
+    finalizing = 3
+    preserving = 4
+    rolling_back = 5
+
+class MergeCompatibilityBasePhase(Enum):
+    pre_acceptance = 0
+    pre_candidate = 1
+    candidate_persisted = 2
+    evidence_unrecorded = 3
+    evidence_recorded = 4
+    publishing_prefix = 5
+    published = 6
+    no_publication_complete = 7
+
+class MergeCompatibilityNextAction(Enum):
+    reconcile_pending_participant = 0
+    execute_next_participant = 1
+    await_resolution = 2
+    validate_results = 3
+    persist_acceptance = 4
+    prepare_candidate = 5
+    create_or_adopt_evidence = 6
+    publish_candidate = 7
+    verify_publication = 8
+    complete_no_publication = 9
+    resume_preservation = 10
+    resume_rollback = 11
+    archive_completed = 12
+    archive_aborted = 13
+    report_recovery_required = 14
+
 class BranchActionResult(Enum):
     listed = 0
     created = 1
@@ -339,6 +415,28 @@ class GwzErrorCode(Enum):
     merge_phase_unsupported = 43
     root_merge_not_yet_supported = 44
     merge_record_unreadable = 45
+    unsupported_record_version = 46
+    unsupported_legacy_mode = 47
+    archived_record_unreadable = 48
+    unexpected_acceptance_evidence = 49
+    acceptance_input_drift = 50
+    candidate_integrity_mismatch = 51
+    ambiguous_evidence_commit = 52
+    recorded_evidence_drift = 53
+    publication_prefix_mismatch = 54
+    published_candidate_mismatch = 55
+    preservation_evidence_mismatch = 56
+    rollback_evidence_mismatch = 57
+    unexpected_publication_evidence = 58
+    terminal_evidence_mismatch = 59
+    recovery_evidence_mismatch = 60
+    terminal_rollback_mismatch = 61
+
+class MergeRecordRequiredWave(Enum):
+    a1 = 0
+    a2 = 1
+    a3 = 2
+    a4 = 3
 
 class DiffComparisonKind(Enum):
     worktree_vs_index = 0
@@ -400,6 +498,7 @@ class DiffTargetExclusionReason(Enum):
     snapshot_missing = 0
     snapshot_missing_commit = 1
     root_not_in_snapshot = 2
+    tag_missing = 3
 
 @dataclass(slots=True)
 class WorkspaceRef:
@@ -467,6 +566,14 @@ class ResponseMeta:
     attribution: OperationAttribution | None
 
 @dataclass(slots=True)
+class MergeRecordCompatibilityContext:
+    merge_id: str
+    schema: str | None
+    record_schema_version: int | None
+    required_wave: MergeRecordRequiredWave | None
+    legacy_mode: str | None
+
+@dataclass(slots=True)
 class GwzError:
     code: GwzErrorCode
     message: str
@@ -474,6 +581,7 @@ class GwzError:
     member_path: str | None
     detail: str | None
     target_kind: TargetKind | None
+    record_context: MergeRecordCompatibilityContext | None
 
 @dataclass(slots=True)
 class RemoteSpec:
@@ -736,6 +844,126 @@ class MergePendingActionSummary:
     kind: MergePendingActionKind
     state: MergePendingActionState
     message: str | None
+
+@dataclass(slots=True)
+class MergeRecordProjection:
+    source_version: MergeRecordVersion
+    archived: bool
+    terminal_outcome: MergeTerminalOutcome | None
+    acceptance: MergeAcceptanceProjection | None
+    recovery: MergeRecoveryProjection | None
+
+@dataclass(slots=True)
+class MergeAcceptanceProjection:
+    kind: MergeAcceptanceKind
+    supported_persisted: MergeInstalledAcceptedWorkspaceProjection | None
+    legacy_complete: MergeLegacyAcceptedWorkspace | None
+    legacy_source: MergeLegacyAcceptanceSource | None
+    legacy_evidence: MergeLegacyAcceptanceEvidence | None
+    missing_gaps: list[MergeLegacyAcceptanceGap]
+
+@dataclass(slots=True)
+class MergeInstalledAcceptedWorkspaceProjection:
+    kind: MergeInstalledAcceptedWorkspaceKind
+    v1: MergeAcceptedWorkspaceV1Projection | None
+
+@dataclass(slots=True)
+class MergeRecoveryProjection:
+    origin_state: MergeRecoveryOriginState
+    base_phase: MergeCompatibilityBasePhase
+    next_action: MergeCompatibilityNextAction
+    resume_action: MergeCompatibilityNextAction
+
+@dataclass(slots=True)
+class MergeAcceptedWorkspaceV1Projection:
+    operation_baseline_lock_sha256: str
+    metadata_base: MergeAcceptedMetadataBaseProjection
+    lock_yaml: str
+    lock_sha256: str
+    members: list[MergeAcceptedMemberV1Projection]
+    root: MergeAcceptedRootProjection
+
+@dataclass(slots=True)
+class MergeAcceptedMetadataBaseProjection:
+    source: MergeAcceptedMetadataSource
+    source_commit: str | None
+    manifest_yaml: str
+    manifest_sha256: str
+    lock_yaml: str
+    lock_sha256: str
+
+@dataclass(slots=True)
+class MergeAcceptedMemberV1Projection:
+    member_id: str
+    kind: MergeAcceptedMemberKind
+    integration: MergeAcceptedIntegrationProjection | None
+    final_checkout: MergeAcceptedCheckoutProjection | None
+    lock_member: MergeAcceptedLockMemberProjection | None
+
+@dataclass(slots=True)
+class MergeAcceptedIntegrationProjection:
+    branch: str
+    before_commit: str
+    resulting_commit: str
+
+@dataclass(slots=True)
+class MergeAcceptedCheckoutProjection:
+    branch: str
+    commit: str
+
+@dataclass(slots=True)
+class MergeAcceptedLockMemberProjection:
+    path: str
+    source_id: str
+    source_kind: SourceKind
+    commit: str | None
+    branch: str | None
+    detached: bool | None
+    upstream: str | None
+    dirty: bool | None
+    materialized: bool | None
+
+@dataclass(slots=True)
+class MergeAcceptedRootProjection:
+    kind: MergeAcceptedRootKind
+    commit: str | None
+    symbolic_branch: str | None
+    publication_branch: str | None
+    lock_worktree_sha256: str
+    manifest_worktree_sha256: str
+    lock_commit_sha256: str | None
+    manifest_commit_sha256: str | None
+
+@dataclass(slots=True)
+class MergeLegacyAcceptedWorkspace:
+    baseline_lock_sha256: str
+    lock_yaml: str
+    lock_sha256: str
+    members: list[MergeAcceptedMemberV1Projection]
+    root: MergeAcceptedRootProjection
+
+@dataclass(slots=True)
+class MergeLegacyAcceptanceEvidence:
+    lock_yaml: str | None
+    lock_sha256: str | None
+    members: list[MergeLegacyMemberEvidence]
+    root: MergeAcceptedRootProjection | None
+    composition_commit: str | None
+    composition_tree: str | None
+    candidate_hashes: list[MergeAcceptedCandidateHashProjection]
+
+@dataclass(slots=True)
+class MergeLegacyMemberEvidence:
+    member_id: str
+    selected: bool
+    state: MergeParticipantState | None
+    integration: MergeAcceptedIntegrationProjection | None
+    lock_member: MergeAcceptedLockMemberProjection | None
+
+@dataclass(slots=True)
+class MergeAcceptedCandidateHashProjection:
+    path: str
+    sha256: str
 
 @dataclass(slots=True)
 class MergeRepoSummary:
@@ -1121,6 +1349,7 @@ class MergeResponse:
     operation_drift: list[MergeOperationDrift]
     preservation: list[MergePreservation] | None
     publication_step: MergePublicationStep | None
+    record: MergeRecordProjection | None
 
 @dataclass(slots=True)
 class DiffComparison:
@@ -1164,6 +1393,7 @@ class DiffRequest:
     options: DiffOptions | None
     cached: bool | None
     merge_base: bool | None
+    tagged: bool | None
 
 @dataclass(slots=True)
 class DiffRepoScope:

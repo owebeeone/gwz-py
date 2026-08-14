@@ -161,6 +161,7 @@ def test_diff_handler_lowers_supported_flags_and_pathspecs(capfd: pytest.Capture
             "diff",
             "--cached",
             "--merge-base",
+            "--tagged",
             "-M90%",
             "--raw",
             "-z",
@@ -192,6 +193,7 @@ def test_diff_handler_lowers_supported_flags_and_pathspecs(capfd: pytest.Capture
     assert kwargs["pathspecs"] == ["src", "+literal"]
     assert kwargs["cached"] is True
     assert kwargs["merge_base"] is True
+    assert kwargs["tagged"] is True
     assert kwargs["output_format"] is DiffOutputFormat.raw
     assert kwargs["null_terminated"] is True
     assert kwargs["context_lines"] == 5

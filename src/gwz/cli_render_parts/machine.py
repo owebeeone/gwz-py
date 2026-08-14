@@ -105,6 +105,7 @@ def merge_response_json(response: Any) -> dict[str, Any]:
             if response.publication_step is not None
             else None
         ),
+        "record": protocol_json(response.record),
     }
     return {
         "kind": "response",
@@ -191,6 +192,38 @@ def merge_error_json(error: Any) -> dict[str, Any]:
         "target_kind": (
             enum_label(error.target_kind) if error.target_kind is not None else None
         ),
+        "record_context": record_context_json(
+            getattr(error, "record_context", None)
+        ),
+    }
+
+
+def record_context_json(context: Any) -> dict[str, Any] | None:
+    if context is None:
+        return None
+    value = context if isinstance(context, dict) else vars_from_fields(context)
+    required_wave = value.get("required_wave")
+    return {
+        "merge_id": value.get("merge_id"),
+        "schema": value.get("schema"),
+        "record_schema_version": value.get("record_schema_version"),
+        "required_wave": (
+            enum_label(required_wave) if required_wave is not None else None
+        ),
+        "legacy_mode": value.get("legacy_mode"),
+    }
+
+
+def vars_from_fields(value: Any) -> dict[str, Any]:
+    return {
+        name: getattr(value, name)
+        for name in (
+            "merge_id",
+            "schema",
+            "record_schema_version",
+            "required_wave",
+            "legacy_mode",
+        )
     }
 
 

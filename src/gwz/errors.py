@@ -25,6 +25,7 @@ class GwzBridgeError(GwzError):
         target_kind: str | None = None,
         detail: str | None = None,
         machine_message: str | None = None,
+        record_context: Any | None = None,
     ) -> None:
         super().__init__(message)
         self.code = code
@@ -33,6 +34,7 @@ class GwzBridgeError(GwzError):
         self.target_kind = target_kind
         self.detail = detail
         self.machine_message = machine_message
+        self.record_context = record_context
 
 
 class GwzCoreLoadError(GwzBridgeError):

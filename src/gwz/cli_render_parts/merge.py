@@ -16,6 +16,37 @@ def render_merge_response(response: Any) -> str:
         f"merge: {response.merge_id or 'unknown'} "
         f"({'open' if response.open else 'closed'})"
     )
+    if response.record is not None:
+        record = response.record
+        lines.append(
+            f"record: {enum_name(record.source_version).replace('_', '-')} "
+            f"({'archived' if record.archived else 'open'})"
+        )
+        if record.terminal_outcome is not None:
+            lines.append(
+                "terminal outcome: "
+                f"{enum_name(record.terminal_outcome).replace('_', '-')}"
+            )
+        if record.acceptance is not None:
+            lines.append(
+                f"acceptance: {enum_name(record.acceptance.kind).replace('_', '-')}"
+            )
+            if record.acceptance.missing_gaps:
+                lines.append(
+                    "acceptance gaps: "
+                    + ", ".join(
+                        enum_name(gap).replace("_", "-")
+                        for gap in record.acceptance.missing_gaps
+                    )
+                )
+        if record.recovery is not None:
+            recovery = record.recovery
+            lines.append(
+                "record recovery: "
+                f"{enum_name(recovery.base_phase).replace('_', '-')} from "
+                f"{enum_name(recovery.origin_state).replace('_', '-')}; resume "
+                f"{enum_name(recovery.resume_action).replace('_', '-')}"
+            )
     lines.append(merge_participant_counts(response.participant_counts))
     if response.publication_step is not None:
         lines.append(

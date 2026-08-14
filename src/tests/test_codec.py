@@ -249,6 +249,7 @@ def test_merge_reserved_lifecycle_shape_round_trip() -> None:
         operation_drift=[],
         preservation=[],
         publication_step=None,
+        record=None,
     )
     _assert_cbor_round_trip("MergeResponse", response)
 

@@ -5,7 +5,7 @@ import re
 from typing import Any
 
 from .common import enum_label
-from .machine import merge_error_json
+from .machine import merge_error_json, record_context_json
 
 
 def render_error(error: BaseException, *, json_mode: bool = False) -> str:
@@ -47,4 +47,7 @@ def exception_error_json(error: BaseException) -> dict[str, Any]:
         "member_path": member_path,
         "target_kind": enum_label(target_kind) if target_kind is not None else None,
         "detail": getattr(error, "detail", None),
+        "record_context": record_context_json(
+            getattr(error, "record_context", None)
+        ),
     }

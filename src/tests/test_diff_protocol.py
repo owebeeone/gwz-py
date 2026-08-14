@@ -86,6 +86,7 @@ def test_minimal_diff_request_round_trip() -> None:
         options=None,
         cached=None,
         merge_base=None,
+        tagged=None,
     )
 
     _assert_cbor_round_trip("DiffRequest", request)
@@ -100,6 +101,7 @@ def test_diff_request_first_class_cached_and_merge_base_round_trip() -> None:
         options=None,
         cached=True,
         merge_base=True,
+        tagged=True,
     )
 
     _assert_cbor_round_trip("DiffRequest", request)

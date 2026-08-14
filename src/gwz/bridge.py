@@ -328,4 +328,5 @@ def _native_bridge_error(prefix: str, error: BaseException) -> GwzBridgeError:
         target_kind=getattr(error, "target_kind", None),
         detail=getattr(error, "detail", None),
         machine_message=getattr(error, "machine_message", None),
+        record_context=getattr(error, "record_context", None),
     )
