@@ -69,15 +69,22 @@ def exact_commit_message(repo: Path, commit: str) -> bytes:
     return raw.split(b"\n\n", 1)[1]
 
 
-def test_merge_help_exposes_custom_messages_but_keeps_no_ff_hidden(
+def test_merge_help_exposes_custom_messages_and_the_activated_no_ff_surface(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    """A1 unhid ``--no-ff``.
+
+    The flag carried ``help=argparse.SUPPRESS`` while the v1 record lifecycle
+    was a compile-gated boundary; the activation made it public, at parity
+    with the Rust CLI's help text.
+    """
     with pytest.raises(SystemExit) as stopped:
         build_parser().parse_args(["merge", "--help"])
     assert stopped.value.code == 0
     help_text = capsys.readouterr().out
     assert "--ff-only" in help_text
-    assert "--no-ff" not in help_text
+    assert "--no-ff" in help_text
+    assert "Always create a merge commit" in help_text
     assert "--message" in help_text
     assert "custom merge commit-message body" in help_text
 
