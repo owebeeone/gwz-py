@@ -18,10 +18,10 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Software Development :: Version Control :: Git",
 ]
-dependencies = ["taut-proto==0.8.1"]
+dependencies = ["taut-proto==0.9.1"]
 
 [project.optional-dependencies]
-dev = ["maturin>=1.13,<2", "pytest>=8", "pytest-asyncio>=0.23", "setuptools-scm>=8", "taut-proto==0.8.1"]
+dev = ["maturin>=1.13,<2", "pytest>=8", "pytest-asyncio>=0.23", "setuptools-scm>=8", "taut-proto==0.9.1"]
 
 [project.urls]
 Homepage = "https://owebeeone.github.io/gwz-cli/"
