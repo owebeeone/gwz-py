@@ -2,78 +2,249 @@
   "version": 1,
   "shapes": {
     "unary": {
+      "name": "unary",
+      "class": "interaction",
+      "core": null,
+      "contract_version": "v1",
+      "fixed_profile": {},
+      "delivery": "once",
+      "events": [
+        "value"
+      ],
+      "operations": [
+        "call"
+      ],
       "payload": "whole",
       "history": "none",
       "initiation": "pull",
       "writers": "single",
+      "ordering": "none",
+      "retention": "none",
+      "position": "none",
+      "recovery": "not_applicable",
+      "merge": "none",
+      "lifecycle": "request_response"
+    },
+    "value": {
+      "name": "value",
+      "class": "engine",
+      "core": "value",
+      "contract_version": "v0",
+      "fixed_profile": {},
+      "delivery": "once",
       "events": [
         "value"
       ],
-      "delivery": "once"
+      "operations": [
+        "read",
+        "set"
+      ],
+      "payload": "whole-state",
+      "history": "materialized",
+      "initiation": "pull|push",
+      "writers": "multi-attributed",
+      "ordering": "lww_lamport_origin",
+      "retention": "materialized_winner",
+      "position": "op_identity",
+      "recovery": "materialized_read",
+      "merge": "attributed_lww",
+      "lifecycle": "persistent_register"
     },
     "atom": {
+      "name": "atom",
+      "class": "engine",
+      "core": "atom",
+      "contract_version": "v1",
+      "fixed_profile": {},
+      "delivery": "stream",
+      "events": [
+        "replace"
+      ],
+      "operations": [
+        "read",
+        "replace",
+        "subscribe"
+      ],
       "payload": "whole-state",
       "history": "latest",
       "initiation": "pull|push",
       "writers": "single",
-      "events": [
-        "replace"
-      ],
-      "delivery": "stream"
+      "ordering": "scalar_version",
+      "retention": "latest",
+      "position": "version",
+      "recovery": "latest_refresh",
+      "merge": "sequential_overwrite",
+      "lifecycle": "mailbox_terminal"
     },
     "log": {
+      "name": "log",
+      "class": "engine",
+      "core": "log",
+      "contract_version": "v1",
+      "fixed_profile": {},
+      "delivery": "stream",
+      "events": [
+        "append"
+      ],
+      "operations": [
+        "append",
+        "read",
+        "subscribe"
+      ],
       "payload": "whole",
       "history": "append-only",
       "initiation": "pull|push",
       "writers": "source",
-      "events": [
-        "append"
-      ],
-      "delivery": "stream"
+      "ordering": "scalar_sequence",
+      "retention": "bounded_records",
+      "position": "cursor",
+      "recovery": "expire_below_floor",
+      "merge": "none",
+      "lifecycle": "mailbox_terminal"
     },
     "stream": {
+      "name": "stream",
+      "class": "engine",
+      "core": "stream",
+      "contract_version": "v1",
+      "fixed_profile": {},
+      "delivery": "stream",
+      "events": [
+        "event"
+      ],
+      "operations": [
+        "publish",
+        "subscribe"
+      ],
       "payload": "whole-or-delta",
       "history": "none",
       "initiation": "push",
       "writers": "source",
-      "events": [
-        "event"
-      ],
-      "delivery": "stream"
+      "ordering": "live_session",
+      "retention": "none",
+      "position": "none",
+      "recovery": "none",
+      "merge": "none",
+      "lifecycle": "live_terminal"
     },
     "swmr": {
-      "payload": "delta",
-      "history": "reconstructible",
-      "initiation": "push",
-      "writers": "single",
+      "name": "swmr",
+      "class": "engine",
+      "core": "swmr",
+      "contract_version": "v1",
+      "fixed_profile": {},
+      "delivery": "stream",
       "events": [
         "delta",
         "reset",
         "snapshot"
       ],
-      "delivery": "stream"
-    },
-    "snapshot_delta": {
+      "operations": [
+        "publish_delta",
+        "publish_snapshot",
+        "read",
+        "reset",
+        "subscribe"
+      ],
       "payload": "delta",
       "history": "reconstructible",
       "initiation": "push",
       "writers": "single",
+      "ordering": "scalar_epoch_sequence",
+      "retention": "snapshot_bounded_deltas",
+      "position": "epoch_cursor",
+      "recovery": "in_band_reset_repair",
+      "merge": "sequential_single_writer",
+      "lifecycle": "mailbox_terminal"
+    },
+    "snapshot_delta": {
+      "name": "snapshot_delta",
+      "class": "profile",
+      "core": "swmr",
+      "contract_version": "v1",
+      "fixed_profile": {
+        "recovery": "expire"
+      },
+      "delivery": "stream",
       "events": [
         "delta",
         "snapshot"
       ],
-      "delivery": "stream"
+      "operations": [
+        "publish_delta",
+        "publish_snapshot",
+        "read",
+        "subscribe"
+      ],
+      "payload": "delta",
+      "history": "reconstructible",
+      "initiation": "push",
+      "writers": "single",
+      "ordering": "scalar_epoch_sequence",
+      "retention": "snapshot_bounded_deltas",
+      "position": "epoch_cursor",
+      "recovery": "expire",
+      "merge": "sequential_single_writer",
+      "lifecycle": "mailbox_terminal"
     },
     "crdt": {
-      "payload": "ops",
-      "history": "reconstructible",
-      "initiation": "push-bidi",
-      "writers": "multi-merge",
+      "name": "crdt",
+      "class": "engine",
+      "core": "crdt",
+      "contract_version": "v1",
+      "fixed_profile": {},
+      "delivery": "stream",
       "events": [
         "op",
         "sync"
       ],
-      "delivery": "stream"
+      "operations": [
+        "apply",
+        "bootstrap",
+        "read",
+        "sync"
+      ],
+      "payload": "opaque-ops",
+      "history": "reconstructible",
+      "initiation": "push-bidi",
+      "writers": "multi-merge",
+      "ordering": "causal_per_origin",
+      "retention": "convergence_safe",
+      "position": "causal_vector",
+      "recovery": "anti_entropy",
+      "merge": "profile_defined_convergent",
+      "lifecycle": "replica_sync"
+    },
+    "text_crdt": {
+      "name": "text_crdt",
+      "class": "profile",
+      "core": "crdt",
+      "contract_version": "v1",
+      "fixed_profile": {
+        "payload": "text_crdt.profile/v1"
+      },
+      "delivery": "stream",
+      "events": [
+        "op",
+        "sync"
+      ],
+      "operations": [
+        "bootstrap",
+        "delete",
+        "insert",
+        "read",
+        "sync"
+      ],
+      "payload": "text-ops",
+      "history": "reconstructible",
+      "initiation": "push-bidi",
+      "writers": "multi-merge",
+      "ordering": "causal_per_origin",
+      "retention": "convergence_safe",
+      "position": "causal_vector",
+      "recovery": "anti_entropy",
+      "merge": "stable_item_text",
+      "lifecycle": "replica_sync"
     }
   },
   "enums": [

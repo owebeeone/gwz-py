@@ -24,7 +24,7 @@ DEFAULT_SCHEMA = ROOT.parent / "gwz-core" / "protocol" / "gwz.taut.py"
 DEFAULT_OUT = ROOT / "src" / "gwz" / "protocol" / "generated"
 IR_NAME = "gwz.ir.json"
 PYTHON_INIT = "from .api import *  # noqa: F401,F403\n"
-TAUT_GENERATOR_VERSION = "0.8.1"
+TAUT_GENERATOR_VERSION = "0.9.1"
 
 
 def fail(message: str) -> None:
@@ -34,7 +34,7 @@ def fail(message: str) -> None:
 
 def child_env() -> dict[str, str]:
     env = dict(os.environ)
-    # Protocol generation is frozen to the installed taut-proto 0.8.1 release;
+    # Protocol generation is frozen to the installed taut-proto 0.9.1 release;
     # a sibling development checkout must never shadow that checkpoint.
     env.pop("PYTHONPATH", None)
     env.setdefault("SETUPTOOLS_SCM_PRETEND_VERSION", "0.0.0")

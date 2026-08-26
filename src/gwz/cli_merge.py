@@ -82,7 +82,13 @@ def configure_merge(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Require every selected repository to merge by fast-forward",
     )
-    parser.add_argument("--no-ff", action="store_true", help=argparse.SUPPRESS)
+    # A1 activated the v1 record lifecycle; `--no-ff` left `argparse.SUPPRESS`
+    # and became a public surface, at parity with the Rust CLI's help text.
+    parser.add_argument(
+        "--no-ff",
+        action="store_true",
+        help="Always create a merge commit, even when a fast-forward is possible",
+    )
     parser.add_argument(
         "-m", "--message", help="Use a custom merge commit-message body"
     )
