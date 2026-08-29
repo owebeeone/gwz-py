@@ -15,6 +15,9 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SCHEMA = ROOT.parent / "gwz-core" / "protocol" / "gwz.taut.py"
 DEFAULT_IR = ROOT / "src" / "gwz" / "protocol" / "generated" / "gwz.ir.json"
+PRE_LOG_WIRE_FINGERPRINT = (
+    "sha256:d0c205c8767f8d54d32ead2f676a05077d849f6a12278d9de52b3c132c3c9372"
+)
 
 
 def main() -> int:
@@ -37,6 +40,13 @@ def main() -> int:
         print(f"  expected:    {expected_fingerprint}", file=sys.stderr)
         print(f"  actual:      {actual_fingerprint}", file=sys.stderr)
         print("  run: python scripts/regen_protocol.py", file=sys.stderr)
+        return 1
+
+    pre_log_fingerprint = fingerprint(pre_log_projection(actual))
+    if pre_log_fingerprint != PRE_LOG_WIRE_FINGERPRINT:
+        print("check_protocol_drift: gwz-log changed a pre-existing wire shape", file=sys.stderr)
+        print(f"  expected: {PRE_LOG_WIRE_FINGERPRINT}", file=sys.stderr)
+        print(f"  actual:   {pre_log_fingerprint}", file=sys.stderr)
         return 1
 
     print(f"check_protocol_drift: OK {actual_fingerprint}")
@@ -71,6 +81,25 @@ def add_local_taut_to_path() -> None:
 def fingerprint(value: dict[str, Any]) -> str:
     data = json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return f"sha256:{hashlib.sha256(data).hexdigest()}"
+
+
+def pre_log_projection(value: dict[str, Any]) -> dict[str, Any]:
+    """Strip only S2.0 additions so every older message/slot is fingerprinted."""
+    projected = json.loads(json.dumps(value))
+    projected["messages"] = [
+        message for message in projected["messages"] if not message["name"].startswith("Log")
+    ]
+    projected["enums"] = [
+        enum for enum in projected["enums"] if not enum["name"].startswith("Log")
+    ]
+    actions = next(enum for enum in projected["enums"] if enum["name"] == "ActionKind")
+    if actions["members"].pop("log", None) != 26:
+        fail("ActionKind.log must occupy the next additive slot 26")
+    service = next(service for service in projected["services"] if service["name"] == "GwzCore")
+    service["methods"] = [
+        method for method in service["methods"] if method["name"] not in {"log", "log.output"}
+    ]
+    return projected
 
 
 def fail(message: str) -> None:

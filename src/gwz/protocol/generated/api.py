@@ -30,6 +30,7 @@ class ActionKind(Enum):
     detach_repo_member = 23
     attach_repo_member = 24
     merge = 25
+    log = 26
 
 class TagOp(Enum):
     create = 0
@@ -499,6 +500,24 @@ class DiffTargetExclusionReason(Enum):
     snapshot_missing_commit = 1
     root_not_in_snapshot = 2
     tag_missing = 3
+
+class LogMergeKind(Enum):
+    none = 0
+    marker = 1
+    heuristic = 2
+
+class LogDegradationReason(Enum):
+    repository_unreadable = 0
+    repository_missing = 1
+    unborn = 2
+    revision_unresolved = 3
+    snapshot_entry_missing = 4
+    lock_entry_missing = 5
+    unsupported_source_kind = 6
+
+class LogOutputRecordKind(Enum):
+    entry = 0
+    degradation = 1
 
 @dataclass(slots=True)
 class WorkspaceRef:
@@ -1478,4 +1497,73 @@ class DiffOutputRecord:
     data: bytes | None
     stale: bool | None
     diagnostic: str | None
+
+@dataclass(slots=True)
+class LogOptions:
+    max_entries: int | None
+    since: str | None
+    until: str | None
+    author: str | None
+    grep: str | None
+    no_merges: bool | None
+    first_parent: bool | None
+    strict: bool | None
+    coalesce: bool | None
+    include_body: bool | None
+
+@dataclass(slots=True)
+class LogRequest:
+    meta: RequestMeta
+    workspace_cwd: str | None
+    operands: list[str]
+    explicit_pathspecs: list[str]
+    options: LogOptions | None
+    tagged: bool | None
+
+@dataclass(slots=True)
+class LogEntryMember:
+    member_id: str
+    member_path: str
+    source_kind: SourceKind | None
+    commit: str
+    parents: list[str]
+
+@dataclass(slots=True)
+class LogMergeProvenance:
+    kind: LogMergeKind
+    gwz_commit_id: str | None
+
+@dataclass(slots=True)
+class LogEntry:
+    members: list[LogEntryMember]
+    provenance: LogMergeProvenance
+    author: GitObjectIdentity
+    committer: GitObjectIdentity
+    subject: str
+    body: str | None
+    ordering_timestamp_ms: int
+
+@dataclass(slots=True)
+class LogDegradation:
+    member_id: str
+    member_path: str
+    source_kind: SourceKind | None
+    reason: LogDegradationReason
+    operand: str | None
+    message: str | None
+
+@dataclass(slots=True)
+class LogOutputRecord:
+    kind: LogOutputRecordKind
+    entry: LogEntry | None
+    degradation: LogDegradation | None
+
+@dataclass(slots=True)
+class LogOutputLogRef:
+    log_id: str
+
+@dataclass(slots=True)
+class LogResponse:
+    response: ResponseEnvelope
+    output: LogOutputLogRef
 
