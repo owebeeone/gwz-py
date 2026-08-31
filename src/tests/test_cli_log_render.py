@@ -13,6 +13,7 @@ import gwz.cli as cli_module
 import gwz.cli_log as cli_log_module
 from gwz.cli import build_parser
 from gwz.cli_log import handle_log
+from gwz.errors import GwzBridgeError
 from gwz.cli_render import (
     log_color_enabled,
     render_log_degradation,
@@ -273,6 +274,20 @@ def test_compact_member_set_boundaries_match_rust() -> None:
     )
     assert "[root+3]" in render_log_entry(root_large, full=False, color=False)
     assert "[4 members]" in render_log_entry(member_large, full=False, color=False)
+
+
+def test_empty_member_entries_are_typed_invalid_records() -> None:
+    record = _entry_record()
+    assert record.entry is not None
+    record.entry.members = []
+
+    with pytest.raises(GwzBridgeError, match="commit-log entry has no members") as human:
+        render_log_entry(record.entry, full=False, color=False)
+    assert human.value.code == "InternalError"
+
+    with pytest.raises(GwzBridgeError, match="commit-log entry has no members") as machine:
+        render_log_record_json(record)
+    assert machine.value.code == "InternalError"
 
 
 @pytest.mark.parametrize(

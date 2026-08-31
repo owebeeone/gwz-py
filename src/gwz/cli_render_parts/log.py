@@ -44,6 +44,7 @@ def log_color_enabled(color: str, stdout_is_tty: bool) -> bool:
 
 
 def render_log_entry(entry: LogEntry, *, full: bool, color: bool) -> str:
+    _require_log_entry_members(entry)
     return _render_full_entry(entry, color) if full else _render_compact_entry(entry, color)
 
 
@@ -90,7 +91,7 @@ def _render_compact_entry(entry: LogEntry, color: bool) -> str:
         entry.committer.timezone_offset_minutes,
     )
     members = _compact_member_set(entry)
-    commit = entry.members[0].commit[:12] if entry.members else "????????????"
+    commit = entry.members[0].commit[:12]
     subject = _sanitize_inline(entry.subject)
     return " ".join(
         [
@@ -115,7 +116,7 @@ def _compact_member_set(entry: LogEntry) -> str:
 
 
 def _render_full_entry(entry: LogEntry, color: bool) -> str:
-    representative = _sanitize_inline(entry.members[0].commit) if entry.members else "unknown"
+    representative = _sanitize_inline(entry.members[0].commit)
     rows = [
         (
             _sanitize_inline(member.member_id),
@@ -224,6 +225,7 @@ def _colorize(value: str, code: str, color: bool) -> str:
 
 
 def _entry_json(entry: LogEntry) -> dict[str, object]:
+    _require_log_entry_members(entry)
     value: dict[str, object] = {
         "author": _identity_json(
             entry.author.name,
@@ -304,3 +306,8 @@ def _degradation_json(record: LogDegradation) -> dict[str, object]:
 
 def _invalid_record(message: str) -> GwzBridgeError:
     return GwzBridgeError(message, code="InternalError")
+
+
+def _require_log_entry_members(entry: LogEntry) -> None:
+    if not entry.members:
+        raise _invalid_record("commit-log entry has no members")
