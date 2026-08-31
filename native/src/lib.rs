@@ -6,6 +6,7 @@ mod codec;
 mod diff_logs;
 mod dispatch;
 mod error;
+mod log_outputs;
 mod operations;
 mod shims;
 
@@ -126,6 +127,28 @@ fn diff_log_end_stream(log_id: &str, stream_id: &str) {
     diff_logs::end_stream(log_id, stream_id);
 }
 
+/// Read one bounded batch from the commit-history output spool.
+#[pyfunction]
+#[pyo3(signature = (log_id, cursor=None, max_records=None))]
+fn log_output_read(
+    py: Python<'_>,
+    log_id: &str,
+    cursor: Option<u64>,
+    max_records: Option<u32>,
+) -> PyResult<(Vec<Vec<u8>>, u64, String)> {
+    let log_id = log_id.to_owned();
+    py.detach(move || {
+        let (records, next_cursor, state) = log_outputs::read(&log_id, cursor, max_records)?;
+        Ok((records, next_cursor, state.to_owned()))
+    })
+}
+
+/// Idempotently release a commit-history output and its anonymous spool.
+#[pyfunction]
+fn log_output_release(log_id: &str) {
+    log_outputs::release(log_id);
+}
+
 #[pyfunction]
 fn operation_result(operation_id: &str) -> PyResult<Vec<u8>> {
     let result = operations::result(operation_id)?;
@@ -161,5 +184,7 @@ fn _gwz_core(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(merge_operation_response, module)?)?;
     module.add_function(wrap_pyfunction!(diff_log_read, module)?)?;
     module.add_function(wrap_pyfunction!(diff_log_end_stream, module)?)?;
+    module.add_function(wrap_pyfunction!(log_output_read, module)?)?;
+    module.add_function(wrap_pyfunction!(log_output_release, module)?)?;
     Ok(())
 }

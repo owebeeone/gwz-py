@@ -15,6 +15,12 @@ from .cli_render_parts.listings import (
     render_stash_response,
     render_tag_listing,
 )
+from .cli_render_parts.log import (
+    log_color_enabled,
+    render_log_degradation,
+    render_log_entry,
+    render_log_record_json,
+)
 from .cli_render_parts.machine import (
     json_default,
     merge_response_json,
@@ -26,7 +32,11 @@ from .cli_render_parts.status import render_status_porcelain, render_status_resp
 __all__ = [
     "json_default",
     "operation_event_json",
+    "log_color_enabled",
     "render_error",
+    "render_log_degradation",
+    "render_log_entry",
+    "render_log_record_json",
     "render_response",
 ]
 

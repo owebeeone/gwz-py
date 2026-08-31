@@ -10,11 +10,20 @@ from .protocol.codec import decode_message, encode_message, event_message_name, 
 NativeBytePayload: TypeAlias = bytes | bytearray | memoryview
 _EVENT_WAIT_TIMEOUT_MS = 30_000
 _DIFF_OUTPUT_RECORD_MESSAGE = "DiffOutputRecord"
+_LOG_OUTPUT_RECORD_MESSAGE = "LogOutputRecord"
 
 
 class DiffLogRead(NamedTuple):
     """One `diff.output` read answer: decoded records, the always-present resume
     cursor (taut-shape D8), and the delivery state token."""
+
+    records: list[Any]
+    next_cursor: int
+    state: str
+
+
+class LogOutputRead(NamedTuple):
+    """One bounded commit-log output read with an opaque resume cursor."""
 
     records: list[Any]
     next_cursor: int
@@ -63,6 +72,18 @@ class CoreBridge(Protocol):
 
     async def diff_log_end_stream(self, log_id: str, stream_id: str) -> None:
         """End a `diff.output` reader stream (cancellation / cleanup)."""
+
+    async def log_output_read(
+        self,
+        log_id: str,
+        *,
+        cursor: int | None = None,
+        max_records: int | None = None,
+    ) -> LogOutputRead:
+        """Read one bounded batch of commit-log output records."""
+
+    async def log_output_release(self, log_id: str) -> None:
+        """Idempotently release a commit-log output and its temporary spool."""
 
 
 class NativeModule(Protocol):
@@ -117,6 +138,17 @@ class NativeModule(Protocol):
 
     def diff_log_end_stream(self, log_id: str, stream_id: str) -> None:
         """End a `diff.output` reader stream."""
+
+    def log_output_read(
+        self,
+        log_id: str,
+        cursor: int | None,
+        max_records: int | None,
+    ) -> tuple[Iterable[NativeBytePayload], int, str]:
+        """Read encoded LogOutputRecord payloads, cursor, and state."""
+
+    def log_output_release(self, log_id: str) -> None:
+        """Release a commit-log output spool."""
 
 
 class NativeCoreBridge:
@@ -304,6 +336,49 @@ class NativeCoreBridge:
         except Exception as exc:
             raise GwzBridgeError(
                 f"native diff.output end_stream failed for {log_id}/{stream_id}: {exc}"
+            ) from exc
+
+    async def log_output_read(
+        self,
+        log_id: str,
+        *,
+        cursor: int | None = None,
+        max_records: int | None = None,
+    ) -> LogOutputRead:
+        try:
+            records, next_cursor, state = await asyncio.to_thread(
+                self._native.log_output_read,
+                log_id,
+                cursor,
+                max_records,
+            )
+        except GwzBridgeError:
+            raise
+        except Exception as exc:
+            raise _native_bridge_error(
+                f"native log output read failed for {log_id}", exc
+            ) from exc
+        decoded = [
+            decode_message(
+                _LOG_OUTPUT_RECORD_MESSAGE,
+                _bytes(item, _LOG_OUTPUT_RECORD_MESSAGE),
+            )
+            for item in records
+        ]
+        return LogOutputRead(
+            records=decoded,
+            next_cursor=int(next_cursor),
+            state=str(state),
+        )
+
+    async def log_output_release(self, log_id: str) -> None:
+        try:
+            await asyncio.to_thread(self._native.log_output_release, log_id)
+        except GwzBridgeError:
+            raise
+        except Exception as exc:
+            raise _native_bridge_error(
+                f"native log output release failed for {log_id}", exc
             ) from exc
 
 

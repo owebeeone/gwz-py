@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+import errno
+import os
 import sys
 from typing import Any
 
@@ -56,6 +58,50 @@ GLOBAL_VALUE_OPTIONS = {
     "--progress-interval",
     "--ssh-timeout",
 }
+GLOBAL_SINGLETON_OPTIONS = {
+    "--root",
+    "--all",
+    "--dry-run",
+    "--partial",
+    "--force",
+    "--sync",
+    "--remote",
+    "--jobs",
+    "--max-per-host",
+    "--progress-interval",
+    "--json",
+    "--jsonl",
+    "--ssh-timeout",
+}
+
+
+def _silence_broken_stdout(stream: object) -> None:
+    """Prevent interpreter-shutdown BrokenPipe spray after a handled EPIPE."""
+
+    try:
+        file_descriptor = stream.fileno()  # type: ignore[attr-defined]
+    except (AttributeError, OSError):
+        return
+    try:
+        null_descriptor = os.open(os.devnull, os.O_WRONLY)
+        try:
+            os.dup2(null_descriptor, file_descriptor)
+        finally:
+            os.close(null_descriptor)
+    except OSError:
+        return
+    try:
+        stream.flush()  # type: ignore[attr-defined]
+    except OSError:
+        pass
+
+
+def _is_broken_pipe(error: OSError) -> bool:
+    return (
+        isinstance(error, BrokenPipeError)
+        or error.errno == errno.EPIPE
+        or getattr(error, "winerror", None) in {109, 232}
+    )
 
 
 class CliUsageError(ValueError):
@@ -121,9 +167,10 @@ class GwzArgumentParser(argparse.ArgumentParser):
         namespace: argparse.Namespace | None = None,
     ) -> argparse.Namespace:
         raw_args = list(sys.argv[1:] if args is None else args)
+        reject_repeated_log_global_singletons(self, raw_args)
         parsed = super().parse_args(args, namespace)
         normalize_global_options(parsed)
-        normalize_diff_pathspecs(parsed, raw_args)
+        normalize_command_pathspecs(parsed, raw_args)
         return parsed
 
 
@@ -289,10 +336,11 @@ def normalize_global_options(args: argparse.Namespace) -> None:
         setattr(args, attr, value)
 
 
-def normalize_diff_pathspecs(args: argparse.Namespace, raw_args: list[str]) -> None:
-    if getattr(args, "command", None) != "diff":
+def normalize_command_pathspecs(args: argparse.Namespace, raw_args: list[str]) -> None:
+    command = getattr(args, "command", None)
+    if command not in ("diff", "log"):
         return
-    pathspecs = _diff_pathspecs_from_raw_args(raw_args)
+    pathspecs = _pathspecs_from_raw_args(raw_args, command)
     setattr(args, "pathspecs", pathspecs)
     if not pathspecs:
         return
@@ -301,9 +349,9 @@ def normalize_diff_pathspecs(args: argparse.Namespace, raw_args: list[str]) -> N
         setattr(args, "operands", operands[: -len(pathspecs)])
 
 
-def _diff_pathspecs_from_raw_args(raw_args: list[str]) -> list[str]:
+def _pathspecs_from_raw_args(raw_args: list[str], command: str) -> list[str]:
     command_index = _top_level_command_index(raw_args)
-    if command_index is None or raw_args[command_index] != "diff":
+    if command_index is None or raw_args[command_index] != command:
         return []
     try:
         separator_index = raw_args.index("--", command_index + 1)
@@ -330,6 +378,26 @@ def _top_level_command_index(raw_args: list[str]) -> int | None:
                 continue
         return index
     return None
+
+
+def reject_repeated_log_global_singletons(
+    parser: argparse.ArgumentParser, raw_args: list[str]
+) -> None:
+    command_index = _top_level_command_index(raw_args)
+    if command_index is None or raw_args[command_index] != "log":
+        return
+    try:
+        end = raw_args.index("--", command_index + 1)
+    except ValueError:
+        end = len(raw_args)
+    seen: set[str] = set()
+    for token in raw_args[:end]:
+        option = token.partition("=")[0]
+        if option not in GLOBAL_SINGLETON_OPTIONS:
+            continue
+        if option in seen:
+            parser.error(f"argument {option}: cannot be used multiple times")
+        seen.add(option)
 
 
 def validate_args(args: argparse.Namespace) -> None:
