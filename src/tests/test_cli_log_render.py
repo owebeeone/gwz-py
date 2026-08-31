@@ -507,14 +507,31 @@ class _BrokenWriter:
 
 
 class _BreakAfterWriter(_BrokenWriter):
-    def __init__(self, successful_writes: int) -> None:
-        super().__init__(BrokenPipeError("closed"))
+    def __init__(
+        self,
+        successful_writes: int,
+        error: OSError | None = None,
+    ) -> None:
+        super().__init__(error or BrokenPipeError("closed"))
         self.successful_writes = successful_writes
 
     def write(self, value: str) -> int:
         self.writes += 1
         if self.writes > self.successful_writes:
             raise self.error
+        return len(value)
+
+
+class _FailOnceWriter(_BrokenWriter):
+    def __init__(self, error: OSError) -> None:
+        super().__init__(error)
+        self.values: list[str] = []
+
+    def write(self, value: str) -> int:
+        self.writes += 1
+        if self.writes == 1:
+            raise self.error
+        self.values.append(value)
         return len(value)
 
 
@@ -590,6 +607,48 @@ def test_machine_prefix_non_epipe_is_execution_failure_and_releases(
     assert cli_module.main(["--jsonl", "log"]) == 1
     assert client.reads == 0
     assert client.releases == 1
+
+
+@pytest.mark.parametrize(
+    ("argv", "records", "successful_writes", "expected_reads"),
+    [
+        (["log"], [_entry_record()], 0, 1),
+        (["--jsonl", "log"], [_entry_record()], 1, 1),
+        (["--json", "log"], [], 1, 0),
+    ],
+)
+def test_ordinary_stdout_oserror_at_each_render_phase_is_one_and_releases(
+    argv: list[str],
+    records: list[LogOutputRecord],
+    successful_writes: int,
+    expected_reads: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _RenderClient(records)
+    writer = _BreakAfterWriter(
+        successful_writes=successful_writes,
+        error=OSError("disk full"),
+    )
+    _install_client(monkeypatch, client)
+    monkeypatch.setattr(cli_log_module.sys, "stdout", writer)
+    assert cli_module.main(argv) == 1
+    assert client.reads == expected_reads
+    assert client.releases == 1
+
+
+def test_ordinary_degradation_stderr_oserror_is_typed_and_releases(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _RenderClient([_degradation_record()])
+    writer = _FailOnceWriter(OSError("stderr disk full"))
+    _install_client(monkeypatch, client)
+    monkeypatch.setattr(cli_log_module.sys, "stderr", writer)
+    assert cli_module.main(["log"]) == 1
+    assert client.reads == 1
+    assert client.releases == 1
+    assert "".join(writer.values) == (
+        "gwz: cannot write log stderr: stderr disk full\n"
+    )
 
 
 def test_human_epipe_stops_before_later_record_and_releases(

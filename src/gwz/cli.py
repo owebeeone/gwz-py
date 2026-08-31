@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import os
 import sys
 
 from . import __version__
@@ -26,6 +25,7 @@ from .cli_shared import (
     exit_code_for_response,
     global_options_parent,
     meta_kwargs,
+    _silence_broken_stdout,
     validate_args,
 )
 from .client import Client
@@ -145,24 +145,6 @@ def _write_log_error(error: BaseException, *, machine: bool) -> int:
     except OSError:
         return 1
     return cli_log.exit_code_for_log_error(error)
-
-
-def _silence_broken_stdout(stream: object) -> None:
-    """Prevent interpreter-shutdown BrokenPipe spray after a handled EPIPE."""
-
-    try:
-        file_descriptor = stream.fileno()  # type: ignore[attr-defined]
-    except (AttributeError, OSError):
-        return
-    null_descriptor = os.open(os.devnull, os.O_WRONLY)
-    try:
-        os.dup2(null_descriptor, file_descriptor)
-    finally:
-        os.close(null_descriptor)
-    try:
-        stream.flush()  # type: ignore[attr-defined]
-    except OSError:
-        pass
 
 
 if __name__ == "__main__":

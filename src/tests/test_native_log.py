@@ -119,6 +119,10 @@ def test_native_cli_log_maps_partial_and_strict_failed_to_exit_one(
     repo.rename(tmp_path / "repos" / "app-away")
 
     assert cli_module.main(["--root", str(tmp_path), "log"]) == 1
-    assert capsys.readouterr() == ("", "")
+    partial = capsys.readouterr()
+    assert "root contribution" in partial.out
+    assert "gwz log: degraded repos/app: repository unreadable" in partial.err
     assert cli_module.main(["--root", str(tmp_path), "log", "--strict"]) == 1
-    assert capsys.readouterr() == ("", "")
+    failed = capsys.readouterr()
+    assert "root contribution" in failed.out
+    assert "gwz log: degraded repos/app: repository unreadable" in failed.err

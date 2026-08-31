@@ -16,6 +16,7 @@ from .cli_shared import (
     CliUsageError,
     CommandContext,
     CommandRegistry,
+    _silence_broken_stdout,
 )
 from .errors import GwzBridgeError
 from .protocol.generated import LogOutputRecordKind
@@ -241,6 +242,7 @@ async def handle_log(context: CommandContext) -> LogCliResult:
         try:
             _write_and_flush(sys.stdout, prefix)
         except BrokenPipeError:
+            _silence_broken_stdout(sys.stdout)
             await context.client._release_log_output(response.output)
             return LogCliResult(exit_code=0)
         except OSError as error:
@@ -297,6 +299,7 @@ async def handle_log(context: CommandContext) -> LogCliResult:
         if args.json:
             _write_and_flush(sys.stdout, '],"schema":"gwz.log/v0"}\n')
     except BrokenPipeError:
+        _silence_broken_stdout(sys.stdout)
         return LogCliResult(exit_code=0)
     except OSError as error:
         raise _output_error("output", error) from error

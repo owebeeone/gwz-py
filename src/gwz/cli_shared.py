@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+import os
 import sys
 from typing import Any
 
@@ -71,6 +72,24 @@ GLOBAL_SINGLETON_OPTIONS = {
     "--jsonl",
     "--ssh-timeout",
 }
+
+
+def _silence_broken_stdout(stream: object) -> None:
+    """Prevent interpreter-shutdown BrokenPipe spray after a handled EPIPE."""
+
+    try:
+        file_descriptor = stream.fileno()  # type: ignore[attr-defined]
+    except (AttributeError, OSError):
+        return
+    null_descriptor = os.open(os.devnull, os.O_WRONLY)
+    try:
+        os.dup2(null_descriptor, file_descriptor)
+    finally:
+        os.close(null_descriptor)
+    try:
+        stream.flush()  # type: ignore[attr-defined]
+    except OSError:
+        pass
 
 
 class CliUsageError(ValueError):
