@@ -6,7 +6,7 @@ from collections.abc import AsyncIterator, Iterable, Sequence
 from pathlib import Path
 from typing import Any
 
-from .bridge import CoreBridge, DiffLogRead, NativeCoreBridge
+from .bridge import CoreBridge, DiffLogRead, LogOutputRead, NativeCoreBridge
 from .errors import GwzBridgeError
 from .client_helpers import (
     enum_value as _enum_value,
@@ -54,6 +54,11 @@ from .protocol.generated import (
     ListSnapshotsResponse,
     LsRequest,
     LsResponse,
+    LogOptions,
+    LogOutputLogRef,
+    LogOutputRecord,
+    LogRequest,
+    LogResponse,
     MaterializeRequest,
     MaterializeResponse,
     MaterializeTarget,
@@ -105,6 +110,7 @@ SCHEMA_VERSION = "gwz.protocol/v0"
 # resumes from the returned cursor; the terminal states stop the loop.
 _DIFF_OUTPUT_TERMINAL_STATES = frozenset({"eof", "closed", "failed"})
 _DIFF_OUTPUT_READ_MAX_RECORDS = 64
+_LOG_OUTPUT_READ_MAX_RECORDS = 128
 
 _diff_stream_counter = itertools.count(1)
 
@@ -927,6 +933,91 @@ class Client:
             end_stream = getattr(self.bridge, "diff_log_end_stream", None)
             if end_stream is not None:
                 await end_stream(log_id, reader_stream)
+
+    async def log(
+        self,
+        operands: Sequence[str] = (),
+        *,
+        pathspecs: Sequence[str] = (),
+        workspace_cwd: str | None = None,
+        max_entries: int | None = None,
+        since: str | None = None,
+        until: str | None = None,
+        author: str | None = None,
+        grep: str | None = None,
+        no_merges: bool | None = None,
+        first_parent: bool | None = None,
+        strict: bool | None = None,
+        coalesce: bool | None = None,
+        include_body: bool | None = None,
+        tagged: bool | None = None,
+        options: LogOptions | None = None,
+        **meta: Any,
+    ) -> LogResponse:
+        """Run the unified commit log and return its output-spool reference.
+
+        Unlike ordinary unary helpers, log preserves ``partial`` and ``failed``
+        aggregate responses so callers can consume their entry/degradation
+        records and apply process policy themselves.
+        """
+        if options is None:
+            options = LogOptions(
+                max_entries=max_entries,
+                since=since,
+                until=until,
+                author=author,
+                grep=grep,
+                no_merges=no_merges,
+                first_parent=first_parent,
+                strict=strict,
+                coalesce=coalesce,
+                include_body=include_body,
+            )
+        request = LogRequest(
+            meta=self.meta(**meta),
+            workspace_cwd=workspace_cwd,
+            operands=list(operands),
+            explicit_pathspecs=list(pathspecs),
+            options=options,
+            tagged=tagged,
+        )
+        return await self.bridge.call("log", "LogRequest", "LogResponse", request)
+
+    async def log_output(
+        self,
+        log_ref: LogOutputLogRef | str,
+    ) -> AsyncIterator[LogOutputRecord]:
+        """Yield every retained log entry/degradation in core emission order.
+
+        The operation-scoped spool is released on EOF, consumer cancellation,
+        decode failure, or any other terminal path.
+        """
+        log_id = log_ref.log_id if isinstance(log_ref, LogOutputLogRef) else log_ref
+        bridge_read = getattr(self.bridge, "log_output_read", None)
+        release = getattr(self.bridge, "log_output_release", None)
+        if bridge_read is None or release is None:
+            raise GwzBridgeError("bridge does not support commit-log output reads")
+
+        cursor: int | None = None
+        try:
+            while True:
+                answer: LogOutputRead = await bridge_read(
+                    log_id,
+                    cursor=cursor,
+                    max_records=_LOG_OUTPUT_READ_MAX_RECORDS,
+                )
+                cursor = answer.next_cursor
+                if answer.state == "data":
+                    for record in answer.records:
+                        yield record
+                    continue
+                if answer.state == "eof":
+                    return
+                raise GwzBridgeError(
+                    f"commit-log output {log_id} returned unknown state {answer.state!r}"
+                )
+        finally:
+            await release(log_id)
 
     def events_subscribe(self, operation_id: str) -> AsyncIterator[OperationEvent]:
         return self.bridge.subscribe_events(operation_id)

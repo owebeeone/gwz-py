@@ -1,6 +1,7 @@
 mod branch_stash;
 mod diff;
 mod git_mutation;
+mod log;
 mod materialize;
 mod merge;
 mod read;
@@ -43,6 +44,7 @@ pub(crate) fn call(
         }
         "merge" => merge::call(method, request_message, response_message, request_bytes),
         "diff" => diff::call(method, request_message, response_message, request_bytes),
+        "log" => log::call(method, request_message, response_message, request_bytes),
         other => Err(error::unsupported_method(other)),
     }
 }

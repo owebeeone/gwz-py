@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import sys
 
 from . import __version__
@@ -9,6 +10,7 @@ from . import (
     cli_branch_stash,
     cli_diff,
     cli_local,
+    cli_log,
     cli_merge,
     cli_mutation,
     cli_read,
@@ -35,6 +37,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = GwzArgumentParser(
         prog="gwz-py",
         description="Manage GWZ multi-repository workspaces",
+        allow_abbrev=False,
     )
     add_global_options(parser)
     parser.add_argument(
@@ -56,6 +59,7 @@ def build_parser() -> argparse.ArgumentParser:
 def register_commands(registry: CommandRegistry) -> None:
     cli_read.register_commands(registry)
     cli_diff.register_commands(registry)
+    cli_log.register_commands(registry)
     cli_mutation.register_commands(registry)
     cli_branch_stash.register_commands(registry)
     cli_merge.register_commands(registry)
@@ -75,6 +79,8 @@ async def run(args: argparse.Namespace) -> int:
                 raise
 
     if cli_diff.is_diff_result(response):
+        return response.exit_code
+    if cli_log.is_log_result(response):
         return response.exit_code
     if cli_merge.is_merge_result(response):
         return response.exit_code
@@ -119,8 +125,44 @@ def main(argv: list[str] | None = None) -> int:
         return asyncio.run(run(args))
     except (CliUsageError, GwzError) as exc:
         machine = args.json or getattr(args, "jsonl", False)
+        if getattr(args, "command", None) == "log":
+            return _write_log_error(exc, machine=machine)
         print(render_error(exc, json_mode=machine), file=sys.stdout if machine else sys.stderr)
         return exit_code_for_error(exc)
+
+
+def _write_log_error(error: BaseException, *, machine: bool) -> int:
+    stream = sys.stdout if machine else sys.stderr
+    try:
+        stream.write(render_error(error, json_mode=machine))
+        stream.write("\n")
+        stream.flush()
+    except BrokenPipeError:
+        if machine:
+            _silence_broken_stdout(stream)
+            return 0
+        return 1
+    except OSError:
+        return 1
+    return cli_log.exit_code_for_log_error(error)
+
+
+def _silence_broken_stdout(stream: object) -> None:
+    """Prevent interpreter-shutdown BrokenPipe spray after a handled EPIPE."""
+
+    try:
+        file_descriptor = stream.fileno()  # type: ignore[attr-defined]
+    except (AttributeError, OSError):
+        return
+    null_descriptor = os.open(os.devnull, os.O_WRONLY)
+    try:
+        os.dup2(null_descriptor, file_descriptor)
+    finally:
+        os.close(null_descriptor)
+    try:
+        stream.flush()  # type: ignore[attr-defined]
+    except OSError:
+        pass
 
 
 if __name__ == "__main__":

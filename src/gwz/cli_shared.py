@@ -123,7 +123,7 @@ class GwzArgumentParser(argparse.ArgumentParser):
         raw_args = list(sys.argv[1:] if args is None else args)
         parsed = super().parse_args(args, namespace)
         normalize_global_options(parsed)
-        normalize_diff_pathspecs(parsed, raw_args)
+        normalize_command_pathspecs(parsed, raw_args)
         return parsed
 
 
@@ -289,10 +289,11 @@ def normalize_global_options(args: argparse.Namespace) -> None:
         setattr(args, attr, value)
 
 
-def normalize_diff_pathspecs(args: argparse.Namespace, raw_args: list[str]) -> None:
-    if getattr(args, "command", None) != "diff":
+def normalize_command_pathspecs(args: argparse.Namespace, raw_args: list[str]) -> None:
+    command = getattr(args, "command", None)
+    if command not in ("diff", "log"):
         return
-    pathspecs = _diff_pathspecs_from_raw_args(raw_args)
+    pathspecs = _pathspecs_from_raw_args(raw_args, command)
     setattr(args, "pathspecs", pathspecs)
     if not pathspecs:
         return
@@ -301,9 +302,9 @@ def normalize_diff_pathspecs(args: argparse.Namespace, raw_args: list[str]) -> N
         setattr(args, "operands", operands[: -len(pathspecs)])
 
 
-def _diff_pathspecs_from_raw_args(raw_args: list[str]) -> list[str]:
+def _pathspecs_from_raw_args(raw_args: list[str], command: str) -> list[str]:
     command_index = _top_level_command_index(raw_args)
-    if command_index is None or raw_args[command_index] != "diff":
+    if command_index is None or raw_args[command_index] != command:
         return []
     try:
         separator_index = raw_args.index("--", command_index + 1)
