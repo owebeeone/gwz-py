@@ -1541,7 +1541,11 @@ class LogEntry:
     committer: GitObjectIdentity
     subject: str
     body: str | None
-    ordering_timestamp_ms: int
+    ordering_timestamp_ms: int | None
+    author_timestamp_seconds: int
+    committer_timestamp_seconds: int
+    ordering_timestamp_seconds: int
+    lossy: bool | None
 
 @dataclass(slots=True)
 class LogDegradation:

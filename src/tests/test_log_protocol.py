@@ -99,10 +99,23 @@ def test_log_output_stream_discriminates_entries_and_degradations() -> None:
             subject="Add log protocol",
             body="Protocol-only body",
             ordering_timestamp_ms=1_727_000_000_000,
+            author_timestamp_seconds=1_727_000_000,
+            committer_timestamp_seconds=1_727_000_000,
+            ordering_timestamp_seconds=1_727_000_000,
+            lossy=False,
         ),
         degradation=None,
     )
     _round_trip("LogOutputRecord", entry_record)
+
+    extreme_entry = deepcopy(entry_record)
+    assert extreme_entry.entry is not None
+    extreme_entry.entry.ordering_timestamp_ms = None
+    extreme_entry.entry.author_timestamp_seconds = -(2**63)
+    extreme_entry.entry.committer_timestamp_seconds = 2**63 - 1
+    extreme_entry.entry.ordering_timestamp_seconds = 2**63 - 1
+    extreme_entry.entry.lossy = True
+    _round_trip("LogOutputRecord", extreme_entry)
 
     degradation_record = generated.LogOutputRecord(
         kind=generated.LogOutputRecordKind.degradation,

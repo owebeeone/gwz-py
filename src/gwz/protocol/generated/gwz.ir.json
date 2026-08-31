@@ -9125,7 +9125,51 @@
             "k": "scalar",
             "scalar": "int"
           },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "author_timestamp_seconds",
+          "tag": 8,
+          "type": {
+            "k": "scalar",
+            "scalar": "int"
+          },
           "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "committer_timestamp_seconds",
+          "tag": 9,
+          "type": {
+            "k": "scalar",
+            "scalar": "int"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "ordering_timestamp_seconds",
+          "tag": 10,
+          "type": {
+            "k": "scalar",
+            "scalar": "int"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "lossy",
+          "tag": 11,
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": true,
           "transient": false,
           "merge": null
         }
