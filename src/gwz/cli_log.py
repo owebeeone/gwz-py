@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+import os
 from pathlib import Path
 import sys
 from typing import Any
@@ -16,6 +17,7 @@ from .cli_shared import (
     CliUsageError,
     CommandContext,
     CommandRegistry,
+    _is_broken_pipe,
     _silence_broken_stdout,
 )
 from .errors import GwzBridgeError
@@ -241,11 +243,11 @@ async def handle_log(context: CommandContext) -> LogCliResult:
         )
         try:
             _write_and_flush(sys.stdout, prefix)
-        except BrokenPipeError:
-            _silence_broken_stdout(sys.stdout)
-            await context.client._release_log_output(response.output)
-            return LogCliResult(exit_code=0)
         except OSError as error:
+            if _is_broken_pipe(error):
+                _silence_broken_stdout(sys.stdout)
+                await context.client._release_log_output(response.output)
+                return LogCliResult(exit_code=0)
             await context.client._release_log_output(response.output)
             raise _output_error("stdout", error) from error
 
@@ -298,10 +300,10 @@ async def handle_log(context: CommandContext) -> LogCliResult:
                 )
         if args.json:
             _write_and_flush(sys.stdout, '],"schema":"gwz.log/v0"}\n')
-    except BrokenPipeError:
-        _silence_broken_stdout(sys.stdout)
-        return LogCliResult(exit_code=0)
     except OSError as error:
+        if _is_broken_pipe(error):
+            _silence_broken_stdout(sys.stdout)
+            return LogCliResult(exit_code=0)
         raise _output_error("output", error) from error
     finally:
         close = getattr(records, "aclose", None)
@@ -313,7 +315,16 @@ async def handle_log(context: CommandContext) -> LogCliResult:
 def _write_and_flush(stream: Any, value: str) -> None:
     byte_stream = getattr(stream, "buffer", None)
     if byte_stream is not None:
-        byte_stream.write(value.encode("utf-8"))
+        encoded = value.encode("utf-8")
+        if os.name == "nt" and stream is sys.stdout:
+            remaining = encoded
+            while remaining:
+                written = os.write(byte_stream.fileno(), remaining)
+                if written == 0:
+                    raise OSError("stdout write made no progress")
+                remaining = remaining[written:]
+            return
+        byte_stream.write(encoded)
         byte_stream.flush()
     else:
         stream.write(value)

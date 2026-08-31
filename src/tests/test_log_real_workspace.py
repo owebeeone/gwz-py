@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
-import select
+import socket
 import subprocess
 import sys
 from typing import Any
@@ -1260,7 +1260,6 @@ def _preclosed_stdout_process(
     *,
     cwd: Path,
     env: dict[str, str],
-    pass_fds: tuple[int, ...] = (),
 ) -> tuple[int, bytes]:
     read_descriptor, write_descriptor = os.pipe()
     os.close(read_descriptor)
@@ -1271,7 +1270,6 @@ def _preclosed_stdout_process(
             env=env,
             stdout=write_descriptor,
             stderr=subprocess.PIPE,
-            pass_fds=pass_fds,
         )
     finally:
         os.close(write_descriptor)
@@ -1309,14 +1307,16 @@ def test_preclosed_real_stdout_epipe_exits_cleanly_for_both_clients(
 
 _TRACKED_EPIPE_CHILD = r"""
 import os
+import socket
 import sys
 
 import gwz.cli as cli
 from gwz.client import Client
 
-control = int(os.environ["GWZ_S34_CONTROL_FD"])
+control = socket.create_connection(
+    ("127.0.0.1", int(os.environ["GWZ_S34_CONTROL_PORT"]))
+)
 target = int(os.environ["GWZ_S34_BREAK_WRITE"])
-resume = int(os.environ.get("GWZ_S34_RESUME_FD", "-1"))
 
 original_release = Client._release_log_output
 
@@ -1324,7 +1324,7 @@ async def tracked_release(self, log_ref):
     try:
         return await original_release(self, log_ref)
     finally:
-        os.write(control, b"L\n")
+        control.sendall(b"L\n")
 
 Client._release_log_output = tracked_release
 
@@ -1339,11 +1339,11 @@ if target:
         def write(self, value):
             self.writes += 1
             if self.triggered:
-                os.write(control, b"X\n")
+                control.sendall(b"X\n")
             if self.writes == target:
                 self.triggered = True
-                os.write(control, b"R\n")
-                os.read(resume, 1)
+                control.sendall(b"R\n")
+                control.recv(1)
             return real_stdout.buffer.write(value)
 
         def flush(self):
@@ -1368,17 +1368,15 @@ if target:
     sys.stdout = SyncStdout()
 
 code = cli.main(sys.argv[1:])
-os.write(control, f"C:{code}\n".encode("ascii"))
+control.sendall(f"C:{code}\n".encode("ascii"))
 raise SystemExit(code)
 """
 
 
-def _read_control_line(descriptor: int) -> bytes:
+def _read_control_line(control: socket.socket) -> bytes:
     row = bytearray()
     while not row.endswith(b"\n"):
-        readable, _, _ = select.select([descriptor], [], [], 10)
-        assert readable, "timed out waiting for synchronized EPIPE child"
-        chunk = os.read(descriptor, 1)
+        chunk = control.recv(1)
         assert chunk, "EPIPE child exited before reaching its synchronized write"
         row.extend(chunk)
     return bytes(row)
@@ -1390,11 +1388,15 @@ def _tracked_python_epipe(
     *,
     break_write: int,
 ) -> tuple[int, bytes, bytes]:
-    control_read, control_write = os.pipe()
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(1)
+    listener.settimeout(10)
     child_env = workspace.env.copy()
     child_env.update(
         {
-            "GWZ_S34_CONTROL_FD": str(control_write),
+            "GWZ_S34_CONTROL_PORT": str(listener.getsockname()[1]),
             "GWZ_S34_BREAK_WRITE": str(break_write),
         }
     )
@@ -1412,43 +1414,41 @@ def _tracked_python_epipe(
                 command,
                 cwd=workspace.root,
                 env=child_env,
-                pass_fds=(control_write,),
             )
         finally:
-            os.close(control_write)
-        control = b""
-        while chunk := os.read(control_read, 4096):
-            control += chunk
-        os.close(control_read)
-        return code, stderr, control
+            control, _ = listener.accept()
+            listener.close()
+        control.settimeout(10)
+        received = b""
+        while chunk := control.recv(4096):
+            received += chunk
+        control.close()
+        return code, stderr, received
 
-    resume_read, resume_write = os.pipe()
-    child_env["GWZ_S34_RESUME_FD"] = str(resume_read)
     process = subprocess.Popen(
         command,
         cwd=workspace.root,
         env=child_env,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        pass_fds=(control_write, resume_read),
     )
-    os.close(control_write)
-    os.close(resume_read)
+    control, _ = listener.accept()
+    listener.close()
+    control.settimeout(10)
     assert process.stdout is not None
-    control = b""
-    while not control.endswith(b"R\n"):
-        row = _read_control_line(control_read)
+    received = b""
+    while not received.endswith(b"R\n"):
+        row = _read_control_line(control)
         assert row in {b"L\n", b"R\n"}
-        control += row
+        received += row
     process.stdout.close()
     process.stdout = None
-    os.write(resume_write, b"G")
-    os.close(resume_write)
+    control.sendall(b"G")
     _, stderr = process.communicate(timeout=10)
-    while chunk := os.read(control_read, 4096):
-        control += chunk
-    os.close(control_read)
-    return process.returncode, stderr, control
+    while chunk := control.recv(4096):
+        received += chunk
+    control.close()
+    return process.returncode, stderr, received
 
 
 @pytest.mark.parametrize(

@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+import errno
 import os
 import sys
 from typing import Any
@@ -81,15 +82,26 @@ def _silence_broken_stdout(stream: object) -> None:
         file_descriptor = stream.fileno()  # type: ignore[attr-defined]
     except (AttributeError, OSError):
         return
-    null_descriptor = os.open(os.devnull, os.O_WRONLY)
     try:
-        os.dup2(null_descriptor, file_descriptor)
-    finally:
-        os.close(null_descriptor)
+        null_descriptor = os.open(os.devnull, os.O_WRONLY)
+        try:
+            os.dup2(null_descriptor, file_descriptor)
+        finally:
+            os.close(null_descriptor)
+    except OSError:
+        return
     try:
         stream.flush()  # type: ignore[attr-defined]
     except OSError:
         pass
+
+
+def _is_broken_pipe(error: OSError) -> bool:
+    return (
+        isinstance(error, BrokenPipeError)
+        or error.errno == errno.EPIPE
+        or getattr(error, "winerror", None) in {109, 232}
+    )
 
 
 class CliUsageError(ValueError):

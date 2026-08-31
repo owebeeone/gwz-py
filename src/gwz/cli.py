@@ -26,6 +26,7 @@ from .cli_shared import (
     global_options_parent,
     meta_kwargs,
     _silence_broken_stdout,
+    _is_broken_pipe,
     validate_args,
 )
 from .client import Client
@@ -134,15 +135,11 @@ def main(argv: list[str] | None = None) -> int:
 def _write_log_error(error: BaseException, *, machine: bool) -> int:
     stream = sys.stdout if machine else sys.stderr
     try:
-        stream.write(render_error(error, json_mode=machine))
-        stream.write("\n")
-        stream.flush()
-    except BrokenPipeError:
-        if machine:
+        cli_log._write_and_flush(stream, render_error(error, json_mode=machine) + "\n")
+    except OSError as write_error:
+        if machine and _is_broken_pipe(write_error):
             _silence_broken_stdout(stream)
             return 0
-        return 1
-    except OSError:
         return 1
     return cli_log.exit_code_for_log_error(error)
 

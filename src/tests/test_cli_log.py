@@ -20,7 +20,7 @@ from gwz.cli_log import (
     exit_code_for_log_response,
     handle_log,
 )
-from gwz.cli_shared import CommandContext, meta_kwargs
+from gwz.cli_shared import CommandContext, _is_broken_pipe, meta_kwargs
 from gwz.errors import GwzBridgeError
 from gwz.protocol.generated import (
     ActionKind,
@@ -684,6 +684,13 @@ class _BrokenWriter:
 
     def flush(self) -> None:
         self.flushes += 1
+
+
+def test_windows_broken_pipe_errors_share_the_clean_exit_path() -> None:
+    for code in [109, 232]:
+        error = OSError("closed Windows pipe")
+        error.winerror = code
+        assert _is_broken_pipe(error)
 
 
 @pytest.mark.parametrize("machine_flag", ["--json", "--jsonl"])
