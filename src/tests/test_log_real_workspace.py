@@ -1311,6 +1311,7 @@ import socket
 import sys
 
 import gwz.cli as cli
+import gwz.cli_log as cli_log
 from gwz.client import Client
 
 control = socket.create_connection(
@@ -1329,43 +1330,22 @@ async def tracked_release(self, log_ref):
 Client._release_log_output = tracked_release
 
 if target:
-    real_stdout = sys.stdout
+    original_write = cli_log._write_and_flush
+    write_count = 0
+    triggered = False
 
-    class SyncBuffer:
-        def __init__(self):
-            self.writes = 0
-            self.triggered = False
+    def tracked_write(stream, value):
+        global write_count, triggered
+        write_count += 1
+        if triggered:
+            control.sendall(b"X\n")
+        if write_count == target:
+            triggered = True
+            control.sendall(b"R\n")
+            control.recv(1)
+        return original_write(stream, value)
 
-        def write(self, value):
-            self.writes += 1
-            if self.triggered:
-                control.sendall(b"X\n")
-            if self.writes == target:
-                self.triggered = True
-                control.sendall(b"R\n")
-                control.recv(1)
-            return real_stdout.buffer.write(value)
-
-        def flush(self):
-            return real_stdout.buffer.flush()
-
-    class SyncStdout:
-        def __init__(self):
-            self.buffer = SyncBuffer()
-
-        def write(self, value):
-            return self.buffer.write(value.encode("utf-8"))
-
-        def flush(self):
-            return self.buffer.flush()
-
-        def fileno(self):
-            return real_stdout.fileno()
-
-        def isatty(self):
-            return False
-
-    sys.stdout = SyncStdout()
+    cli_log._write_and_flush = tracked_write
 
 code = cli.main(sys.argv[1:])
 control.sendall(f"C:{code}\n".encode("ascii"))
