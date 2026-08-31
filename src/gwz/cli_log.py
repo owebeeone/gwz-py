@@ -3,13 +3,22 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 from pathlib import Path
+import sys
 from typing import Any
 
+from .cli_render import (
+    log_color_enabled,
+    render_log_degradation,
+    render_log_entry,
+    render_log_record_json,
+)
 from .cli_shared import (
     CliUsageError,
     CommandContext,
     CommandRegistry,
 )
+from .errors import GwzBridgeError
+from .protocol.generated import LogOutputRecordKind
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,6 +87,20 @@ def register_commands(registry: CommandRegistry) -> None:
 
 def configure_log(parser: argparse.ArgumentParser) -> None:
     parser.allow_abbrev = False
+    parser.formatter_class = argparse.RawDescriptionHelpFormatter
+    parser.description = """\
+Show local commit history from the workspace root and selected members as one
+newest-first stream. The compact form shows workspace-relative member paths;
+--full uses git-style blocks with a complete member table.
+
+Members that cannot contribute are summarized on stderr. Human text is lossy
+and terminal controls are sanitized. Output does not use a pager; color auto
+keys only on whether stdout is a terminal."""
+    parser.epilog = """\
+Examples:
+  gwz-py log
+  gwz-py log --full --body
+  gwz-py --target mem_api log main..topic -- src"""
     limit = parser.add_mutually_exclusive_group()
     limit.add_argument(
         "-n",
@@ -157,7 +180,13 @@ def configure_log(parser: argparse.ArgumentParser) -> None:
         "--body",
         action=_StoreTrueOnce,
         default=False,
-        help="Include commit message bodies in the core result",
+        help="Include commit message bodies in --full and machine output",
+    )
+    parser.add_argument(
+        "--full",
+        action=_StoreTrueOnce,
+        default=False,
+        help="Render git-style blocks with a complete member table",
     )
     parser.add_argument(
         "--tagged",
@@ -201,12 +230,105 @@ async def handle_log(context: CommandContext) -> LogCliResult:
         **context.meta,
     )
 
-    # S3.5 owns record delivery and lifecycle, not rendering. Draining here
-    # exercises the exact stream S3.6 will render without creating a temporary
-    # output format or retaining an unbounded history in Python memory.
-    async for _record in context.client.log_output(response.output):
-        pass
-    return LogCliResult(exit_code=exit_code_for_log_response(response))
+    exit_code = exit_code_for_log_response(response)
+    machine = bool(args.json or args.jsonl)
+    if machine:
+        prefix = (
+            '{"record":"header","schema":"gwz.log/v0"}\n'
+            if args.jsonl
+            else '{"records":['
+        )
+        try:
+            _write_and_flush(sys.stdout, prefix)
+        except BrokenPipeError:
+            await context.client._release_log_output(response.output)
+            return LogCliResult(exit_code=0)
+        except OSError as error:
+            await context.client._release_log_output(response.output)
+            raise _output_error("stdout", error) from error
+
+    records = context.client.log_output(response.output)
+    first_json_record = True
+    color = log_color_enabled(args.color, _stdout_is_tty())
+    try:
+        async for record in records:
+            if machine:
+                serialized = render_log_record_json(record)
+                if args.jsonl:
+                    chunk = serialized + "\n"
+                else:
+                    chunk = serialized if first_json_record else "," + serialized
+                _write_and_flush(sys.stdout, chunk)
+                first_json_record = False
+                continue
+
+            if (
+                record.kind is LogOutputRecordKind.entry
+                and record.entry is not None
+                and record.degradation is None
+            ):
+                rendered = render_log_entry(
+                    record.entry,
+                    full=args.full,
+                    color=color,
+                )
+                _write_and_flush(
+                    sys.stdout,
+                    rendered + ("\n\n" if args.full else "\n"),
+                )
+            elif (
+                record.kind is LogOutputRecordKind.degradation
+                and record.entry is None
+                and record.degradation is not None
+            ):
+                try:
+                    _write_and_flush(
+                        sys.stderr,
+                        render_log_degradation(record.degradation, color=color)
+                        + "\n",
+                    )
+                except OSError as error:
+                    raise _output_error("stderr", error) from error
+            else:
+                raise GwzBridgeError(
+                    "commit-log output record kind does not match its payload",
+                    code="InternalError",
+                )
+        if args.json:
+            _write_and_flush(sys.stdout, '],"schema":"gwz.log/v0"}\n')
+    except BrokenPipeError:
+        return LogCliResult(exit_code=0)
+    except OSError as error:
+        raise _output_error("output", error) from error
+    finally:
+        close = getattr(records, "aclose", None)
+        if close is not None:
+            await close()
+    return LogCliResult(exit_code=exit_code)
+
+
+def _write_and_flush(stream: Any, value: str) -> None:
+    byte_stream = getattr(stream, "buffer", None)
+    if byte_stream is not None:
+        byte_stream.write(value.encode("utf-8"))
+        byte_stream.flush()
+    else:
+        stream.write(value)
+        stream.flush()
+
+
+def _stdout_is_tty() -> bool:
+    try:
+        return bool(sys.stdout.isatty())
+    except (AttributeError, OSError):
+        return False
+
+
+def _output_error(channel: str, error: OSError) -> GwzBridgeError:
+    return GwzBridgeError(
+        f"cannot write log {channel}: {error}",
+        code="IoError",
+    )
 
 
 def exit_code_for_log_response(response: object) -> int:

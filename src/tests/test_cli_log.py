@@ -235,6 +235,7 @@ def test_real_process_rejects_out_of_i64_cap_with_exit_two_and_no_traceback() ->
         "--strict",
         "--no-coalesce",
         "--body",
+        "--full",
         "--tagged",
     ],
 )
@@ -632,7 +633,7 @@ def test_log_response_exit_mapping_matches_s31(
     assert exit_code_for_log_response(_response(status)) == expected
 
 
-def test_cli_log_returns_partial_exit_without_rendering_records(
+def test_cli_log_renders_degradation_and_returns_partial_exit(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -649,7 +650,10 @@ def test_cli_log_returns_partial_exit_without_rendering_records(
 
     assert cli_module.main(["log"]) == 1
     assert client.released is True
-    assert capsys.readouterr() == ("", "")
+    assert capsys.readouterr() == (
+        "",
+        "gwz log: degraded repos/missing: repository unreadable — unreadable\n",
+    )
 
 
 class _FailingLogClient(FakeLogClient):

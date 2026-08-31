@@ -1017,7 +1017,15 @@ class Client:
                     f"commit-log output {log_id} returned unknown state {answer.state!r}"
                 )
         finally:
-            await release(log_id)
+            await self._release_log_output(log_id)
+
+    async def _release_log_output(self, log_ref: LogOutputLogRef | str) -> None:
+        """Release an unread or partially consumed operation-scoped log spool."""
+        log_id = log_ref.log_id if isinstance(log_ref, LogOutputLogRef) else log_ref
+        release = getattr(self.bridge, "log_output_release", None)
+        if release is None:
+            raise GwzBridgeError("bridge does not support commit-log output release")
+        await release(log_id)
 
     def events_subscribe(self, operation_id: str) -> AsyncIterator[OperationEvent]:
         return self.bridge.subscribe_events(operation_id)

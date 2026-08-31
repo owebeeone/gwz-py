@@ -44,12 +44,27 @@ streaming forms for operation progress events.
 gwz-py --help
 gwz-py status
 gwz-py diff
+gwz-py log
 ```
 
 Workspace concepts and workflows are shared with the Rust CLI. Start with the
 [GWZ Quick Start](https://owebeeone.github.io/gwz-cli/QuickStart/) and use the
 [repository lifecycle guide](https://owebeeone.github.io/gwz-cli/RepoLifecycle/)
 for create, publish, detach, attach, and identity-verification behavior.
+
+### Unified commit log
+
+`gwz-py log` renders the same core commit-log records as the Rust CLI. Its
+compact default shows the recorded date, workspace-relative member set,
+short hash, and subject. Use `gwz-py log --full --body` for git-style blocks
+with the complete member table and commit body. Human degradations are written
+to stderr; output is never paged, and `--color=auto` colors only a terminal.
+
+`--json` emits one `{"schema": "gwz.log/v0", "records": [...]}` document.
+`--jsonl` begins with the schema header and then emits one entry or degradation
+record per line. Both machine forms are byte-compatible with Rust `gwz` for
+the same protocol records, including the explicit `lossy` flag for source
+bytes converted to U+FFFD.
 
 ## Native Bridge And Repository Lifecycle
 
