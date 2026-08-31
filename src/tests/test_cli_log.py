@@ -266,6 +266,146 @@ def test_log_parser_rejects_global_abbreviations_before_and_after_command(
     assert exc_info.value.code == 2
 
 
+_GLOBAL_SINGLETON_CASES = [
+    ("--root", "/workspace/one", "/workspace/two"),
+    ("--all", None, None),
+    ("--dry-run", None, None),
+    ("--partial", None, None),
+    ("--force", None, None),
+    ("--sync", "fetch-only", "merge"),
+    ("--remote", "origin", "upstream"),
+    ("--jobs", "2", "3"),
+    ("--max-per-host", "2", "3"),
+    ("--progress-interval", "0", "1"),
+    ("--json", None, None),
+    ("--jsonl", None, None),
+    ("--ssh-timeout", "0", "1"),
+]
+
+
+@pytest.mark.parametrize(("option", "first", "second"), _GLOBAL_SINGLETON_CASES)
+@pytest.mark.parametrize("placement", ["before", "after", "split"])
+def test_log_parser_rejects_every_repeated_global_singleton(
+    option: str,
+    first: str | None,
+    second: str | None,
+    placement: str,
+) -> None:
+    def occurrence(value: str | None) -> list[str]:
+        return [option] if value is None else [option, value]
+
+    if placement == "before":
+        argv = occurrence(first) + occurrence(second) + ["log"]
+    elif placement == "after":
+        argv = ["log"] + occurrence(first) + occurrence(second)
+    else:
+        argv = occurrence(first) + ["log"] + occurrence(second)
+
+    with pytest.raises(SystemExit) as exc_info:
+        build_parser().parse_args(argv)
+    assert exc_info.value.code == 2
+
+
+@pytest.mark.parametrize(
+    ("option", "attribute"),
+    [
+        ("--target", "targets"),
+        ("--member", "targets"),
+        ("--no-target", "exclude_targets"),
+        ("--no-member", "exclude_targets"),
+        ("--member-path", "member_paths"),
+        ("--no-member-path", "exclude_targets"),
+    ],
+)
+@pytest.mark.parametrize("placement", ["before", "after", "split"])
+def test_log_parser_preserves_truly_repeatable_global_selectors(
+    option: str,
+    attribute: str,
+    placement: str,
+) -> None:
+    first = [option, "alpha"]
+    second = [option, "beta"]
+    if placement == "before":
+        argv = first + second + ["log"]
+    elif placement == "after":
+        argv = ["log"] + first + second
+    else:
+        argv = first + ["log"] + second
+
+    args = build_parser().parse_args(argv)
+    assert getattr(args, attribute) == ["alpha", "beta"]
+
+
+@pytest.mark.parametrize(
+    ("option", "first", "second"),
+    [
+        ("--root", "/workspace/one", "/workspace/two"),
+        ("--sync", "fetch-only", "merge"),
+        ("--remote", "origin", "upstream"),
+        ("--jobs", "2", "3"),
+        ("--max-per-host", "2", "3"),
+        ("--progress-interval", "0", "1"),
+        ("--ssh-timeout", "0", "1"),
+    ],
+)
+@pytest.mark.parametrize("placement", ["before", "after", "split"])
+@pytest.mark.parametrize("spelling", ["inline", "mixed"])
+def test_log_parser_rejects_inline_value_singleton_repetition(
+    option: str, first: str, second: str, placement: str, spelling: str
+) -> None:
+    first_occurrence = [f"{option}={first}"]
+    if spelling == "mixed":
+        first_occurrence = [option, first]
+    second_occurrence = [f"{option}={second}"]
+    if placement == "before":
+        argv = first_occurrence + second_occurrence + ["log"]
+    elif placement == "after":
+        argv = ["log"] + first_occurrence + second_occurrence
+    else:
+        argv = first_occurrence + ["log"] + second_occurrence
+
+    with pytest.raises(SystemExit) as exc_info:
+        build_parser().parse_args(argv)
+    assert exc_info.value.code == 2
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["log", "--", "--root", "--root"],
+        ["log", "--", "--json", "--json"],
+        ["log", "HEAD", "--", "--jobs", "--jobs"],
+    ],
+)
+def test_log_parser_preserves_singleton_looking_pathspecs(argv: list[str]) -> None:
+    args = build_parser().parse_args(argv)
+    assert args.pathspecs == argv[argv.index("--") + 1 :]
+
+
+def test_log_parser_stops_singleton_scan_at_pathspec_separator() -> None:
+    args = build_parser().parse_args(
+        ["log", "--root", "/workspace", "--", "--root", "--root"]
+    )
+    assert args.root == "/workspace"
+    assert args.pathspecs == ["--root", "--root"]
+
+
+@pytest.mark.parametrize(
+    ("argv", "command"),
+    [
+        (["--all", "--all", "status"], "status"),
+        (["diff", "--all", "--all"], "diff"),
+        (["--all", "ls", "--all"], "ls"),
+    ],
+)
+def test_log_singleton_scan_does_not_change_other_commands(
+    argv: list[str], command: str
+) -> None:
+    args = build_parser().parse_args(argv)
+    assert args.command == command
+    assert args.all_members is True
+
+
 def test_log_help_teaches_core_owned_grammars_and_strict_rule(
     capsys: pytest.CaptureFixture[str],
 ) -> None:

@@ -56,6 +56,21 @@ GLOBAL_VALUE_OPTIONS = {
     "--progress-interval",
     "--ssh-timeout",
 }
+GLOBAL_SINGLETON_OPTIONS = {
+    "--root",
+    "--all",
+    "--dry-run",
+    "--partial",
+    "--force",
+    "--sync",
+    "--remote",
+    "--jobs",
+    "--max-per-host",
+    "--progress-interval",
+    "--json",
+    "--jsonl",
+    "--ssh-timeout",
+}
 
 
 class CliUsageError(ValueError):
@@ -121,6 +136,7 @@ class GwzArgumentParser(argparse.ArgumentParser):
         namespace: argparse.Namespace | None = None,
     ) -> argparse.Namespace:
         raw_args = list(sys.argv[1:] if args is None else args)
+        reject_repeated_log_global_singletons(self, raw_args)
         parsed = super().parse_args(args, namespace)
         normalize_global_options(parsed)
         normalize_command_pathspecs(parsed, raw_args)
@@ -331,6 +347,26 @@ def _top_level_command_index(raw_args: list[str]) -> int | None:
                 continue
         return index
     return None
+
+
+def reject_repeated_log_global_singletons(
+    parser: argparse.ArgumentParser, raw_args: list[str]
+) -> None:
+    command_index = _top_level_command_index(raw_args)
+    if command_index is None or raw_args[command_index] != "log":
+        return
+    try:
+        end = raw_args.index("--", command_index + 1)
+    except ValueError:
+        end = len(raw_args)
+    seen: set[str] = set()
+    for token in raw_args[:end]:
+        option = token.partition("=")[0]
+        if option not in GLOBAL_SINGLETON_OPTIONS:
+            continue
+        if option in seen:
+            parser.error(f"argument {option}: cannot be used multiple times")
+        seen.add(option)
 
 
 def validate_args(args: argparse.Namespace) -> None:
