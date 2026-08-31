@@ -275,17 +275,22 @@ def verify_pyproject_metadata(worktree: Path) -> None:
         fail("pyproject.toml must install the Python CLI as `gwz-py`")
 
 
-def verify_locked_git_pin(worktree: Path, tag: str) -> None:
+def verify_locked_git_pin(worktree: Path, tag: str, core_sha: str) -> None:
     lock = (worktree / "Cargo.lock").read_text(encoding="utf-8")
     match = re.search(
         r'\[\[package\]\]\nname = "gwz-core"\nversion = "[^"]*"\n(?:source = "([^"]+)"\n)?',
         lock,
     )
     source = match.group(1) if match else None
-    if not source or "git+" not in source or f"tag={tag}" not in source:
+    if (
+        not source
+        or "git+" not in source
+        or f"tag={tag}" not in source
+        or not source.endswith(f"#{core_sha}")
+    ):
         fail(
-            f"Cargo.lock does not pin gwz-core via git tag {tag} "
-            f"(source={source!r})"
+            f"Cargo.lock does not pin gwz-core via git tag {tag} at resolved "
+            f"commit {core_sha} (source={source!r})"
         )
     log(f"verified Cargo.lock pins gwz-core via {source}")
 
@@ -309,13 +314,14 @@ def run_release_checks(
     *,
     tag: str,
     version: str,
+    core_sha: str,
 ) -> None:
     python = create_release_python(worktree)
     verify_pyproject_metadata(worktree)
     run([python, "scripts/check_protocol_drift.py"], cwd=worktree)
     run([python, "scripts/regen_protocol.py", "--check"], cwd=worktree)
     run(["cargo", "check"], cwd=worktree)
-    verify_locked_git_pin(worktree, tag)
+    verify_locked_git_pin(worktree, tag, core_sha)
     if not args.no_test:
         run([python, "run_tests.py"], cwd=worktree)
     if not args.no_package_smoke:
@@ -384,7 +390,11 @@ def bootstrap_release(args: argparse.Namespace, tag: str, version: str) -> int:
         reconcile_cargo_toml(worktree, tag, version, core_url=core_url)
         checkout_release_dependency(core_url, tag, core_checkout)
         checkout_release_dependency(args.gwz_cli_url, tag, cli_checkout)
-        run_release_checks(worktree, args, tag=tag, version=version)
+        core_sha = git_wt(core_checkout, ["rev-parse", "HEAD"], capture=True).stdout.strip()
+        run(["cargo", "update", "-p", "gwz-core"], cwd=worktree)
+        run_release_checks(
+            worktree, args, tag=tag, version=version, core_sha=core_sha
+        )
         git_wt(worktree, ["add", "Cargo.toml", "Cargo.lock"])
         staged = git_wt(
             worktree,
@@ -490,15 +500,24 @@ def main() -> int:
         changed = reconcile_cargo_toml(worktree, tag, version)
         checkout_release_dependency(core_url, tag, core_checkout)
         checkout_release_dependency(args.gwz_cli_url, tag, cli_checkout)
+        core_sha = git_wt(core_checkout, ["rev-parse", "HEAD"], capture=True).stdout.strip()
+        # Refresh even if the manifest already names this tag. A corrected release tag can
+        # otherwise leave Cargo.lock at the provisional Git revision indefinitely.
+        run(["cargo", "update", "-p", "gwz-core"], cwd=worktree)
+        changed = changed or bool(git_wt(worktree, ["status", "--porcelain"], capture=True).stdout)
         if merged or changed:
-            run_release_checks(worktree, args, tag=tag, version=version)
+            run_release_checks(
+                worktree, args, tag=tag, version=version, core_sha=core_sha
+            )
             git_wt(worktree, ["add", "-A"])
             message = f"chore(release): gwz-py {version} (pins gwz-core {tag})"
             git_wt(worktree, ["commit", "-m", message])
             sha = git_wt(worktree, ["rev-parse", "HEAD"], capture=True).stdout.strip()
             log(f"{args.release} reconciled -> {sha[:10]} (gwz-py {version}, gwz-core {tag})")
         else:
-            run_release_checks(worktree, args, tag=tag, version=version)
+            run_release_checks(
+                worktree, args, tag=tag, version=version, core_sha=core_sha
+            )
             log(f"{args.release} already reconciled for {tag}; no new commit needed")
 
         target = git_wt(worktree, ["rev-parse", "HEAD"], capture=True).stdout.strip()
