@@ -14,6 +14,14 @@ from typing import Any
 import pytest
 
 
+MAGIC_PATHSPEC_CASES = (
+    (".", ":(exclude)side-only.txt"),
+    (".", ":!side-only.txt"),
+    (".", ":^side-only.txt"),
+    (":(top)bulk.txt",),
+)
+
+
 @dataclass(frozen=True)
 class RealLogWorkspace:
     root: Path
@@ -969,11 +977,7 @@ def test_workspace_and_member_cwd_pathspec_routing_matches_native_git_magic(
         api, "rev-list", "HEAD", "--", "bulk.txt"
     ).decode("ascii").splitlines()
 
-    for pathspecs in (
-        (".", ":(exclude)side-only.txt"),
-        (".", ":!side-only.txt"),
-        (":(top)bulk.txt",),
-    ):
+    for pathspecs in MAGIC_PATHSPEC_CASES:
         result = _parity(
             real_log_workspace,
             "--json",
@@ -988,6 +992,11 @@ def test_workspace_and_member_cwd_pathspec_routing_matches_native_git_magic(
             "ascii"
         ).splitlines()
         assert actual == expected
+
+
+def test_native_git_magic_matrix_carries_both_short_exclusion_aliases() -> None:
+    assert (".", ":!side-only.txt") in MAGIC_PATHSPEC_CASES
+    assert (".", ":^side-only.txt") in MAGIC_PATHSPEC_CASES
 
 
 def test_all_six_filters_and_marker_survivor_are_cross_client_exact(
