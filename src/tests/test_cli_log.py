@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import errno
 import os
 from pathlib import Path
 import subprocess
@@ -13,6 +14,7 @@ from typing import Any
 import pytest
 
 import gwz.cli as cli_module
+import gwz.cli_log as cli_log_module
 from gwz.cli import build_parser
 from gwz.cli_log import (
     LogCliResult,
@@ -691,6 +693,21 @@ def test_windows_broken_pipe_errors_share_the_clean_exit_path() -> None:
         error = OSError("closed Windows pipe")
         error.winerror = code
         assert _is_broken_pipe(error)
+
+
+def test_windows_crt_broken_pipe_is_translated_from_invalid_argument(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class RawStdout:
+        def fileno(self) -> int:
+            return 1
+
+    def invalid_argument(_descriptor: int, _value: bytes) -> int:
+        raise OSError(errno.EINVAL, "Invalid argument")
+
+    monkeypatch.setattr(cli_log_module.os, "write", invalid_argument)
+    with pytest.raises(BrokenPipeError):
+        cli_log_module._write_windows_stdout(RawStdout(), b"value")
 
 
 @pytest.mark.parametrize("machine_flag", ["--json", "--jsonl"])

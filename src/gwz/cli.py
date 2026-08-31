@@ -25,8 +25,8 @@ from .cli_shared import (
     exit_code_for_response,
     global_options_parent,
     meta_kwargs,
-    _silence_broken_stdout,
     _is_broken_pipe,
+    _silence_broken_stdout,
     validate_args,
 )
 from .client import Client

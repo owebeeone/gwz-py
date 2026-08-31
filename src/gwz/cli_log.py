@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+import errno
 import os
 from pathlib import Path
 import sys
@@ -316,19 +317,28 @@ def _write_and_flush(stream: Any, value: str) -> None:
     byte_stream = getattr(stream, "buffer", None)
     if byte_stream is not None:
         encoded = value.encode("utf-8")
-        if os.name == "nt" and stream is sys.stdout:
-            remaining = encoded
-            while remaining:
-                written = os.write(byte_stream.fileno(), remaining)
-                if written == 0:
-                    raise OSError("stdout write made no progress")
-                remaining = remaining[written:]
+        if os.name == "nt" and stream is sys.__stdout__:
+            _write_windows_stdout(byte_stream, encoded)
             return
         byte_stream.write(encoded)
         byte_stream.flush()
     else:
         stream.write(value)
         stream.flush()
+
+
+def _write_windows_stdout(byte_stream: Any, value: bytes) -> None:
+    remaining = value
+    while remaining:
+        try:
+            written = os.write(byte_stream.fileno(), remaining)
+        except OSError as error:
+            if error.errno == errno.EINVAL:
+                raise BrokenPipeError(errno.EPIPE, "stdout pipe is closed") from error
+            raise
+        if written == 0:
+            raise OSError("stdout write made no progress")
+        remaining = remaining[written:]
 
 
 def _stdout_is_tty() -> bool:
