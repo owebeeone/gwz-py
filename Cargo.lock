@@ -293,8 +293,8 @@ dependencies = [
 
 [[package]]
 name = "gwz-core"
-version = "0.12.0"
-source = "git+https://github.com/owebeeone/gwz-core?tag=v0.12.0#845956c59a8727572553fde78967e872209a429f"
+version = "0.12.1"
+source = "git+https://github.com/owebeeone/gwz-core?tag=v0.12.1#ea3a9246e5230a2b6ef04e269c9454283bd6db0a"
 dependencies = [
  "cap-fs-ext",
  "cap-std",
@@ -318,7 +318,7 @@ dependencies = [
 
 [[package]]
 name = "gwz-py"
-version = "0.12.0"
+version = "0.12.1"
 dependencies = [
  "gwz-core",
  "pyo3",
