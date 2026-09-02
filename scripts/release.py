@@ -503,6 +503,15 @@ def main() -> int:
         core_sha = git_wt(core_checkout, ["rev-parse", "HEAD"], capture=True).stdout.strip()
         # Refresh even if the manifest already names this tag. A corrected release tag can
         # otherwise leave Cargo.lock at the provisional Git revision indefinitely.
+        #
+        # When `do_merge` resolved a Cargo.lock conflict toward `main`, the lock's gwz-core
+        # entry is main's PATH entry (no `source`), and `cargo update -p gwz-core` then refuses
+        # with "did not match any packages" because no locked package matches the manifest's
+        # git source (v0.13.0 cut, 2026-09-03). Re-resolve the workspace conservatively first --
+        # `--workspace` re-resolves only what the reconciled manifest changed and leaves every
+        # other locked version alone, the same refresh `cargo build` performs in gwz-cli's
+        # script -- then pin the tag's revision explicitly.
+        run(["cargo", "update", "--workspace"], cwd=worktree)
         run(["cargo", "update", "-p", "gwz-core"], cwd=worktree)
         changed = changed or bool(git_wt(worktree, ["status", "--porcelain"], capture=True).stdout)
         if merged or changed:
