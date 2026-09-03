@@ -15,8 +15,16 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SCHEMA = ROOT.parent / "gwz-core" / "protocol" / "gwz.taut.py"
 DEFAULT_IR = ROOT / "src" / "gwz" / "protocol" / "generated" / "gwz.ir.json"
+# This pin exists to catch gwz-log reshaping an OLDER message; it is not a
+# freeze on additive growth. Moved deliberately on 2026-09-03 by DR-1 ship (1)
+# W1 (gwz-dev dev-docs/GwzM5-8DR1-WarnOrRefuse-Charter.md §3.7), which adds
+# MergeRequest.filesystem_strict (slot 8), MergeResponse.crash_recovery
+# (slot 11), the MergeCrashRecovery message, the MergeCrashRecoveryGap enum and
+# EventKind.diagnostic (slot 8). Every pre-existing slot is unchanged, so the
+# guard keeps working against gwz-log after the move.
+#   was: sha256:d0c205c8767f8d54d32ead2f676a05077d849f6a12278d9de52b3c132c3c9372
 PRE_LOG_WIRE_FINGERPRINT = (
-    "sha256:d0c205c8767f8d54d32ead2f676a05077d849f6a12278d9de52b3c132c3c9372"
+    "sha256:7a66e301c5c0147a12c59b2cddb6f2ebc1515ef4d65297ec53c3b312a3769697"
 )
 
 

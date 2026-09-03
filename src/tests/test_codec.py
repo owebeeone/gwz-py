@@ -181,6 +181,7 @@ def test_merge_reserved_lifecycle_shape_round_trip() -> None:
         mode=generated.MergeMode.normal,
         message=None,
         preserve=None,
+        filesystem_strict=None,
     )
     _assert_cbor_round_trip("MergeRequest", request)
 
@@ -200,10 +201,19 @@ def test_merge_reserved_lifecycle_shape_round_trip() -> None:
         mode=generated.MergeMode.normal,
         message=None,
         preserve=None,
+        filesystem_strict=None,
     )
+    # Moved 2026-09-03 by DR-1 ship (1) W1
+    # (gwz-dev dev-docs/GwzM5-8DR1-WarnOrRefuse-Charter.md §3.7): MergeRequest
+    # gained the optional `filesystem_strict` in slot 8, so the map header grows
+    # from a7 to a8 and a trailing `08 f6` (slot 8 = null) is appended. Every
+    # pre-existing slot stays byte-identical, and this hex stays byte-identical
+    # to gwz-core's own parity pin in tests/protocol.rs.
+    #   was: "a701a701697265715f6d65726765026667777a2e763003f604f605f606f607f6"
+    #        "02000369666561747572652f7804f6050006f607f6"
     assert encode_message("MergeRequest", parity_request).hex() == (
-        "a701a701697265715f6d65726765026667777a2e763003f604f605f606f607f6"
-        "02000369666561747572652f7804f6050006f607f6"
+        "a801a701697265715f6d65726765026667777a2e763003f604f605f606f607f6"
+        "02000369666561747572652f7804f6050006f607f608f6"
     )
 
     response = generated.MergeResponse(
@@ -250,6 +260,7 @@ def test_merge_reserved_lifecycle_shape_round_trip() -> None:
         preservation=[],
         publication_step=None,
         record=None,
+        crash_recovery=None,
     )
     _assert_cbor_round_trip("MergeResponse", response)
 

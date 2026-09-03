@@ -234,6 +234,11 @@ class MergeCompatibilityNextAction(Enum):
     archive_aborted = 13
     report_recovery_required = 14
 
+class MergeCrashRecoveryGap(Enum):
+    no_durable_identity = 0
+    remote_filesystem = 1
+    volatile_filesystem = 2
+
 class BranchActionResult(Enum):
     listed = 0
     created = 1
@@ -362,6 +367,7 @@ class EventKind(Enum):
     operation_finished = 5
     reset = 6
     operation_state_changed = 7
+    diagnostic = 8
 
 class Severity(Enum):
     debug = 0
@@ -985,6 +991,12 @@ class MergeAcceptedCandidateHashProjection:
     sha256: str
 
 @dataclass(slots=True)
+class MergeCrashRecovery:
+    supported: bool
+    filesystem: str | None
+    gap: MergeCrashRecoveryGap | None
+
+@dataclass(slots=True)
 class MergeRepoSummary:
     target_id: str
     target_kind: TargetKind
@@ -1251,6 +1263,7 @@ class MergeRequest:
     mode: MergeMode | None
     message: str | None
     preserve: bool | None
+    filesystem_strict: bool | None
 
 @dataclass(slots=True)
 class CreateWorkspaceResponse:
@@ -1369,6 +1382,7 @@ class MergeResponse:
     preservation: list[MergePreservation] | None
     publication_step: MergePublicationStep | None
     record: MergeRecordProjection | None
+    crash_recovery: MergeCrashRecovery | None
 
 @dataclass(slots=True)
 class DiffComparison:

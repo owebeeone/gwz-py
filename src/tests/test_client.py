@@ -98,6 +98,7 @@ RESPONSE_EXTRAS = {
         "preservation": None,
         "publication_step": None,
         "record": None,
+        "crash_recovery": None,
     },
     StashResponse: {"bundles": None},
     StatusResponse: {"workspace_git_status": None},

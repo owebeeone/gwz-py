@@ -796,6 +796,8 @@ class Client:
             mode=_enum_value(MergeMode, mode),
             message=message,
             preserve=preserve,
+            # W4 wires --filesystem-strict; W1 only carries the slot.
+            filesystem_strict=None,
         )
 
     async def diff(

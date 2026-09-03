@@ -50,6 +50,7 @@ def merge_request(root: Path, request_id: str, op: MergeOp) -> MergeRequest:
         mode=MergeMode.normal if op is MergeOp.start else None,
         message=None,
         preserve=None,
+        filesystem_strict=None,
     )
 
 

@@ -137,7 +137,7 @@ def test_merge_human_and_machine_render_idle_without_fabricated_operation() -> N
         MergeOperationState.idle,
         False,
         MergeParticipantCounts(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
-        [], [], None, None, None,
+        [], [], None, None, None, None,
     )
 
     assert render_response(response) == (
@@ -499,6 +499,7 @@ def merge_response() -> MergeResponse:
         )],
         MergePublicationStep.verifying_publication,
         parity_record_projection(),
+        None,
     )
 
 def merge_repo(path: str, state: MergeParticipantState) -> MergeRepoSummary:

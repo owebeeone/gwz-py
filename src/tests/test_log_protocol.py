@@ -13,7 +13,16 @@ from gwz.protocol import generated
 from gwz.protocol.codec import decode_message, encode_message, from_wire, schema, to_wire
 
 
-PRE_LOG_WIRE_SHA256 = "d0c205c8767f8d54d32ead2f676a05077d849f6a12278d9de52b3c132c3c9372"
+# Guards gwz-log against reshaping an OLDER message; additive growth moves it.
+# Moved deliberately on 2026-09-03 by DR-1 ship (1) W1 (gwz-dev
+# dev-docs/GwzM5-8DR1-WarnOrRefuse-Charter.md §3.7), which adds
+# MergeRequest.filesystem_strict (slot 8), MergeResponse.crash_recovery
+# (slot 11), MergeCrashRecovery, MergeCrashRecoveryGap and
+# EventKind.diagnostic (slot 8). No pre-existing slot changed. Kept identical
+# to gwz-core protocol/check_log_additive.py and
+# scripts/check_protocol_drift.py.
+#   was: d0c205c8767f8d54d32ead2f676a05077d849f6a12278d9de52b3c132c3c9372
+PRE_LOG_WIRE_SHA256 = "7a66e301c5c0147a12c59b2cddb6f2ebc1515ef4d65297ec53c3b312a3769697"
 
 
 def _round_trip(message_name: str, value: object) -> None:
