@@ -19,6 +19,7 @@ from gwz.protocol.generated import (
     MergeAcceptedMetadataBaseProjection, MergeAcceptedMetadataSource,
     MergeAcceptedRootKind, MergeAcceptedRootProjection, MergeAcceptedWorkspaceV1Projection,
     MergeCompatibilityBasePhase, MergeCompatibilityNextAction,
+    MergeCrashRecovery, MergeCrashRecoveryGap,
     MergeInstalledAcceptedWorkspaceKind, MergeInstalledAcceptedWorkspaceProjection,
     MergeOperationDrift, MergeOperationDriftKind, MergeParticipantCounts,
     MergeParticipantDrift, MergeParticipantDriftKind, MergeParticipantState,
@@ -79,7 +80,7 @@ def test_merge_routes_lifecycle_and_reserved_fields_and_rejects_ambiguity() -> N
     )
     assert client.calls[0] == (("feature/x",), {
         "op": MergeOp.start, "merge_id": None, "mode": MergeMode.ff_only, "message": "custom",
-        "preserve": None, "dry_run": True,
+        "preserve": None, "filesystem_strict": None, "dry_run": True,
     })
     run_handler(["merge", "feature/x", "--continue", "--preserve", "-m", "custom"], client)
     reserved = client.calls[1][1]
@@ -88,19 +89,19 @@ def test_merge_routes_lifecycle_and_reserved_fields_and_rejects_ambiguity() -> N
     run_handler(["merge", "--status"], client)
     assert client.calls[2] == ((None,), {
         "op": MergeOp.status, "merge_id": None, "mode": None, "message": None,
-        "preserve": None,
+        "preserve": None, "filesystem_strict": None,
     })
     run_handler(["merge", "--status", "merge_closed"], client)
     assert client.calls[3][1]["merge_id"] == "merge_closed"
     run_handler(["merge", "--continue"], client)
     assert client.calls[4] == ((None,), {
         "op": MergeOp.resume, "merge_id": None, "mode": None, "message": None,
-        "preserve": None,
+        "preserve": None, "filesystem_strict": None,
     })
     run_handler(["merge", "--abort"], client)
     assert client.calls[5] == ((None,), {
         "op": MergeOp.abort, "merge_id": None, "mode": None, "message": None,
-        "preserve": None,
+        "preserve": None, "filesystem_strict": None,
     })
     run_handler(["merge", "--abort", "--preserve"], client)
     assert client.calls[6][1]["preserve"] is True
@@ -110,6 +111,104 @@ def test_merge_routes_lifecycle_and_reserved_fields_and_rejects_ambiguity() -> N
         run_handler(["merge", "--continue", "--abort"], client)
     with pytest.raises(CliUsageError, match="mutually exclusive"):
         run_handler(["merge", "feature/x", "--ff-only", "--no-ff"], client)
+
+
+def test_merge_filesystem_strict_is_a_start_only_request_flag() -> None:
+    # DR-1: the crash-recovery decision belongs to the start that opens the
+    # attempt. Absent, the request carries no opinion and core warns-and-
+    # continues below the bar; present, core refuses before any lease.
+    client = FakeClient()
+    run_handler(["merge", "feature/x", "--filesystem-strict"], client)
+    assert client.calls[0][1]["op"] is MergeOp.start
+    assert client.calls[0][1]["filesystem_strict"] is True
+    run_handler(["merge", "feature/x", "--no-ff", "--filesystem-strict"], client)
+    assert client.calls[1][1]["filesystem_strict"] is True
+    run_handler(["merge", "feature/x"], client)
+    assert client.calls[2][1]["filesystem_strict"] is None
+
+    # Every lifecycle op uses what its own start opened and never consults the
+    # flag, so offering it there is a request error, not a silent no-op.
+    for option in ["--continue", "--abort", "--status", "--gc"]:
+        with pytest.raises(
+            CliUsageError, match="only when starting a merge"
+        ) as raised:
+            run_handler(["merge", option, "--filesystem-strict"], client)
+        assert raised.value.code == "InvalidRequest"
+
+
+def test_merge_human_mode_echoes_core_diagnostics_once_each(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # DR-1 §3.5: core has no stderr, so a diagnostic reaches a person only
+    # through this echo -- and a repeated emission must not spam the terminal.
+    warning = (
+        "crash recovery is unsupported on btrfs (no durable filesystem identity)."
+        " Merge will continue. Use --filesystem-strict to refuse."
+    )
+    events = [
+        diagnostic_event(Severity.warn, warning),
+        diagnostic_event(Severity.warn, warning),
+        diagnostic_event(Severity.error, "probe failed"),
+        diagnostic_event(Severity.info, "just so you know"),
+        merge_event(),
+    ]
+    response = merge_response()
+    monkeypatch.setattr(
+        cli, "Client", lambda **kwargs: FakeClient(response=response, events=events)
+    )
+
+    assert cli.main(["merge", "feature/x"]) == 1
+
+    captured = capsys.readouterr()
+    assert captured.err.splitlines() == [
+        f"warning: {warning}",
+        "error: probe failed",
+    ]
+    # The response still renders exactly as the non-streaming call rendered it.
+    assert captured.out.rstrip("\n") == render_response(response)
+
+
+def test_merge_json_carries_the_crash_recovery_decision_only_when_one_was_made(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # An op that decided nothing omits the key, which keeps every pre-DR-1
+    # payload -- the cli_parity fixture included -- byte-identical.
+    undecided = merge_response()
+    assert undecided.crash_recovery is None
+    assert "crash_recovery" not in json.loads(
+        render_response(undecided, json_mode=True)
+    )["merge"]
+
+    for gap, label in [
+        (MergeCrashRecoveryGap.no_durable_identity, "NoDurableIdentity"),
+        (MergeCrashRecoveryGap.remote_filesystem, "RemoteFilesystem"),
+        (MergeCrashRecoveryGap.volatile_filesystem, "VolatileFilesystem"),
+    ]:
+        decided = merge_response()
+        decided.crash_recovery = MergeCrashRecovery(False, "btrfs", gap)
+        monkeypatch.setattr(
+            cli, "Client", lambda _r=decided, **kwargs: FakeClient(response=_r)
+        )
+        cli.main(["--json", "merge", "feature/x"])
+        rendered = json.loads(capsys.readouterr().out)["merge"]["crash_recovery"]
+        assert rendered == {"supported": False, "filesystem": "btrfs", "gap": label}
+
+    supported = merge_response()
+    supported.crash_recovery = MergeCrashRecovery(True, None, None)
+    assert json.loads(render_response(supported, json_mode=True))["merge"][
+        "crash_recovery"
+    ] == {"supported": True, "filesystem": None, "gap": None}
+
+
+def diagnostic_event(severity: Severity, message: str) -> OperationEvent:
+    event = merge_event()
+    event.kind = EventKind.diagnostic
+    event.severity = severity
+    event.message = message
+    event.member_id = None
+    event.member_path = None
+    event.merge_member = None
+    return event
 
 
 def test_merge_human_rendering_reports_open_status_and_structured_drift() -> None:

@@ -193,6 +193,19 @@ def test_merge_builds_first_class_start_request() -> None:
     assert request.op is MergeOp.start
     assert request.source_ref == "feature/refactor"
     assert request.meta.dry_run is True
+    # DR-1: absent, the request carries no opinion about crash recovery.
+    assert request.filesystem_strict is None
+
+
+def test_merge_forwards_filesystem_strict_to_the_request() -> None:
+    bridge = FakeBridge()
+    client = Client(root=Path("/tmp/workspace"), bridge=bridge)
+
+    asyncio.run(client.merge("feature/refactor", filesystem_strict=True))
+
+    request = bridge.calls[0][3]
+    assert isinstance(request, MergeRequest)
+    assert request.filesystem_strict is True
 
 
 def test_create_workspace_without_root_defaults_to_cwd(tmp_path: Path, monkeypatch) -> None:

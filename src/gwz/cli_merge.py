@@ -13,7 +13,7 @@ from .cli_shared import (
     CommandRegistry,
     exit_code_for_response,
 )
-from .protocol.generated import MergeMode, MergeOp
+from .protocol.generated import EventKind, MergeMode, MergeOp, Severity
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,6 +89,14 @@ def configure_merge(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Always create a merge commit, even when a fast-forward is possible",
     )
+    # DR-1: crash recovery is a capability, not a gate. A start on a volume that
+    # cannot prove durable identity warns and continues; this flag asks core to
+    # refuse instead. Start only -- core stays the authority.
+    parser.add_argument(
+        "--filesystem-strict",
+        action="store_true",
+        help="Refuse to merge when crash recovery is unsupported on this filesystem",
+    )
     parser.add_argument(
         "-m", "--message", help="Use a custom merge commit-message body"
     )
@@ -108,6 +116,14 @@ async def handle_merge(context: CommandContext) -> Any:
     if context.args.ff_only and context.args.no_ff:
         raise CliUsageError(
             "--ff-only and --no-ff are mutually exclusive", code="InvalidRequest"
+        )
+    # The crash-recovery decision belongs to the start that opens the attempt;
+    # a later lifecycle op uses what that start opened and never consults the
+    # flag, so offering it there is a request error, not a silent no-op.
+    if context.args.filesystem_strict and lifecycle_ops > 0:
+        raise CliUsageError(
+            "--filesystem-strict is accepted only when starting a merge",
+            code="InvalidRequest",
         )
     op = (
         MergeOp.resume
@@ -134,6 +150,7 @@ async def handle_merge(context: CommandContext) -> Any:
         "mode": mode,
         "message": context.args.message,
         "preserve": True if context.args.preserve else None,
+        "filesystem_strict": True if context.args.filesystem_strict else None,
         **context.meta,
     }
     if context.args.jsonl:
@@ -143,10 +160,53 @@ async def handle_merge(context: CommandContext) -> Any:
         response = await handle.result()
         _write_stdout(render_response(response, json_mode=True) + "\n")
         return MergeCliResult(exit_code=exit_code_for_response(response))
-    return await context.client.merge(
-        *merge_args,
-        **merge_kwargs,
-    )
+    if not _human_output(context.args):
+        # Json and porcelain read the response's `crash_recovery`, exactly as
+        # the Rust CLI's `NullSink` leaves them to (charter §3.5). Nothing to
+        # stream for, so the plain call stands unchanged.
+        return await context.client.merge(*merge_args, **merge_kwargs)
+    # DR-1 §3.5: core has no stderr, so its diagnostics (the crash-recovery
+    # warning, for one) reach a person only if this driver streams the event
+    # channel. Human mode therefore submits and drains events as they arrive,
+    # then renders the retained response exactly as the plain call did.
+    handle = await context.client.merge_stream(*merge_args, **merge_kwargs)
+    echo = DiagnosticEcho()
+    async for event in handle.events():
+        echo.write(event)
+    return await handle.result()
+
+
+def _human_output(args: argparse.Namespace) -> bool:
+    return not (args.json or args.jsonl or getattr(args, "porcelain", False))
+
+
+class DiagnosticEcho:
+    """Prints core's warn/error diagnostics once each, as they arrive."""
+
+    def __init__(self) -> None:
+        self._printed: set[str] = set()
+
+    def write(self, event: Any) -> None:
+        line = self.line_for(event)
+        if line is not None:
+            print(line, file=sys.stderr)
+
+    def line_for(self, event: Any) -> str | None:
+        """The line to print, or None when the event is not an echoable
+        diagnostic or its exact text was already printed this invocation."""
+        if event.kind is not EventKind.diagnostic or not event.message:
+            return None
+        if event.severity is Severity.warn:
+            label = "warning"
+        elif event.severity is Severity.error:
+            label = "error"
+        else:
+            return None
+        line = f"{label}: {event.message}"
+        if line in self._printed:
+            return None
+        self._printed.add(line)
+        return line
 
 
 def _write_jsonl(value: dict[str, Any]) -> None:
