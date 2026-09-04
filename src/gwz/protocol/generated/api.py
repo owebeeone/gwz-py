@@ -995,6 +995,7 @@ class MergeCrashRecovery:
     supported: bool
     filesystem: str | None
     gap: MergeCrashRecoveryGap | None
+    handles_ok: bool | None
 
 @dataclass(slots=True)
 class MergeRepoSummary:

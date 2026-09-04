@@ -145,9 +145,21 @@ def test_merge_human_mode_echoes_core_diagnostics_once_each(
         "crash recovery is unsupported on btrfs (no durable filesystem identity)."
         " Merge will continue. Use --filesystem-strict to refuse."
     )
+    # M5d: on a volume that also fails the handle probe gwz-core appends the
+    # reverse-door limit to that SAME sentence rather than raising a second
+    # warning class. The echo is verbatim, so the driver needs no clause of its
+    # own -- but the two forms are different strings and must not collapse into
+    # one another under the dedup.
+    handle_fail_warning = (
+        "crash recovery is unsupported on overlay (no durable filesystem"
+        " identity). Merge will continue. Use --filesystem-strict to refuse."
+        " Selected-root and --preserve abort may refuse until the workspace is"
+        " on a handle-capable volume."
+    )
     events = [
         diagnostic_event(Severity.warn, warning),
         diagnostic_event(Severity.warn, warning),
+        diagnostic_event(Severity.warn, handle_fail_warning),
         diagnostic_event(Severity.error, "probe failed"),
         diagnostic_event(Severity.info, "just so you know"),
         merge_event(),
@@ -162,6 +174,7 @@ def test_merge_human_mode_echoes_core_diagnostics_once_each(
     captured = capsys.readouterr()
     assert captured.err.splitlines() == [
         f"warning: {warning}",
+        f"warning: {handle_fail_warning}",
         "error: probe failed",
     ]
     # The response still renders exactly as the non-streaming call rendered it.
@@ -185,19 +198,45 @@ def test_merge_json_carries_the_crash_recovery_decision_only_when_one_was_made(
         (MergeCrashRecoveryGap.volatile_filesystem, "VolatileFilesystem"),
     ]:
         decided = merge_response()
-        decided.crash_recovery = MergeCrashRecovery(False, "btrfs", gap)
+        decided.crash_recovery = MergeCrashRecovery(False, "btrfs", gap, True)
         monkeypatch.setattr(
             cli, "Client", lambda _r=decided, **kwargs: FakeClient(response=_r)
         )
         cli.main(["--json", "merge", "feature/x"])
         rendered = json.loads(capsys.readouterr().out)["merge"]["crash_recovery"]
-        assert rendered == {"supported": False, "filesystem": "btrfs", "gap": label}
+        assert rendered == {
+            "supported": False,
+            "filesystem": "btrfs",
+            "gap": label,
+            "handles_ok": True,
+        }
+
+    # M5d: below the bar the handle answer is machine truth too, so a consumer
+    # never has to read the stderr sentence to learn the reverse doors may
+    # refuse here.
+    handle_fail = merge_response()
+    handle_fail.crash_recovery = MergeCrashRecovery(
+        False, "overlay", MergeCrashRecoveryGap.no_durable_identity, False
+    )
+    assert json.loads(render_response(handle_fail, json_mode=True))["merge"][
+        "crash_recovery"
+    ] == {
+        "supported": False,
+        "filesystem": "overlay",
+        "gap": "NoDurableIdentity",
+        "handles_ok": False,
+    }
 
     supported = merge_response()
-    supported.crash_recovery = MergeCrashRecovery(True, None, None)
+    supported.crash_recovery = MergeCrashRecovery(True, None, None, None)
     assert json.loads(render_response(supported, json_mode=True))["merge"][
         "crash_recovery"
-    ] == {"supported": True, "filesystem": None, "gap": None}
+    ] == {
+        "supported": True,
+        "filesystem": None,
+        "gap": None,
+        "handles_ok": None,
+    }
 
 
 def diagnostic_event(severity: Severity, message: str) -> OperationEvent:

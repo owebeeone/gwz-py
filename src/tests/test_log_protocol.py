@@ -22,7 +22,14 @@ from gwz.protocol.codec import decode_message, encode_message, from_wire, schema
 # to gwz-core protocol/check_log_additive.py and
 # scripts/check_protocol_drift.py.
 #   was: d0c205c8767f8d54d32ead2f676a05077d849f6a12278d9de52b3c132c3c9372
-PRE_LOG_WIRE_SHA256 = "7a66e301c5c0147a12c59b2cddb6f2ebc1515ef4d65297ec53c3b312a3769697"
+#
+# Moved deliberately again on 2026-09-04 following gwz-core's M5d step (3)
+# (gwz-dev dev-docs/GwzM5-8M5d-Charter.md §3/§10.2), which adds exactly one
+# optional field, MergeCrashRecovery.handles_ok (slot 4). No version bump and
+# no pre-existing slot changed. The projection strips only `Log*`, so
+# MergeCrashRecovery is inside it and this pin moves with the field.
+#   was: 7a66e301c5c0147a12c59b2cddb6f2ebc1515ef4d65297ec53c3b312a3769697
+PRE_LOG_WIRE_SHA256 = "71bf6b9223ba6d2b4d12049e425e567254ca79396d67922be737c86c6dd97a40"
 
 
 def _round_trip(message_name: str, value: object) -> None:

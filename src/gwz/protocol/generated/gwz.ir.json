@@ -4864,6 +4864,17 @@
           "optional": true,
           "transient": false,
           "merge": null
+        },
+        {
+          "name": "handles_ok",
+          "tag": 4,
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
         }
       ]
     },

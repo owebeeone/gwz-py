@@ -136,12 +136,29 @@ def workspace_bytes(root: Path) -> dict[str, bytes]:
     }
 
 
+# The charter §2 sentence for a pre-0.14 (v0) envelope, frozen verbatim.
+PRE_014_REFUSAL = (
+    "this is a pre-0.14 merge; use gwz 0.13.0 (the last release before 0.14) "
+    "to continue or abort"
+)
+# The open-v1 remedy, deliberately SUPPRESSED for a v0 envelope.
+OPEN_V1_REMEDY = "use merge status, merge continue, or merge abort"
+
+
 def write_open_record(root: Path, state: str = "awaiting_resolution") -> None:
+    """Plant one OPEN v1 record, the only merge lifecycle 0.14 runs.
+
+    M5d (`GwzM5-8M5d-Charter.md` §2) deleted the v0 engine, so this fixture is
+    v1: what the callers below are testing is the open-operation FAILURE
+    LIFECYCLE -- one started/finished pair, one typed error, no mutation -- and
+    only a v1 record still reaches that gate. The v0 envelope's own answer is
+    pinned by `test_pre_014_open_record_is_a_third_occupancy` below.
+    """
     record_dir = root / ".gwz" / "merge"
     record_dir.mkdir(parents=True, exist_ok=True)
     (record_dir / "merge_test.yaml").write_text(
-        f"""schema: gwz.merge-operation/v0
-record_schema_version: 0
+        f"""schema: gwz.merge-operation/v1
+record_schema_version: 1
 writer_version: test
 workspace_id: ws_test
 merge_id: merge_test
@@ -152,6 +169,28 @@ created_at: now
 baseline: {{ lock_sha256: lock, manifest_sha256: manifest }}
 selected_targets: []
 participants: {{}}
+""",
+        encoding="utf-8",
+    )
+
+
+def write_pre_014_record(root: Path) -> None:
+    """Plant the pre-0.14 (v0) envelope this binary refuses to act on."""
+    record_dir = root / ".gwz" / "merge"
+    record_dir.mkdir(parents=True, exist_ok=True)
+    (record_dir / "merge_test.yaml").write_text(
+        """schema: gwz.merge-operation/v0
+record_schema_version: 0
+writer_version: test
+workspace_id: ws_test
+merge_id: merge_test
+operation_id: op_original
+state: awaiting_resolution
+source_ref: feature/source
+created_at: now
+baseline: { lock_sha256: lock, manifest_sha256: manifest }
+selected_targets: []
+participants: {}
 """,
         encoding="utf-8",
     )
@@ -281,6 +320,61 @@ def test_open_operation_failure_completes_after_one_lifecycle_without_mutation(
     assert workspace_bytes(tmp_path) == before
 
 
+@pytest.mark.parametrize("submitted", [False, True], ids=["synchronous", "submitted"])
+@pytest.mark.parametrize("dry_run", [False, True], ids=["real", "dry-run"])
+def test_pre_014_open_record_is_a_third_occupancy(
+    tmp_path: Path,
+    submitted: bool,
+    dry_run: bool,
+) -> None:
+    """M5d §2: a v0 envelope is neither a merge lifecycle nor idle.
+
+    Not parametrized on state: classification stops at the envelope header, so
+    0.14 never constructs a v0 body and the record's `state` cannot change the
+    answer. The failure lifecycle is the same one an open v1 record produces --
+    one started/finished pair, one typed error, nothing written -- but the
+    sentence is the charter's, exactly, with no merge id and with the open-v1
+    remedy suppressed.
+    """
+    native = native_module()
+    client = native_client(tmp_path)
+    asyncio.run(
+        client.create_workspace(workspace_id=f"ws_pre014_{submitted}_{dry_run}")
+    )
+    write_pre_014_record(tmp_path)
+    request = merge_request(
+        tmp_path, f"req_pre014_{submitted}_{dry_run}", MergeOp.start
+    )
+    request.source_ref = "feature/source"
+    request.meta.dry_run = dry_run
+    operation_id = f"op_{request.meta.request_id}"
+    before = workspace_bytes(tmp_path)
+
+    if submitted:
+        accepted = submit(native, request)
+        assert accepted.response.meta.operation_id == operation_id
+    else:
+        with pytest.raises(RuntimeError) as failure:
+            native.call(
+                "merge",
+                "MergeRequest",
+                "MergeResponse",
+                encode_message("MergeRequest", request),
+            )
+        assert getattr(failure.value, "code") == "OpenOperation"
+
+    result = assert_failure_lifecycle(
+        native,
+        operation_id,
+        GwzErrorCode.open_operation,
+        PRE_014_REFUSAL,
+    )
+    assert result.errors[0].message == PRE_014_REFUSAL
+    assert OPEN_V1_REMEDY not in result.errors[0].message
+    assert "merge_test" not in result.errors[0].message
+    assert workspace_bytes(tmp_path) == before
+
+
 @pytest.mark.parametrize(
     ("failure_kind", "expected_code", "native_code", "message_fragment"),
     [
@@ -291,10 +385,14 @@ def test_open_operation_failure_completes_after_one_lifecycle_without_mutation(
             "not found",
         ),
         (
+            # M5d: the open record is classified from its HEADER alone, so a
+            # malformed record never reaches the store decoder's
+            # "invalid YAML: <detail>" and answers with the envelope reader's
+            # sentence instead. Same code, same lifecycle, new text.
             "store",
             GwzErrorCode.merge_record_unreadable,
             "MergeRecordUnreadable",
-            "invalid YAML",
+            "record is not a strict YAML document",
         ),
     ],
 )

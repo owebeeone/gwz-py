@@ -132,10 +132,16 @@ def merge_response_json(response: Any) -> dict[str, Any]:
 
 
 def merge_crash_recovery_json(value: Any) -> dict[str, Any]:
+    # M5d: `handles_ok` rides the same object, rendered exactly as its two
+    # optional siblings are -- present as a key, `null` when gwz-core left it
+    # absent (which it does above the bar). The Rust CLI's
+    # `merge_crash_recovery_json` renders the same three optional keys the same
+    # way, and the cross-driver parity test compares the two payloads.
     return {
         "supported": value.supported,
         "filesystem": value.filesystem,
         "gap": enum_label(value.gap) if value.gap is not None else None,
+        "handles_ok": value.handles_ok,
     }
 
 
