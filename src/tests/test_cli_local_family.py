@@ -25,7 +25,7 @@ from typing import Any
 
 import pytest
 
-from gwz import cli, cli_local
+from gwz import cli, cli_local, cli_local_family
 from gwz.cli import build_parser
 from gwz.cli_shared import (
     CliUsageError,
@@ -443,6 +443,11 @@ def test_parity_rows_scoped_away_from_this_driver_are_the_known_ones(key: str) -
     "argv,expected",
     [
         (["clone", "--local", "--name", "A", "dest", "extra"], "one destination"),
+        # Ruling 4 of 2026-09-06: an empty --name refuses at the driver, before
+        # a workspace discovery and a family read learn the same thing from
+        # core's own shape check. A shared fixture row now, kept here too as
+        # the cover for a checkout without the gwz-core sibling.
+        (["clone", "--local", "--name", ""], "--name"),
         (["clone", "--name", "A"], "--local"),
         (["clone", "--clean", "https://example.invalid/ws.git"], "--local"),
         (["clone", "--bare", "https://example.invalid/ws.git"], "--local"),
@@ -495,13 +500,22 @@ def test_merge_remote_may_precede_the_verb() -> None:
     assert getattr(request.meta.policy, "remote", None) is None
 
 
-def test_push_keeps_the_family_token_off_the_request_field_set() -> None:
+def test_push_encodes_the_remote_token_once_and_has_no_family_field() -> None:
+    # Operator ruling 4 of 2026-09-06 (design §7, §11 item 20): the push token
+    # goes in `PushRequest.remote` and nowhere else -- `OperationPolicy.remote`
+    # stays absent, so core's request-over-policy precedence never has two
+    # tokens to reconcile. The shared fixture's two push rows pin the same
+    # thing; this is the cover for a checkout without the gwz-core sibling.
+    # `local_source_name` is merge's field, not push's: `push` reaches a family
+    # member through the same `remote` token a git remote uses.
     bridge = RecordingBridge()
 
     run_cli(["push", "--remote", "hub"], bridge)
 
     request = sole_request(bridge)
     assert isinstance(request, PushRequest)
+    assert request.remote == "hub"
+    assert getattr(request.meta.policy, "remote", None) is None
     assert not hasattr(request, "local_source_name")
 
 
@@ -709,6 +723,12 @@ def test_unknown_local_reaches_a_person_through_the_merge_renderer(
 # --------------------------------------------------------------------------
 
 
+#: The root of the design §8.1 family, as `LocalFamilyResponse.root_path`
+#: carries it: the index directory core observed, reached through the pointer
+#: when the listing runs in a clone.
+DESIGN_ROOT = "/Users/limbo/gwz-dev"
+
+
 def member_entry(
     name: str,
     *,
@@ -718,12 +738,15 @@ def member_entry(
     path: str | None = None,
     last_error: str | None = None,
 ) -> LocalFamilyMemberEntry:
+    # `path` is root-relative on the wire (design §7, §11 item 19): `.` for the
+    # root and a normalised root-escaping path for every clone, which is what
+    # `gwz_family_model` records and refuses to spell any other way.
     return LocalFamilyMemberEntry(
         name=name,
         kind=kind,
         recorded_state=recorded,
         observed_state=observed,
-        path=path if path is not None else f"/Users/limbo/gwz-dev-{name}",
+        path=path if path is not None else f"../gwz-dev-{name}",
         last_error=last_error,
     )
 
@@ -732,6 +755,7 @@ class FamilyListingBridge(RecordingBridge):
     """Answers `local_family` with a populated `members` payload."""
 
     members: list[LocalFamilyMemberEntry] = []
+    root_path: str | None = None
 
     async def call(
         self,
@@ -744,16 +768,19 @@ class FamilyListingBridge(RecordingBridge):
         return LocalFamilyResponse(
             response=envelope(status=self.status, message=self.message),
             members=list(self.members),
-            # LCM1.0c follow-up 3 (operator ruling 2026-09-06): the family
-            # root's path a renderer joins with each member's `path`; the
-            # listing tests pin the root-relative column, so it is absent here.
-            root_path=None,
+            # LCM1.0c follow-up 3 (operator ruling 3 of 2026-09-06): the family
+            # root's path, which a renderer joins with each member's
+            # root-relative `path`.
+            root_path=self.root_path,
         )
 
 
-def listing_client_factory(members: list[LocalFamilyMemberEntry]) -> Any:
+def listing_client_factory(
+    members: list[LocalFamilyMemberEntry], root_path: str | None = DESIGN_ROOT
+) -> Any:
     bridge = FamilyListingBridge(message="ok")
     bridge.members = members
+    bridge.root_path = root_path
 
     def factory(**kwargs: Any) -> Client:
         return Client(bridge=bridge)
@@ -763,7 +790,7 @@ def listing_client_factory(members: list[LocalFamilyMemberEntry]) -> Any:
 
 #: The family of design §8.1, listed from D.
 DESIGN_FAMILY = [
-    member_entry("root", path="/Users/limbo/gwz-dev"),
+    member_entry("root", path="."),
     member_entry("A"),
     member_entry("B"),
     member_entry("C"),
@@ -775,6 +802,9 @@ DESIGN_FAMILY = [
 def test_local_list_renders_the_design_table(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    # Design §8.1: the absolute paths in the sample listing are literal, not
+    # the driver's guess. Every `path` below is root-relative, exactly as the
+    # wire carries it, and the column is the join with `root_path`.
     monkeypatch.setattr(cli, "Client", listing_client_factory(DESIGN_FAMILY))
 
     exit_code = cli.main(["local", "list"])
@@ -790,6 +820,48 @@ def test_local_list_renders_the_design_table(
     )
 
 
+def listing_paths(
+    members: list[LocalFamilyMemberEntry], root_path: str | None
+) -> list[str]:
+    """The path column `render_family_listing` produces, row by row."""
+
+    rendered = cli_local_family.render_family_listing(
+        LocalFamilyResponse(
+            response=envelope(), members=members, root_path=root_path
+        )
+    )
+    return [line.split()[-1] for line in rendered.splitlines()]
+
+
+@pytest.mark.parametrize(
+    "path,expected",
+    [
+        # Design §8.1: the root's own root-relative path is `.`.
+        (".", "/Users/limbo/gwz-dev"),
+        ("../gwz-dev-A", "/Users/limbo/gwz-dev-A"),
+        ("../lanes/gwz-dev-E", "/Users/limbo/lanes/gwz-dev-E"),
+        ("../../elsewhere/ws", "/Users/elsewhere/ws"),
+    ],
+)
+def test_local_list_joins_the_member_path_against_the_observed_root(
+    path: str, expected: str
+) -> None:
+    # `gwz_family_model` records a normalised, root-escaping member path, so
+    # the join only has to resolve the leading `..` run -- lexically, without
+    # touching a filesystem, because the response is all the renderer has.
+    assert listing_paths([member_entry("A", path=path)], DESIGN_ROOT) == [expected]
+
+
+@pytest.mark.parametrize("path", [".", "../gwz-dev-A"])
+def test_local_list_without_a_root_path_renders_the_relative_path_unchanged(
+    path: str,
+) -> None:
+    # `root_path` is absent exactly when `members` is (design §7), so a
+    # populated listing without one is a core that has not caught up. Show the
+    # path core did send rather than invent a root for it.
+    assert listing_paths([member_entry("A", path=path)], None) == [path]
+
+
 def test_local_list_shows_a_divergent_observed_state_and_the_last_error(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -802,7 +874,7 @@ def test_local_list_shows_a_divergent_observed_state_and_the_last_error(
         "Client",
         listing_client_factory(
             [
-                member_entry("root", path="/Users/limbo/gwz-dev"),
+                member_entry("root", path="."),
                 member_entry(
                     "B",
                     recorded=LocalMemberState.creating,
@@ -883,15 +955,19 @@ def test_local_list_state_cell_covers_every_observed_state(
     assert line.split() == ["A", "checkout", expected, "/Users/limbo/gwz-dev-A"]
 
 
-def test_local_list_json_carries_every_member_field(
+def test_local_list_json_carries_every_member_field_and_the_root_path(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    # The machine form carries both wire fields faithfully: `root_path` as core
+    # sent it and each member's `path` still root-relative. The join is a
+    # presentation of the human table, never a rewrite of the payload -- a
+    # reader that wants absolute paths has both halves and can join them too.
     monkeypatch.setattr(
         cli,
         "Client",
         listing_client_factory(
             [
-                member_entry("root", path="/Users/limbo/gwz-dev"),
+                member_entry("root", path="."),
                 member_entry(
                     "hub",
                     kind=LocalMemberKind.bare,
@@ -909,13 +985,14 @@ def test_local_list_json_carries_every_member_field(
     assert exit_code == 0
     assert captured.err == ""
     payload = json.loads(captured.out)
+    assert payload["root_path"] == "/Users/limbo/gwz-dev"
     assert payload["members"] == [
         {
             "name": "root",
             "kind": "checkout",
             "recorded_state": "ready",
             "observed_state": "ready",
-            "path": "/Users/limbo/gwz-dev",
+            "path": ".",
             "last_error": None,
         },
         {
@@ -923,11 +1000,62 @@ def test_local_list_json_carries_every_member_field(
             "kind": "bare",
             "recorded_state": "disposing",
             "observed_state": "interrupted_disposal",
-            "path": "/Users/limbo/gwz-dev-hub",
+            "path": "../gwz-dev-hub",
             "last_error": "disposal was interrupted after the pointer",
         },
     ]
     assert payload["response"]["meta"]["action"] == "local_family"
+
+
+@pytest.mark.parametrize("machine_flag", ["--json", "--jsonl"])
+def test_local_list_machine_output_spells_every_enum_in_snake_case(
+    machine_flag: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Operator ruling 2 of 2026-09-06 (design §11 item 18).
+
+    Machine output spells every enum value in the protocol's own snake_case,
+    in both drivers. This driver already did; the assertion is against the
+    generated enum's `name`, not a word spelled out here, so a renderer that
+    invented its own vocabulary -- PascalCase or otherwise -- fails even if it
+    happened to agree on these three values.
+    """
+
+    entry = member_entry(
+        "hub",
+        kind=LocalMemberKind.bare,
+        recorded=LocalMemberState.disposing,
+        observed=LocalObservedState.interrupted_disposal,
+    )
+    monkeypatch.setattr(cli, "Client", listing_client_factory([entry]))
+
+    exit_code = cli.main([machine_flag, "local", "list"])
+
+    assert exit_code == 0
+    member = json.loads(capsys.readouterr().out)["members"][0]
+    assert member["kind"] == LocalMemberKind.bare.name == "bare"
+    assert member["recorded_state"] == LocalMemberState.disposing.name == "disposing"
+    assert (
+        member["observed_state"]
+        == LocalObservedState.interrupted_disposal.name
+        == "interrupted_disposal"
+    )
+
+
+def test_local_list_json_carries_an_absent_root_path_as_null(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(
+        cli, "Client", listing_client_factory([member_entry("A")], root_path=None)
+    )
+
+    exit_code = cli.main(["--json", "local", "list"])
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["root_path"] is None
+    assert [member["path"] for member in payload["members"]] == ["../gwz-dev-A"]
 
 
 # --------------------------------------------------------------------------

@@ -18,8 +18,11 @@ the same file, and neither driver keeps a copy.
 
 This module also renders ``gwz local list`` (design §8.1), because that is
 the one response whose human form is a table of its own payload rather than
-an envelope message. ``cli.run`` calls :func:`render_family_listing` for it;
-``--json`` takes the generic protocol document unchanged.
+an envelope message. ``cli.run`` calls :func:`render_family_listing` for it,
+which joins ``LocalFamilyResponse.root_path`` with each member's
+root-relative ``path`` for the human table; ``--json`` takes the generic
+protocol document unchanged, so a machine reader gets both wire fields as
+core sent them.
 
 ``clone`` and ``merge`` are registered by ``cli_local`` and ``cli_merge``,
 which this lane does not own, and argparse rejects a second subparser with
@@ -31,6 +34,7 @@ unchanged.
 from __future__ import annotations
 
 import argparse
+import os.path
 from collections.abc import Callable
 from dataclasses import replace
 from typing import Any
@@ -373,14 +377,18 @@ def render_family_listing(response: Any) -> str:
     the two disagree -- neither state may be silently dropped in favour of
     the other. A recorded `last_error` follows its row on its own line, where
     free text cannot break the column alignment.
+
+    The path column is :func:`member_display_path`: the absolute paths in the
+    §8.1 sample are the response's own two halves joined, never a guess.
     """
 
+    root_path = getattr(response, "root_path", None)
     rows = [
         (
             entry.name,
             _enum_name(entry.kind),
             _state_cell(entry),
-            entry.path,
+            member_display_path(root_path, entry.path),
             entry.last_error,
         )
         for entry in response.members
@@ -397,6 +405,34 @@ def render_family_listing(response: Any) -> str:
         if last_error:
             lines.append(f"  last error: {last_error}")
     return "\n".join(lines)
+
+
+def member_display_path(root_path: str | None, path: str) -> str:
+    """One member's path as a person reads it (design §8.1, §11 item 19).
+
+    A member's `path` is root-relative on the wire -- `.` for the root, a
+    normalised root-escaping path such as `../gwz-dev-A` for a clone -- and
+    `LocalFamilyResponse.root_path` is the root as core observed it, reached
+    through this workspace's pointer when the listing runs in a clone. The
+    absolute paths of the §8.1 sample listing are those two joined, which is
+    why they are literal: both halves came off the wire.
+
+    The join is lexical. It resolves the leading `..` run against the root's
+    own directory names and nothing else: no filesystem is touched, no symlink
+    is followed, no path is canonicalized. Deciding whether two spellings name
+    one directory belongs to core, which has the filesystem (design §3.1).
+
+    An absent `root_path` -- an older core, or one that answered `list` without
+    a family -- renders the relative path unchanged. Naming a root the response
+    did not carry would be exactly the guess the design forbids.
+    """
+
+    if not root_path:
+        return path
+    # The wire spells a member path with `/` whatever the host is
+    # (`gwz_family_model::normalize`), so the components are re-joined with the
+    # platform's own separator, which is how `root_path` is already spelled.
+    return os.path.normpath(os.path.join(root_path, *path.split("/")))
 
 
 def _state_cell(entry: Any) -> str:
