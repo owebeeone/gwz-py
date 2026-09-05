@@ -49,8 +49,25 @@ DEFAULT_IR = ROOT / "src" / "gwz" / "protocol" / "generated" / "gwz.ir.json"
 # items above -- and the previous pin reproduced exactly on the pre-allocation
 # schema (gwz-core 87207c2). The two pins are one fingerprint of one schema.
 #   was: sha256:71bf6b9223ba6d2b4d12049e425e567254ca79396d67922be737c86c6dd97a40
+#
+# Moved deliberately again on 2026-09-05 by LCM1.0c follow-up 2 (gwz-dev
+# dev-docs/GwzLocalCloneDesign.md revision 9 §7 and §11 items 11-13, the
+# operator's rulings on the LCM1.0c checkpoint's §7 questions 1-3), which
+# allocates CloneLocalWorkspaceRequest.copy_source (optional, tag 6),
+# LocalFamilyResponse.members (tag 2) with its LocalFamilyMemberEntry message
+# and the LocalMemberKind / LocalMemberState / LocalObservedState enums, and
+# GwzErrorCode.unknown_local (62). `pre_log_projection` strips only `Log*`
+# items, so all of these are inside the projection and the pin moves with
+# them. MEASURED additive, not assumed: gwz-core's own
+# protocol/check_log_additive.py rendered the projection on both trees and
+# diffed them -- 128 added lines, 0 removed, 5 hunks, every added object one
+# of the items above -- and the previous pin reproduced exactly on the
+# pre-allocation schema (gwz-core 0d7b53d). The three pins (this one,
+# gwz-core protocol/check_log_additive.py and src/tests/test_log_protocol.py)
+# are one fingerprint of one schema.
+#   was: sha256:3c34bd741b32f366f63928211eec83c920b5b0ca0ed1d847447f4d3428c22031
 PRE_LOG_WIRE_FINGERPRINT = (
-    "sha256:3c34bd741b32f366f63928211eec83c920b5b0ca0ed1d847447f4d3428c22031"
+    "sha256:26f0d16ffebdcdc26bbbe682a6347688781cd202694333dbb0c066d087fb6b4e"
 )
 
 

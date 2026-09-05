@@ -49,6 +49,28 @@ def test_repo_member_lifecycle_protocol_is_pinned() -> None:
     assert generated.GwzErrorCode.deprecated_operation.value == 37
     assert generated.GwzErrorCode.unsupported_record_version.value == 46
     assert generated.GwzErrorCode.terminal_rollback_mismatch.value == 61
+    # LCM1.0c follow-up 2 (operator rulings 2026-09-05, gwz-dev
+    # dev-docs/GwzLocalCloneDesign.md revision 9 §7, §11 items 11-13): the
+    # `--from` wire name, the `gwz local list` payload enums (mirroring
+    # gwz_family_model::{MemberKind, MemberState, ListState} in declaration
+    # order) and the family-only merge miss.
+    assert "copy_source" in generated.CloneLocalWorkspaceRequest.__dataclass_fields__
+    assert "members" in generated.LocalFamilyResponse.__dataclass_fields__
+    assert generated.LocalMemberKind.checkout.value == 0
+    assert generated.LocalMemberKind.bare.value == 1
+    assert generated.LocalMemberState.creating.value == 0
+    assert generated.LocalMemberState.ready.value == 1
+    assert generated.LocalMemberState.disposing.value == 2
+    assert [state.value for state in generated.LocalObservedState] == [0, 1, 2, 3, 4, 5, 6, 7]
+    assert generated.LocalObservedState.ready.value == 0
+    assert generated.LocalObservedState.incomplete.value == 1
+    assert generated.LocalObservedState.interrupted_disposal.value == 2
+    assert generated.LocalObservedState.missing.value == 3
+    assert generated.LocalObservedState.pointer_removed.value == 4
+    assert generated.LocalObservedState.mismatched.value == 5
+    assert generated.LocalObservedState.malformed.value == 6
+    assert generated.LocalObservedState.unobserved.value == 7
+    assert generated.GwzErrorCode.unknown_local.value == 62
     assert generated.MergeRecordRequiredWave.a1.value == 0
     assert generated.MergeRecordRequiredWave.a4.value == 3
     pinned = (

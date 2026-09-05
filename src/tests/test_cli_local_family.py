@@ -67,6 +67,11 @@ RESPONSE_TYPES: dict[str, type[Any]] = {
 }
 
 RESPONSE_EXTRAS: dict[type[Any], dict[str, Any]] = {
+    # LCM1.0c follow-up 2 (operator ruling 2026-09-05): the `gwz local list`
+    # payload; empty for every other op and whenever the envelope carries an
+    # error (design §7). The list rendering of a non-empty payload is lane
+    # CP's.
+    LocalFamilyResponse: {"members": []},
     MergeResponse: {
         "merge_id": None,
         "state": MergeOperationState.completed,

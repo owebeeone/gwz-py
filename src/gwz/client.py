@@ -380,6 +380,11 @@ class Client:
             dest=None if dest is None else str(dest),
             mode=_enum_value(LocalCloneMode, mode),
             branch=branch,
+            # Tag 6 `copy_source` (operator ruling 2026-09-05, design §7 and
+            # §11 item 11): the `--from` selector, which the CLI still refuses
+            # before encoding; lane CP wires it in. Runtime-required field only
+            # (LCM1.0c follow-up 2): the generated dataclass has no default.
+            copy_source=None,
         )
         return await self._call(
             "clone_local_workspace", request, CloneLocalWorkspaceResponse

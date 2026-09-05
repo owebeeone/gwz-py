@@ -96,6 +96,25 @@ class LocalFamilyOp(Enum):
     dispose = 1
     disband = 2
 
+class LocalMemberKind(Enum):
+    checkout = 0
+    bare = 1
+
+class LocalMemberState(Enum):
+    creating = 0
+    ready = 1
+    disposing = 2
+
+class LocalObservedState(Enum):
+    ready = 0
+    incomplete = 1
+    interrupted_disposal = 2
+    missing = 3
+    pointer_removed = 4
+    mismatched = 5
+    malformed = 6
+    unobserved = 7
+
 class MergeAnalysisKind(Enum):
     up_to_date = 0
     fast_forward = 1
@@ -450,6 +469,7 @@ class GwzErrorCode(Enum):
     terminal_evidence_mismatch = 59
     recovery_evidence_mismatch = 60
     terminal_rollback_mismatch = 61
+    unknown_local = 62
 
 class MergeRecordRequiredWave(Enum):
     a1 = 0
@@ -1286,6 +1306,7 @@ class CloneLocalWorkspaceRequest:
     dest: str | None
     mode: LocalCloneMode
     branch: str | None
+    copy_source: str | None
 
 @dataclass(slots=True)
 class LocalFamilyRequest:
@@ -1419,8 +1440,18 @@ class CloneLocalWorkspaceResponse:
     response: ResponseEnvelope
 
 @dataclass(slots=True)
+class LocalFamilyMemberEntry:
+    name: str
+    kind: LocalMemberKind
+    recorded_state: LocalMemberState
+    observed_state: LocalObservedState
+    path: str
+    last_error: str | None
+
+@dataclass(slots=True)
 class LocalFamilyResponse:
     response: ResponseEnvelope
+    members: list[LocalFamilyMemberEntry]
 
 @dataclass(slots=True)
 class DiffComparison:

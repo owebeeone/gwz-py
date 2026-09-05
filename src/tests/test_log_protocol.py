@@ -29,7 +29,27 @@ from gwz.protocol.codec import decode_message, encode_message, from_wire, schema
 # no pre-existing slot changed. The projection strips only `Log*`, so
 # MergeCrashRecovery is inside it and this pin moves with the field.
 #   was: 7a66e301c5c0147a12c59b2cddb6f2ebc1515ef4d65297ec53c3b312a3769697
-PRE_LOG_WIRE_SHA256 = "71bf6b9223ba6d2b4d12049e425e567254ca79396d67922be737c86c6dd97a40"
+#
+# ESCAPED DEFECT, repaired 2026-09-05 by LCM1.0c follow-up 2: LCM1.0c
+# (gwz-py afcd5a3, 2026-09-05) moved scripts/check_protocol_drift.py to the
+# local-clone allocation's fingerprint 3c34bd74... but left this pin on the
+# pre-LCM1.0c value, so this test was RED on every clean tree from afcd5a3
+# until now. Because the pin below is the fingerprint of the follow-up 2
+# schema, the LCM1.0c move is folded into this one: both allocations
+# (LCM1.0c -- ActionKind 27/28, LocalCloneMode, LocalFamilyOp, the four
+# local-family messages, the two service methods, MergeRequest
+# .local_source_name (slot 9); follow-up 2 -- CloneLocalWorkspaceRequest
+# .copy_source (tag 6), LocalFamilyResponse.members (tag 2) with
+# LocalFamilyMemberEntry and the LocalMemberKind / LocalMemberState /
+# LocalObservedState enums, GwzErrorCode.unknown_local (62)) were MEASURED
+# additive on both trees by gwz-core's protocol/check_log_additive.py (242
+# added / 0 removed, then 128 added / 0 removed). Kept identical to gwz-core
+# protocol/check_log_additive.py and scripts/check_protocol_drift.py; every
+# gwz-py fast suite that pins a protocol hash is listed in the LCM1.0c
+# checkpoint record §11 so a move cannot skip one again.
+#   was: 71bf6b9223ba6d2b4d12049e425e567254ca79396d67922be737c86c6dd97a40
+#   (LCM1.0c's value, never pinned here: 3c34bd741b32f366f63928211eec83c920b5b0ca0ed1d847447f4d3428c22031)
+PRE_LOG_WIRE_SHA256 = "26f0d16ffebdcdc26bbbe682a6347688781cd202694333dbb0c066d087fb6b4e"
 
 
 def _round_trip(message_name: str, value: object) -> None:
