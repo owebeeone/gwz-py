@@ -89,12 +89,19 @@ async def run(args: argparse.Namespace) -> int:
     if cli_merge.is_merge_result(response):
         return response.exit_code
 
-    rendered = render_response(
-        response,
-        json_mode=args.json or getattr(args, "jsonl", False),
-        local_paths=getattr(args, "local", False),
-        porcelain=getattr(args, "porcelain", False),
-    )
+    machine = args.json or getattr(args, "jsonl", False)
+    if not machine and cli_local_family.is_family_listing(response):
+        # `gwz local list` is the one response whose human form is a table of
+        # its own payload (design §8.1); the machine form is the generic
+        # protocol document, so only the human side needs the hook.
+        rendered = cli_local_family.render_family_listing(response)
+    else:
+        rendered = render_response(
+            response,
+            json_mode=machine,
+            local_paths=getattr(args, "local", False),
+            porcelain=getattr(args, "porcelain", False),
+        )
     if rendered:
         print(rendered)
     return _exit_code_for_cli_response(args, response)

@@ -11,7 +11,14 @@ table, and every flag shape the design refuses raises a typed
 :class:`CliUsageError` before a request is encoded. Core owns every other
 refusal: unknown hazard names, family lifecycle state, and the unsupported
 family ``--dry-run``, which is therefore passed through rather than
-pre-empted here.
+pre-empted here. Those rows live in the shared parity fixture
+``src/tests/fixtures/cli_parity/parser_cases.json``; the Rust driver asserts
+against the same file.
+
+This module also renders ``gwz local list`` (design §8.1), because that is
+the one response whose human form is a table of its own payload rather than
+an envelope message. ``cli.run`` calls :func:`render_family_listing` for it;
+``--json`` takes the generic protocol document unchanged.
 
 ``clone`` and ``merge`` are registered by ``cli_local`` and ``cli_merge``,
 which this lane does not own, and argparse rejects a second subparser with
@@ -35,7 +42,12 @@ from .cli_shared import (
     ConfigureParser,
     global_options_parent,
 )
-from .protocol.generated import LocalCloneMode, LocalFamilyOp
+from .protocol.generated import (
+    LocalCloneMode,
+    LocalFamilyOp,
+    LocalMemberState,
+    LocalObservedState,
+)
 
 #: Design §5.2 hazard vocabulary. Core validates the names; the CLI only
 #: refuses a force that names nothing at all.
@@ -180,18 +192,23 @@ async def handle_clone_local(context: CommandContext) -> Any:
             "clone --local -b <branch> requires --clean or --bare",
             code="InvalidRequest",
         )
-    if args.from_source is not None:
-        # Design §7 holds `CloneLocalWorkspaceRequest` tag 6 unallocated
-        # pending an operator decision on its wire name, so there is no field
-        # to encode `--from` into yet.
+    if args.from_source is not None and not args.from_source:
+        # An absent `copy_source` is what "the cwd workspace" means (design
+        # §4), so an empty one is not a shorter spelling of it: it would ask
+        # core to resolve a nameless source.
         raise CliUsageError(
-            "clone --local --from is not yet supported", code="InvalidRequest"
+            "clone --local --from <name|path> must not be empty",
+            code="InvalidRequest",
         )
     return await context.client.clone_local_workspace(
         args.name,
         dest=args.url,
         mode=mode,
         branch=args.branch,
+        # Design §7 tag 6, §11 item 11: `--from` is `copy_source` on the wire.
+        # Whether the token names a family member or a path is core's to
+        # resolve; the CLI carries it through unchanged.
+        copy_source=args.from_source,
         **context.meta,
     )
 
@@ -306,11 +323,90 @@ def _force_hazards(args: argparse.Namespace) -> list[str]:
         if getattr(args, "destructive", False):
             raise CliUsageError(BARE_FORCE_REFUSAL, code="InvalidRequest")
         return []
+    # The split is on `,` and nothing else: no trimming, no case folding, no
+    # normalization. A deletion waiver is the operator's authorization token,
+    # and rewriting it before encoding would make the CLI answer for a
+    # vocabulary it does not own. The Rust CLI splits identically (lane CR),
+    # so the same argv encodes the same `force_hazards` in both drivers.
     names = raw.split(",")
     if not all(names):
         raise CliUsageError(BARE_FORCE_REFUSAL, code="InvalidRequest")
     # Unknown names are core's refusal (design §7), so they pass through.
     return names
+
+
+# ---------------------------------------------------------------------------
+# gwz local list rendering  (design §8.1 and the §7 members payload)
+# ---------------------------------------------------------------------------
+
+#: The observed state each recorded state projects to when the filesystem
+#: agrees with the index (design §3.1). Anything else is a divergence an
+#: operator has to see, so the row shows both states rather than one.
+AGREEING_OBSERVATION = {
+    LocalMemberState.creating: LocalObservedState.incomplete,
+    LocalMemberState.ready: LocalObservedState.ready,
+    LocalMemberState.disposing: LocalObservedState.interrupted_disposal,
+}
+
+
+def is_family_listing(response: Any) -> bool:
+    """True for a `LocalFamilyResponse` that carries a list payload.
+
+    `members` is populated for `op=list` and empty otherwise (design §7), so
+    dispose, disband and an unpopulated list keep the envelope-message
+    rendering they already had.
+    """
+
+    return (
+        type(response).__name__ == "LocalFamilyResponse"
+        and bool(getattr(response, "members", None))
+    )
+
+
+def render_family_listing(response: Any) -> str:
+    """The design §8.1 table: name, kind, state, path -- one row per member.
+
+    `local list` is observation-only (design §3.1): it reports, and never
+    repairs. So the state column shows what was *observed*, which is what an
+    operator can act on, and falls back to `<recorded>/<observed>` whenever
+    the two disagree -- neither state may be silently dropped in favour of
+    the other. A recorded `last_error` follows its row on its own line, where
+    free text cannot break the column alignment.
+    """
+
+    rows = [
+        (
+            entry.name,
+            _enum_name(entry.kind),
+            _state_cell(entry),
+            entry.path,
+            entry.last_error,
+        )
+        for entry in response.members
+    ]
+    if not rows:
+        return ""
+    widths = [max(len(row[column]) for row in rows) + 2 for column in range(3)]
+    lines: list[str] = []
+    for name, kind, state, path, last_error in rows:
+        lines.append(
+            f"{name.ljust(widths[0])}{kind.ljust(widths[1])}"
+            f"{state.ljust(widths[2])}{path}"
+        )
+        if last_error:
+            lines.append(f"  last error: {last_error}")
+    return "\n".join(lines)
+
+
+def _state_cell(entry: Any) -> str:
+    recorded, observed = entry.recorded_state, entry.observed_state
+    if AGREEING_OBSERVATION.get(recorded) is observed:
+        return _enum_name(observed)
+    return f"{_enum_name(recorded)}/{_enum_name(observed)}"
+
+
+def _enum_name(value: Any) -> str:
+    return getattr(value, "name", str(value))
 
 
 # ---------------------------------------------------------------------------

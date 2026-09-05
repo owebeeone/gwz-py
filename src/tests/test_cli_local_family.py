@@ -1,10 +1,15 @@
 """LCM1.0c (lane CP): the Python CLI surface for the local clone family.
 
 Every request assertion below is one row of the design's §7 CLI -> live
-message table (`dev-docs/GwzLocalCloneDesign.md`). Core refuses every
-local-family operation with `unsupported_operation` at this checkpoint, so
-the presentation cases pin how a typed refusal reaches a person and a
-machine reader; nothing here needs the native bridge.
+message table (`dev-docs/GwzLocalCloneDesign.md`), and the rows themselves
+live in the shared parity fixture `fixtures/cli_parity/parser_cases.json`
+rather than inline here: the Rust driver asserts against the same file, so a
+row added on one side cannot silently go missing on the other.
+
+Core still answers `unsupported_operation` for every local-family operation
+(lane S is building the store), so the `gwz local list` rendering cases drive
+constructed `LocalFamilyResponse` values, and one case keeps the current
+refusal path pinned. Nothing here needs the native bridge.
 """
 
 from __future__ import annotations
@@ -13,6 +18,7 @@ import argparse
 import asyncio
 import json
 from collections.abc import AsyncIterator
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -36,17 +42,19 @@ from gwz.protocol.generated import (
     EventKind,
     GwzError as GwzErrorDetail,
     GwzErrorCode,
-    LocalCloneMode,
-    LocalFamilyOp,
+    LocalFamilyMemberEntry,
     LocalFamilyRequest,
     LocalFamilyResponse,
-    MergeOp,
+    LocalMemberKind,
+    LocalMemberState,
+    LocalObservedState,
     MergeOperationState,
     MergeParticipantCounts,
     MergeRequest,
     MergeResponse,
     OperationEvent,
     OperationResult,
+    PullHeadRequest,
     PullHeadResponse,
     PushRequest,
     PushResponse,
@@ -54,8 +62,45 @@ from gwz.protocol.generated import (
     ResponseEnvelope,
     ResponseMeta,
     Severity,
-    SyncBehavior,
 )
+
+
+PARITY_FIXTURE = (
+    Path(__file__).parent / "fixtures" / "cli_parity" / "parser_cases.json"
+)
+
+
+def parity_cases(key: str) -> list[dict[str, Any]]:
+    """The fixture rows this driver is expected to satisfy."""
+
+    document = json.loads(PARITY_FIXTURE.read_text(encoding="utf-8"))
+    return [
+        case
+        for case in document[key]
+        if "python" in case.get("drivers", ["python", "rust"])
+    ]
+
+
+def case_id(case: dict[str, Any]) -> str:
+    return case["id"]
+
+
+def resolve_field(request: Any, path: str) -> Any:
+    """Resolve one fixture dotted path, through absent intermediates."""
+
+    value: Any = request
+    for part in path.split("."):
+        if value is None:
+            return None
+        value = getattr(value, part)
+    return value
+
+
+def assert_field(request: Any, path: str, expected: Any) -> None:
+    actual = resolve_field(request, path)
+    if isinstance(expected, str) and hasattr(actual, "name"):
+        actual = actual.name
+    assert actual == expected, f"{path}: {actual!r} != {expected!r}"
 
 
 RESPONSE_TYPES: dict[str, type[Any]] = {
@@ -92,6 +137,7 @@ def envelope(
     status: AggregateStatus = AggregateStatus.ok,
     message: str | None = "ok",
     errors: list[GwzErrorDetail] | None = None,
+    operation_id: str | None = None,
 ) -> ResponseEnvelope:
     return ResponseEnvelope(
         meta=ResponseMeta(
@@ -99,7 +145,7 @@ def envelope(
             schema_version="gwz.protocol/v0",
             action=ActionKind.local_family,
             aggregate_status=status,
-            operation_id=None,
+            operation_id=operation_id,
             message=message,
             attribution=None,
         ),
@@ -108,13 +154,15 @@ def envelope(
     )
 
 
-def refusal(code: GwzErrorCode, message: str) -> GwzErrorDetail:
+def refusal(
+    code: GwzErrorCode, message: str, *, detail: str | None = None
+) -> GwzErrorDetail:
     return GwzErrorDetail(
         code=code,
         message=message,
         member_id=None,
         member_path=None,
-        detail=None,
+        detail=detail,
         target_kind=None,
         record_context=None,
     )
@@ -172,6 +220,39 @@ class RecordingBridge:
         )
 
 
+class SubmittingBridge(RecordingBridge):
+    """A `RecordingBridge` that also serves the submitted-merge path.
+
+    Human-mode `gwz merge` streams core's diagnostics, so it submits and then
+    reads the retained response. The fixture holds the design's command lines
+    byte-for-byte, without a `--json` that would route around that path, so
+    the recorder has to serve it.
+    """
+
+    async def submit(
+        self,
+        method: str,
+        request_message: str,
+        response_message: str,
+        request: Any,
+    ) -> Any:
+        self.calls.append((method, request_message, response_message, request))
+        response_type = RESPONSE_TYPES[response_message]
+        self.submitted = response_type(
+            response=envelope(
+                status=self.status,
+                message=self.message,
+                errors=self.errors,
+                operation_id="op_local",
+            ),
+            **RESPONSE_EXTRAS.get(response_type, {}),
+        )
+        return self.submitted
+
+    async def merge_operation_response(self, operation_id: str) -> Any:
+        return self.submitted
+
+
 def run_cli(argv: list[str], bridge: RecordingBridge) -> Any:
     """argv -> parser -> command handler -> real Client -> recorded request."""
 
@@ -201,111 +282,82 @@ def reject(argv: list[str]) -> str:
 
 
 # --------------------------------------------------------------------------
-# Design §7 table: `gwz clone --local ...` -> CloneLocalWorkspaceRequest
+# Design §7 table, driven from the shared parity fixture
 # --------------------------------------------------------------------------
 
-
-@pytest.mark.parametrize(
-    "argv,name,dest,mode,branch",
-    [
-        (
-            ["clone", "--local", "--name", "A", "../gwz-dev-A"],
-            "A",
-            "../gwz-dev-A",
-            LocalCloneMode.verbatim,
-            None,
-        ),
-        (
-            ["clone", "--local", "--clean", "-b", "lane/x", "--name", "C", "dest"],
-            "C",
-            "dest",
-            LocalCloneMode.clean,
-            "lane/x",
-        ),
-        (
-            ["clone", "--local", "--bare", "--name", "hub", "dest"],
-            "hub",
-            "dest",
-            LocalCloneMode.bare,
-            None,
-        ),
-        (
-            ["clone", "--local", "--name", "A"],
-            "A",
-            None,
-            LocalCloneMode.verbatim,
-            None,
-        ),
-        (
-            ["clone", "--local", "--verbatim", "--name", "A", "dest"],
-            "A",
-            "dest",
-            LocalCloneMode.verbatim,
-            None,
-        ),
-        (
-            ["clone", "--local", "--bare", "-b", "lane/x", "--name", "hub", "dest"],
-            "hub",
-            "dest",
-            LocalCloneMode.bare,
-            "lane/x",
-        ),
-    ],
-)
-def test_clone_local_builds_the_table_request(
-    argv: list[str],
-    name: str,
-    dest: str | None,
-    mode: LocalCloneMode,
-    branch: str | None,
-) -> None:
-    bridge = RecordingBridge()
-
-    run_cli(argv, bridge)
-
-    method, request_message, response_message, request = bridge.calls[0]
-    assert (method, request_message, response_message) == (
+#: The generated request type, bridge method and response message each
+#: fixture `message` name routes to. The fixture names only the request
+#: message; the routing is this driver's.
+MESSAGE_ROUTES: dict[str, tuple[type[Any], str, str]] = {
+    "CloneLocalWorkspaceRequest": (
+        CloneLocalWorkspaceRequest,
         "clone_local_workspace",
-        "CloneLocalWorkspaceRequest",
         "CloneLocalWorkspaceResponse",
+    ),
+    "LocalFamilyRequest": (
+        LocalFamilyRequest,
+        "local_family",
+        "LocalFamilyResponse",
+    ),
+    "MergeRequest": (MergeRequest, "merge", "MergeResponse"),
+    "PullHeadRequest": (PullHeadRequest, "pull_head", "PullHeadResponse"),
+    "PushRequest": (PushRequest, "push", "PushResponse"),
+}
+
+
+@pytest.mark.parametrize("case", parity_cases("message_cases"), ids=case_id)
+def test_parity_fixture_message_cases_build_the_design_row_request(
+    case: dict[str, Any],
+) -> None:
+    request_type, method, response_message = MESSAGE_ROUTES[case["message"]]
+    assert request_type.__name__ == case["message"]
+    bridge = SubmittingBridge()
+
+    run_cli(case["argv"], bridge)
+
+    call_method, request_message, call_response_message, request = bridge.calls[0]
+    assert (call_method, request_message, call_response_message) == (
+        method,
+        case["message"],
+        response_message,
     )
-    assert isinstance(request, CloneLocalWorkspaceRequest)
-    assert (request.name, request.dest, request.mode, request.branch) == (
-        name,
-        dest,
-        mode,
-        branch,
-    )
+    assert isinstance(request, request_type)
     assert request.meta.schema_version == "gwz.protocol/v0"
-    assert request.meta.dry_run is None
+    for path, expected in case["fields"].items():
+        assert_field(request, path, expected)
 
 
-def test_clone_local_passes_dry_run_through_for_core_to_refuse() -> None:
-    # Design §6.2: v0 local create refuses unsupported dry-run in core, before
-    # a family lock file or any reservation. The CLI does not pre-empt it.
-    bridge = RecordingBridge()
+@pytest.mark.parametrize("case", parity_cases("message_refusals"), ids=case_id)
+def test_parity_fixture_refusals_precede_any_request(case: dict[str, Any]) -> None:
+    assert case["refused_by"] == "cli"
+    message = reject(case["argv"])
 
-    run_cli(["--dry-run", "clone", "--local", "--name", "A"], bridge)
+    for fragment in case["message_contains"]:
+        assert fragment in message, f"{case['id']}: {fragment!r} not in {message!r}"
 
-    assert sole_request(bridge).meta.dry_run is True
+
+def test_parity_fixture_covers_every_design_row_message() -> None:
+    """Every message the §7 table names has at least one fixture row."""
+
+    covered = {case["message"] for case in parity_cases("message_cases")}
+
+    assert covered == set(MESSAGE_ROUTES)
+
+
+# --------------------------------------------------------------------------
+# Refusals and shapes that are this driver's own, not shared parity rows
+# --------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
     "argv,expected",
     [
-        (["clone", "--local"], "--name"),
-        (["clone", "--local", "--name", ""], "--name"),
-        (["clone", "--local", "--verbatim", "--clean", "--name", "A"], "mutually exclusive"),
-        (["clone", "--local", "--verbatim", "--bare", "--name", "A"], "mutually exclusive"),
-        (["clone", "--local", "-b", "lane/x", "--name", "A"], "--clean or --bare"),
-        (["clone", "--local", "--from", "A", "--name", "B"], "not yet supported"),
         (["clone", "--local", "--name", "A", "dest", "extra"], "one destination"),
         (["clone", "--name", "A"], "--local"),
         (["clone", "--clean", "https://example.invalid/ws.git"], "--local"),
         (["clone", "--bare", "https://example.invalid/ws.git"], "--local"),
         (["clone", "--verbatim", "https://example.invalid/ws.git"], "--local"),
         (["clone", "-b", "lane/x", "https://example.invalid/ws.git"], "--local"),
-        (["clone", "--from", "A", "https://example.invalid/ws.git"], "--local"),
         (["clone"], "requires a workspace URL"),
     ],
 )
@@ -313,100 +365,6 @@ def test_clone_local_flag_validation_precedes_any_request(
     argv: list[str], expected: str
 ) -> None:
     assert expected in reject(argv)
-
-
-# --------------------------------------------------------------------------
-# Design §7 table: `gwz local ...` -> LocalFamilyRequest
-# --------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    "argv,op,name,keep,hazards",
-    [
-        (["local", "list"], LocalFamilyOp.list, None, None, []),
-        (["local", "dispose", "C"], LocalFamilyOp.dispose, "C", None, []),
-        (["local", "dispose", "C", "--keep"], LocalFamilyOp.dispose, "C", True, []),
-        (
-            ["local", "dispose", "C", "--force", "unpreserved-history"],
-            LocalFamilyOp.dispose,
-            "C",
-            None,
-            ["unpreserved-history"],
-        ),
-        (
-            [
-                "local",
-                "dispose",
-                "C",
-                "--force",
-                "open-merge,dirty,unpreserved-history",
-            ],
-            LocalFamilyOp.dispose,
-            "C",
-            None,
-            ["open-merge", "dirty", "unpreserved-history"],
-        ),
-        (["local", "disband"], LocalFamilyOp.disband, None, None, []),
-    ],
-)
-def test_local_family_builds_the_table_request(
-    argv: list[str],
-    op: LocalFamilyOp,
-    name: str | None,
-    keep: bool | None,
-    hazards: list[str],
-) -> None:
-    bridge = RecordingBridge()
-
-    run_cli(argv, bridge)
-
-    method, request_message, response_message, request = bridge.calls[0]
-    assert (method, request_message, response_message) == (
-        "local_family",
-        "LocalFamilyRequest",
-        "LocalFamilyResponse",
-    )
-    assert isinstance(request, LocalFamilyRequest)
-    assert (request.op, request.name, request.keep, request.force_hazards) == (
-        op,
-        name,
-        keep,
-        hazards,
-    )
-
-
-def test_local_family_passes_dry_run_through_for_core_to_refuse() -> None:
-    bridge = RecordingBridge()
-
-    run_cli(["--dry-run", "local", "list"], bridge)
-
-    assert sole_request(bridge).meta.dry_run is True
-
-
-@pytest.mark.parametrize(
-    "argv,expected",
-    [
-        (["local", "dispose", "C", "--force"], "hazard"),
-        (["--force", "local", "dispose", "C"], "hazard"),
-        (["local", "dispose", "C", "--force", ""], "hazard"),
-        (["local", "dispose", "C", "--force", "dirty,"], "hazard"),
-        (["local", "dispose", "C", "--force", ","], "hazard"),
-        (["local", "dispose", "C", "--keep", "--force", "dirty"], "--keep"),
-    ],
-)
-def test_local_dispose_force_validation_precedes_any_request(
-    argv: list[str], expected: str
-) -> None:
-    assert expected in reject(argv)
-
-
-def test_local_dispose_passes_unknown_hazard_names_to_core() -> None:
-    # Design §7: the CLI rejects a bare --force; core owns unknown hazard names.
-    bridge = RecordingBridge()
-
-    run_cli(["local", "dispose", "C", "--force", "sunspots"], bridge)
-
-    assert sole_request(bridge).force_hazards == ["sunspots"]
 
 
 @pytest.mark.parametrize(
@@ -426,45 +384,34 @@ def test_local_rejects_unsupported_shapes_at_parse(argv: list[str]) -> None:
     assert raised.value.code != 0
 
 
-# --------------------------------------------------------------------------
-# Design §7 table: `gwz merge --remote <name> [<ref>]` -> MergeRequest
-# --------------------------------------------------------------------------
+@pytest.mark.parametrize("lifecycle", [["--abort"], ["--status"], ["--gc"]])
+def test_merge_remote_is_start_only(lifecycle: list[str]) -> None:
+    # `--continue` is the fixture's shared row; the rest are the same refusal
+    # reached through this driver's other lifecycle dests.
+    assert "start" in reject(["merge", "--remote", "A", *lifecycle])
 
 
-@pytest.mark.parametrize(
-    "argv,source_ref,local_source_name",
-    [
-        (["--json", "merge", "feature/x"], "feature/x", None),
-        (["--json", "merge", "A"], "A", None),
-        (["--json", "merge", "--remote", "A"], None, "A"),
-        (["--json", "merge", "--remote", "C", "lane/agent-17"], "lane/agent-17", "C"),
-        (["--json", "merge", "--remote", "origin"], None, "origin"),
-        (["--json", "--remote", "A", "merge"], None, "A"),
-    ],
-)
-def test_merge_remote_is_the_family_selector_not_a_policy_remote(
-    argv: list[str], source_ref: str | None, local_source_name: str | None
-) -> None:
+def test_merge_remote_may_precede_the_verb() -> None:
+    # `--remote` is a global option, so it parses before `merge` too; the
+    # family binding must survive that spelling. Not a design row, so it is
+    # this driver's own case rather than a fixture one.
+    bridge = SubmittingBridge()
+
+    run_cli(["--remote", "A", "merge"], bridge)
+
+    request = sole_request(bridge)
+    assert request.local_source_name == "A"
+    assert getattr(request.meta.policy, "remote", None) is None
+
+
+def test_push_keeps_the_family_token_off_the_request_field_set() -> None:
     bridge = RecordingBridge()
 
-    run_cli(argv, bridge)
+    run_cli(["push", "--remote", "hub"], bridge)
 
-    method, request_message, _response_message, request = bridge.calls[0]
-    assert (method, request_message) == ("merge", "MergeRequest")
-    assert isinstance(request, MergeRequest)
-    assert request.op is MergeOp.start
-    assert request.source_ref == source_ref
-    assert request.local_source_name == local_source_name
-    # The family binding is a request field, never OperationPolicy.remote.
-    policy_remote = getattr(request.meta.policy, "remote", None)
-    assert policy_remote is None
-
-
-@pytest.mark.parametrize(
-    "lifecycle", [["--continue"], ["--abort"], ["--status"], ["--gc"]]
-)
-def test_merge_remote_is_start_only(lifecycle: list[str]) -> None:
-    assert "start" in reject(["merge", "--remote", "A", *lifecycle])
+    request = sole_request(bridge)
+    assert isinstance(request, PushRequest)
+    assert not hasattr(request, "local_source_name")
 
 
 def test_merge_help_documents_the_family_selector() -> None:
@@ -478,55 +425,6 @@ def test_merge_help_documents_the_family_selector() -> None:
 
     assert "local clone family member" in help_text
     assert "git remote name" not in help_text
-
-
-def test_family_merge_passes_dry_run_through_for_core_to_refuse() -> None:
-    # Design §6.2: an invalid or unsupported family start refuses before any
-    # import ref; the CLI does not pre-empt that refusal.
-    bridge = RecordingBridge()
-
-    run_cli(["--json", "--dry-run", "merge", "--remote", "A"], bridge)
-
-    request = sole_request(bridge)
-    assert request.local_source_name == "A"
-    assert request.meta.dry_run is True
-
-
-@pytest.mark.parametrize("remote", ["hub", "origin"])
-def test_push_remote_keeps_its_git_and_family_token_unchanged(remote: str) -> None:
-    bridge = RecordingBridge()
-
-    run_cli(["push", "--remote", remote], bridge)
-
-    request = sole_request(bridge)
-    assert isinstance(request, PushRequest)
-    assert request.remote == remote
-    assert not hasattr(request, "local_source_name")
-
-
-@pytest.mark.parametrize(
-    "argv,remote,sync",
-    [
-        (["pull", "--head", "--remote", "A"], "A", None),
-        (["pull", "--head", "--remote", "origin"], "origin", None),
-        (
-            ["--sync", "ff-only", "pull", "--head", "--remote", "root"],
-            "root",
-            SyncBehavior.ff_only,
-        ),
-    ],
-)
-def test_pull_head_remote_stays_an_operation_policy_binding(
-    argv: list[str], remote: str, sync: SyncBehavior | None
-) -> None:
-    bridge = RecordingBridge()
-
-    run_cli(argv, bridge)
-
-    request = sole_request(bridge)
-    assert request.meta.policy is not None
-    assert request.meta.policy.remote == remote
-    assert request.meta.policy.sync is sync
 
 
 # --------------------------------------------------------------------------
@@ -550,16 +448,27 @@ REFUSALS = {
         "no workspace root above the current directory",
         "WorkspaceNotFound",
     ),
+    # Design §7 / §11 item 13: the family-only merge miss. It is not folded
+    # into missing_remote, and it is presented exactly as its neighbours are.
+    "unknown_local": (
+        GwzErrorCode.unknown_local,
+        "merge --remote C: 'C' is not a ready local family member (incomplete)",
+        "UnknownLocal",
+    ),
 }
 
 
 def refusing_client_factory(
-    code: GwzErrorCode, message: str
+    code: GwzErrorCode,
+    message: str,
+    *,
+    detail: str | None = None,
+    bridge_class: type[RecordingBridge] = RecordingBridge,
 ) -> Any:
-    bridge = RecordingBridge(
+    bridge = bridge_class(
         status=AggregateStatus.failed,
         message=message,
-        errors=[refusal(code, message)],
+        errors=[refusal(code, message, detail=detail)],
     )
 
     def factory(**kwargs: Any) -> Client:
@@ -646,11 +555,12 @@ def test_cli_usage_refusals_exit_two_and_name_the_flag(
     assert "hazard" in captured.err
 
 
-def test_ok_local_family_response_renders_its_envelope_message(
+def test_ok_local_family_response_without_members_renders_its_envelope_message(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    # §7 open question 2: LocalFamilyResponse is envelope-only, so `local list`
-    # renders the envelope message until the list payload is allocated.
+    # `LocalFamilyResponse.members` is the list payload and is empty for every
+    # other op (design §7), so dispose, disband -- and any list core could not
+    # populate -- still render the envelope message.
     bridge = RecordingBridge(message="family: root, A")
     monkeypatch.setattr(cli, "Client", lambda **kwargs: Client(bridge=bridge))
 
@@ -658,6 +568,271 @@ def test_ok_local_family_response_renders_its_envelope_message(
 
     assert exit_code == 0
     assert capsys.readouterr().out == "family: root, A\n"
+
+
+def test_unknown_local_reaches_a_machine_reader_as_a_typed_refusal(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # `gwz merge --remote origin` is family-only, so core answers
+    # unknown_local (62) with the state detail rather than missing_remote.
+    message = "merge --remote origin: 'origin' is reserved, not a family member"
+    monkeypatch.setattr(
+        cli,
+        "Client",
+        refusing_client_factory(
+            GwzErrorCode.unknown_local, message, detail="reserved-name"
+        ),
+    )
+
+    exit_code = cli.main(["--json", "merge", "--remote", "origin"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    payload = json.loads(captured.out)
+    assert [error["code"] for error in payload["errors"]] == ["UnknownLocal"]
+    assert payload["errors"][0]["message"] == message
+    assert payload["errors"][0]["detail"] == "reserved-name"
+
+
+def test_unknown_local_reaches_a_person_through_the_merge_renderer(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    message = "merge --remote origin: 'origin' is reserved, not a family member"
+    monkeypatch.setattr(
+        cli,
+        "Client",
+        refusing_client_factory(
+            GwzErrorCode.unknown_local, message, bridge_class=SubmittingBridge
+        ),
+    )
+
+    exit_code = cli.main(["merge", "--remote", "origin"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert f"UnknownLocal: {message}" in captured.out
+
+
+# --------------------------------------------------------------------------
+# `gwz local list` rendering (design §8.1 and the §7 members payload)
+# --------------------------------------------------------------------------
+
+
+def member_entry(
+    name: str,
+    *,
+    kind: LocalMemberKind = LocalMemberKind.checkout,
+    recorded: LocalMemberState = LocalMemberState.ready,
+    observed: LocalObservedState = LocalObservedState.ready,
+    path: str | None = None,
+    last_error: str | None = None,
+) -> LocalFamilyMemberEntry:
+    return LocalFamilyMemberEntry(
+        name=name,
+        kind=kind,
+        recorded_state=recorded,
+        observed_state=observed,
+        path=path if path is not None else f"/Users/limbo/gwz-dev-{name}",
+        last_error=last_error,
+    )
+
+
+class FamilyListingBridge(RecordingBridge):
+    """Answers `local_family` with a populated `members` payload."""
+
+    members: list[LocalFamilyMemberEntry] = []
+
+    async def call(
+        self,
+        method: str,
+        request_message: str,
+        response_message: str,
+        request: Any,
+    ) -> Any:
+        self.calls.append((method, request_message, response_message, request))
+        return LocalFamilyResponse(
+            response=envelope(status=self.status, message=self.message),
+            members=list(self.members),
+        )
+
+
+def listing_client_factory(members: list[LocalFamilyMemberEntry]) -> Any:
+    bridge = FamilyListingBridge(message="ok")
+    bridge.members = members
+
+    def factory(**kwargs: Any) -> Client:
+        return Client(bridge=bridge)
+
+    return factory
+
+
+#: The family of design §8.1, listed from D.
+DESIGN_FAMILY = [
+    member_entry("root", path="/Users/limbo/gwz-dev"),
+    member_entry("A"),
+    member_entry("B"),
+    member_entry("C"),
+    member_entry("D"),
+    member_entry("hub", kind=LocalMemberKind.bare),
+]
+
+
+def test_local_list_renders_the_design_table(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(cli, "Client", listing_client_factory(DESIGN_FAMILY))
+
+    exit_code = cli.main(["local", "list"])
+
+    assert exit_code == 0
+    assert capsys.readouterr().out == (
+        "root  checkout  ready  /Users/limbo/gwz-dev\n"
+        "A     checkout  ready  /Users/limbo/gwz-dev-A\n"
+        "B     checkout  ready  /Users/limbo/gwz-dev-B\n"
+        "C     checkout  ready  /Users/limbo/gwz-dev-C\n"
+        "D     checkout  ready  /Users/limbo/gwz-dev-D\n"
+        "hub   bare      ready  /Users/limbo/gwz-dev-hub\n"
+    )
+
+
+def test_local_list_shows_a_divergent_observed_state_and_the_last_error(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Design §3.1: list is observation-only. An interrupted lane must be
+    # visible as one, and a row whose observation contradicts what the index
+    # recorded must show both -- an operator cannot act on a state that is
+    # silently overwritten by the other.
+    monkeypatch.setattr(
+        cli,
+        "Client",
+        listing_client_factory(
+            [
+                member_entry("root", path="/Users/limbo/gwz-dev"),
+                member_entry(
+                    "B",
+                    recorded=LocalMemberState.creating,
+                    observed=LocalObservedState.incomplete,
+                ),
+                member_entry(
+                    "D",
+                    observed=LocalObservedState.missing,
+                    last_error="destination was removed outside gwz",
+                ),
+            ]
+        ),
+    )
+
+    exit_code = cli.main(["local", "list"])
+
+    assert exit_code == 0
+    assert capsys.readouterr().out == (
+        "root  checkout  ready          /Users/limbo/gwz-dev\n"
+        "B     checkout  incomplete     /Users/limbo/gwz-dev-B\n"
+        "D     checkout  ready/missing  /Users/limbo/gwz-dev-D\n"
+        "  last error: destination was removed outside gwz\n"
+    )
+
+
+@pytest.mark.parametrize(
+    "recorded,observed,expected",
+    [
+        (LocalMemberState.ready, LocalObservedState.ready, "ready"),
+        (LocalMemberState.creating, LocalObservedState.incomplete, "incomplete"),
+        (
+            LocalMemberState.disposing,
+            LocalObservedState.interrupted_disposal,
+            "interrupted_disposal",
+        ),
+        (LocalMemberState.ready, LocalObservedState.missing, "ready/missing"),
+        (
+            LocalMemberState.disposing,
+            LocalObservedState.pointer_removed,
+            "disposing/pointer_removed",
+        ),
+        (
+            LocalMemberState.ready,
+            LocalObservedState.mismatched,
+            "ready/mismatched",
+        ),
+        (
+            LocalMemberState.creating,
+            LocalObservedState.malformed,
+            "creating/malformed",
+        ),
+        (
+            LocalMemberState.ready,
+            LocalObservedState.unobserved,
+            "ready/unobserved",
+        ),
+    ],
+)
+def test_local_list_state_cell_covers_every_observed_state(
+    recorded: LocalMemberState,
+    observed: LocalObservedState,
+    expected: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        cli,
+        "Client",
+        listing_client_factory(
+            [member_entry("A", recorded=recorded, observed=observed)]
+        ),
+    )
+
+    exit_code = cli.main(["local", "list"])
+
+    assert exit_code == 0
+    line = capsys.readouterr().out.rstrip("\n")
+    assert line.split() == ["A", "checkout", expected, "/Users/limbo/gwz-dev-A"]
+
+
+def test_local_list_json_carries_every_member_field(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(
+        cli,
+        "Client",
+        listing_client_factory(
+            [
+                member_entry("root", path="/Users/limbo/gwz-dev"),
+                member_entry(
+                    "hub",
+                    kind=LocalMemberKind.bare,
+                    recorded=LocalMemberState.disposing,
+                    observed=LocalObservedState.interrupted_disposal,
+                    last_error="disposal was interrupted after the pointer",
+                ),
+            ]
+        ),
+    )
+
+    exit_code = cli.main(["--json", "local", "list"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.err == ""
+    payload = json.loads(captured.out)
+    assert payload["members"] == [
+        {
+            "name": "root",
+            "kind": "checkout",
+            "recorded_state": "ready",
+            "observed_state": "ready",
+            "path": "/Users/limbo/gwz-dev",
+            "last_error": None,
+        },
+        {
+            "name": "hub",
+            "kind": "bare",
+            "recorded_state": "disposing",
+            "observed_state": "interrupted_disposal",
+            "path": "/Users/limbo/gwz-dev-hub",
+            "last_error": "disposal was interrupted after the pointer",
+        },
+    ]
+    assert payload["response"]["meta"]["action"] == "local_family"
 
 
 # --------------------------------------------------------------------------

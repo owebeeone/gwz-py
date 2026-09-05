@@ -366,13 +366,16 @@ class Client:
         *,
         mode: LocalCloneMode | str = LocalCloneMode.verbatim,
         branch: str | None = None,
+        copy_source: str | Path | None = None,
         **meta: Any,
     ) -> CloneLocalWorkspaceResponse:
         """Create a local clone of this workspace (design §4).
 
         `dest` is optional: core derives `../<root-dirname>-<name>` when it is
         absent. `branch` is the clean/bare `-b` branch, created in every member
-        before the destination becomes ready.
+        before the destination becomes ready. `copy_source` is the `--from`
+        selector -- a family name or a path -- and an absent one means the cwd
+        workspace; core resolves which of the two a given token is.
         """
         request = CloneLocalWorkspaceRequest(
             meta=self.meta(**meta),
@@ -381,10 +384,10 @@ class Client:
             mode=_enum_value(LocalCloneMode, mode),
             branch=branch,
             # Tag 6 `copy_source` (operator ruling 2026-09-05, design §7 and
-            # §11 item 11): the `--from` selector, which the CLI still refuses
-            # before encoding; lane CP wires it in. Runtime-required field only
-            # (LCM1.0c follow-up 2): the generated dataclass has no default.
-            copy_source=None,
+            # §11 item 11): `from` is a keyword in both generated languages.
+            # Runtime-required field only (LCM1.0c follow-up 2): the generated
+            # dataclass has no default.
+            copy_source=None if copy_source is None else str(copy_source),
         )
         return await self._call(
             "clone_local_workspace", request, CloneLocalWorkspaceResponse
