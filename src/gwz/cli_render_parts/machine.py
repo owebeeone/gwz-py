@@ -107,6 +107,13 @@ def merge_response_json(response: Any) -> dict[str, Any]:
         ),
         "record": protocol_json(response.record),
     }
+    # DR-1: the machine truth about crash recovery, at parity with the Rust
+    # CLI. An op that decided nothing (abort, status, gc) omits the key rather
+    # than rendering a null one, which keeps every pre-DR-1 payload -- the
+    # cli_parity fixture included -- byte-identical.
+    crash_recovery = getattr(response, "crash_recovery", None)
+    if crash_recovery is not None:
+        merge["crash_recovery"] = merge_crash_recovery_json(crash_recovery)
     return {
         "kind": "response",
         "meta": {
@@ -121,6 +128,20 @@ def merge_response_json(response: Any) -> dict[str, Any]:
         "branch_repos": None,
         "merge": merge,
         "stash_bundles": None,
+    }
+
+
+def merge_crash_recovery_json(value: Any) -> dict[str, Any]:
+    # M5d: `handles_ok` rides the same object, rendered exactly as its two
+    # optional siblings are -- present as a key, `null` when gwz-core left it
+    # absent (which it does above the bar). The Rust CLI's
+    # `merge_crash_recovery_json` renders the same three optional keys the same
+    # way, and the cross-driver parity test compares the two payloads.
+    return {
+        "supported": value.supported,
+        "filesystem": value.filesystem,
+        "gap": enum_label(value.gap) if value.gap is not None else None,
+        "handles_ok": value.handles_ok,
     }
 
 

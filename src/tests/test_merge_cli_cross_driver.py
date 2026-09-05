@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 import re
@@ -143,11 +144,19 @@ def workspace_bytes(root: Path) -> dict[str, bytes]:
 
 
 def write_open_record(root: Path, state: str) -> None:
+    """Plant one OPEN v1 record, the only merge lifecycle 0.14 runs.
+
+    M5d (`GwzM5-8M5d-Charter.md` §2) deleted the v0 engine, so this fixture is
+    v1: the subject here is the open-merge GATE and its cross-driver parity,
+    not the record envelope, and only a v1 record still reaches the gate. The
+    v0 envelope's own answer is pinned by
+    `test_pre_014_open_record_refuses_identically_across_drivers` below.
+    """
     record_dir = root / ".gwz" / "merge"
     record_dir.mkdir(parents=True, exist_ok=True)
     (record_dir / "merge_test.yaml").write_text(
-        f"""schema: gwz.merge-operation/v0
-record_schema_version: 0
+        f"""schema: gwz.merge-operation/v1
+record_schema_version: 1
 writer_version: test
 workspace_id: ws_test
 merge_id: merge_test
@@ -158,6 +167,41 @@ created_at: now
 baseline: {{ lock_sha256: lock, manifest_sha256: manifest }}
 selected_targets: []
 participants: {{}}
+""",
+        encoding="utf-8",
+    )
+
+
+# The charter §2 sentence, frozen verbatim. A v0 envelope is not a merge this
+# binary can continue, abort, migrate or project; it is a third occupancy, and
+# every merge verb and gated command answers it with exactly this and nothing
+# else.
+PRE_014_REFUSAL = (
+    "this is a pre-0.14 merge; use gwz 0.13.0 (the last release before 0.14) "
+    "to continue or abort"
+)
+# The open-v1 remedy, deliberately SUPPRESSED for a v0 envelope: under 0.14 all
+# three of those verbs refuse, so printing it would be false.
+OPEN_V1_REMEDY = "use merge status, merge continue, or merge abort"
+
+
+def write_pre_014_record(root: Path) -> None:
+    """Plant the pre-0.14 (v0) envelope this binary refuses to act on."""
+    record_dir = root / ".gwz" / "merge"
+    record_dir.mkdir(parents=True, exist_ok=True)
+    (record_dir / "merge_test.yaml").write_text(
+        """schema: gwz.merge-operation/v0
+record_schema_version: 0
+writer_version: test
+workspace_id: ws_test
+merge_id: merge_test
+operation_id: op_original
+state: awaiting_resolution
+source_ref: feature/source
+created_at: now
+baseline: { lock_sha256: lock, manifest_sha256: manifest }
+selected_targets: []
+participants: {}
 """,
         encoding="utf-8",
     )
@@ -184,6 +228,30 @@ def assert_open_gate_jsonl(
     assert len(records[-1]["errors"]) == 1
     assert records[-1]["errors"][0]["code"] == "OpenOperation"
     assert "merge_test" in records[-1]["errors"][0]["message"]
+
+
+def assert_pre_014_gate_jsonl(
+    code: int,
+    records: list[dict[str, Any]],
+) -> None:
+    assert code == 1
+    assert [record["kind"] for record in records] == [
+        "event",
+        "event",
+        "response",
+    ]
+    assert [record["event_kind"] for record in records[:-1]] == [
+        "OperationStarted",
+        "OperationFinished",
+    ]
+    assert len(records[-1]["errors"]) == 1
+    error = records[-1]["errors"][0]
+    assert error["code"] == "OpenOperation"
+    # Exact, not a fragment: the charter freezes the sentence, and it carries no
+    # merge id -- the id would invite the reader to pass it back to a verb that
+    # refuses.
+    assert error["message"] == PRE_014_REFUSAL
+    assert OPEN_V1_REMEDY not in error["message"]
 
 
 @pytest.mark.parametrize(
@@ -249,6 +317,88 @@ def test_open_merge_gate_public_surface_matrix_from_unrelated_cwd(
             assert workspace_bytes(root) == before
 
 
+def test_pre_014_open_record_refuses_identically_across_drivers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    rust_gwz_binary: Path,
+) -> None:
+    """M5d §2: a v0 envelope is a pre-0.14 merge, and both drivers say so.
+
+    This is the third occupancy -- not a merge lifecycle, not idle. It is not
+    parametrized on state because classification stops at the envelope header:
+    0.14 never constructs a v0 body, so the record's `state` is not read and
+    cannot change the answer. What matters is that the sentence is exact, the
+    code is `OpenOperation`, the open-v1 remedy is absent, and the two drivers
+    agree byte for byte.
+    """
+    root = tmp_path / "workspace"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    client = native_client(root)
+    asyncio.run(client.create_workspace(workspace_id="ws_pre_014_gate"))
+    write_pre_014_record(root)
+    monkeypatch.chdir(outside)
+
+    for dry_run in [False, True]:
+        mode = "dry_run" if dry_run else "real"
+        before = workspace_bytes(root)
+        request_id = f"req_pre_014_{mode}"
+        with pytest.raises(GwzBridgeError) as failure:
+            asyncio.run(
+                client.merge(
+                    "feature/source",
+                    dry_run=dry_run,
+                    request_id=request_id,
+                )
+            )
+        assert failure.value.code == "OpenOperation"
+        result = asyncio.run(
+            client.bridge.operation_result(f"op_{request_id}")
+        )
+        assert result.aggregate_status is AggregateStatus.failed
+        assert len(result.errors) == 1
+        assert result.errors[0].code is GwzErrorCode.open_operation
+        assert result.errors[0].message == PRE_014_REFUSAL
+        assert OPEN_V1_REMEDY not in result.errors[0].message
+        assert workspace_bytes(root) == before
+
+        command = [
+            *(["--dry-run"] if dry_run else []),
+            "merge",
+            "feature/source",
+        ]
+        for driver in ["rust", "python"]:
+            before = workspace_bytes(root)
+            code, records = run_cli(
+                driver,
+                rust_gwz_binary,
+                root,
+                command,
+                cwd=outside,
+            )
+            assert_pre_014_gate_jsonl(code, records)
+            assert workspace_bytes(root) == before
+
+    # A gated non-merge command meets the same sentence, with the open-v1
+    # remedy suppressed there too.
+    for driver in ["rust", "python"]:
+        before = workspace_bytes(root)
+        code, records = run_cli(
+            driver,
+            rust_gwz_binary,
+            root,
+            ["capture"],
+            cwd=outside,
+        )
+        assert code == 1
+        errors = records[-1]["errors"]
+        assert len(errors) == 1
+        assert errors[0]["code"] == "OpenOperation"
+        assert errors[0]["message"] == PRE_014_REFUSAL
+        assert OPEN_V1_REMEDY not in errors[0]["message"]
+        assert workspace_bytes(root) == before
+
+
 def dynamic_values(records: list[dict[str, Any]]) -> dict[str, set[str]]:
     values = {
         "operation_id": set(),
@@ -288,7 +438,9 @@ def normalize(records: list[dict[str, Any]], root: Path) -> list[dict[str, Any]]
         if key in {"timestamp_ms", "started_at_ms", "finished_at_ms"}:
             return "<timestamp>"
         if isinstance(value, dict):
-            return {item_key: visit(item, item_key) for item_key, item in value.items()}
+            return rehash_normalized_digests(
+                {item_key: visit(item, item_key) for item_key, item in value.items()}
+            )
         if isinstance(value, list):
             return [visit(item) for item in value]
         if not isinstance(value, str):
@@ -308,6 +460,29 @@ def normalize(records: list[dict[str, Any]], root: Path) -> list[dict[str, Any]]
         return normalized
 
     return visit(records)
+
+
+def rehash_normalized_digests(node: dict[str, Any]) -> dict[str, Any]:
+    """Recompute any `<name>_sha256` over its already-normalized `<name>_yaml`.
+
+    M5d made every ordinary start write a v1 record, so an accepted-workspace
+    projection now reaches this comparison, and it carries the POST-merge lock
+    bytes beside their digest. Those bytes name the merge commit, and the two
+    roots run their merges independently, so their commit ids -- and therefore
+    the raw digests -- can never agree; `visit` already masks the ids
+    themselves as `<oid>`. Rehashing over the normalized text keeps this a real
+    comparison (a driver that emitted a different lock BODY still differs)
+    while dropping the one difference that is nothing but two clocks. Digests
+    with no sibling bytes here, `operation_baseline_lock_sha256` among them,
+    are left exactly as the drivers rendered them.
+    """
+    for key, value in list(node.items()):
+        if not key.endswith("_sha256") or not isinstance(value, str):
+            continue
+        source = node.get(f"{key.removesuffix('_sha256')}_yaml")
+        if isinstance(source, str):
+            node[key] = hashlib.sha256(source.encode("utf-8")).hexdigest()
+    return node
 
 
 def assert_parity(

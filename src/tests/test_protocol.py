@@ -149,3 +149,72 @@ def test_generated_dataclasses_convert_to_wire_dicts() -> None:
 
     assert to_wire(request)["mode"] == "combined"
     assert to_wire(request)["meta"]["request_id"] == "req_test"
+
+
+def test_dr1_crash_recovery_protocol_additions_are_pinned() -> None:
+    """DR-1 ship (1) §3.7 (2026-09-03): the warn-or-refuse protocol surface.
+
+    W1 only adds the slots; W3/W4 give them behaviour. The tags are pinned here
+    because both drivers and gwz-core must agree on them byte for byte.
+
+    M5d (`GwzM5-8M5d-Charter.md` §3, 2026-09-04) adds exactly one more optional
+    field, `handles_ok` (slot 4), with no version bump. The field list stays an
+    EXACT pin rather than a subset check: its whole value is that a field
+    appearing in gwz-core without a driver following it fails here.
+    """
+    loaded = schema()
+
+    assert [member.value for member in generated.MergeCrashRecoveryGap] == [0, 1, 2]
+    assert generated.MergeCrashRecoveryGap.no_durable_identity.value == 0
+    assert generated.MergeCrashRecoveryGap.remote_filesystem.value == 1
+    assert generated.MergeCrashRecoveryGap.volatile_filesystem.value == 2
+    assert generated.EventKind.diagnostic.value == 8
+
+    assert [(field.name, field.tag, field.optional)
+            for field in loaded.messages["MergeCrashRecovery"].fields] == [
+        ("supported", 1, False),
+        ("filesystem", 2, True),
+        ("gap", 3, True),
+        ("handles_ok", 4, True),
+    ]
+    request_tags = {field.name: field.tag for field in loaded.messages["MergeRequest"].fields}
+    assert request_tags["preserve"] == 7
+    assert request_tags["filesystem_strict"] == 8
+    response_tags = {field.name: field.tag for field in loaded.messages["MergeResponse"].fields}
+    assert response_tags["record"] == 10
+    assert response_tags["crash_recovery"] == 11
+
+    # M5d: `handles_ok` is present only BELOW the bar, where it says whether
+    # this volume proves the persistent file handles the checked boundary's
+    # reverse doors need. Above the bar there is nothing to plan around and
+    # gwz-core leaves it absent.
+    decision = generated.MergeCrashRecovery(
+        supported=False,
+        filesystem="btrfs",
+        gap=generated.MergeCrashRecoveryGap.volatile_filesystem,
+        handles_ok=True,
+    )
+    assert to_wire(decision) == {
+        "supported": False,
+        "filesystem": "btrfs",
+        "gap": "volatile_filesystem",
+        "handles_ok": True,
+    }
+    assert to_wire(
+        generated.MergeCrashRecovery(
+            supported=False,
+            filesystem="overlay",
+            gap=generated.MergeCrashRecoveryGap.no_durable_identity,
+            handles_ok=False,
+        )
+    ) == {
+        "supported": False,
+        "filesystem": "overlay",
+        "gap": "no_durable_identity",
+        "handles_ok": False,
+    }
+    assert to_wire(
+        generated.MergeCrashRecovery(
+            supported=True, filesystem="apfs", gap=None, handles_ok=None
+        )
+    ) == {"supported": True, "filesystem": "apfs", "gap": None, "handles_ok": None}

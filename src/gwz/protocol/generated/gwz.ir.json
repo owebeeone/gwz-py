@@ -567,6 +567,14 @@
       }
     },
     {
+      "name": "MergeCrashRecoveryGap",
+      "members": {
+        "no_durable_identity": 0,
+        "remote_filesystem": 1,
+        "volatile_filesystem": 2
+      }
+    },
+    {
       "name": "BranchActionResult",
       "members": {
         "listed": 0,
@@ -746,7 +754,8 @@
         "artifact_written": 4,
         "operation_finished": 5,
         "reset": 6,
-        "operation_state_changed": 7
+        "operation_state_changed": 7,
+        "diagnostic": 8
       }
     },
     {
@@ -4818,6 +4827,58 @@
       ]
     },
     {
+      "name": "MergeCrashRecovery",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "supported",
+          "tag": 1,
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "filesystem",
+          "tag": 2,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "gap",
+          "tag": 3,
+          "type": {
+            "k": "enum",
+            "name": "MergeCrashRecoveryGap"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "handles_ok",
+          "tag": 4,
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
       "name": "MergeRepoSummary",
       "reserved_tags": [],
       "reserved_names": [],
@@ -6923,6 +6984,17 @@
           "optional": true,
           "transient": false,
           "merge": null
+        },
+        {
+          "name": "filesystem_strict",
+          "tag": 8,
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
         }
       ]
     },
@@ -7613,6 +7685,17 @@
           "type": {
             "k": "msg",
             "name": "MergeRecordProjection"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "crash_recovery",
+          "tag": 11,
+          "type": {
+            "k": "msg",
+            "name": "MergeCrashRecovery"
           },
           "optional": true,
           "transient": false,

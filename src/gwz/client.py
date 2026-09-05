@@ -724,6 +724,7 @@ class Client:
         mode: MergeMode | str | None = None,
         message: str | None = None,
         preserve: bool | None = None,
+        filesystem_strict: bool | None = None,
         dry_run: bool | None = None,
         **meta: Any,
     ) -> MergeResponse:
@@ -734,6 +735,7 @@ class Client:
             mode=mode,
             message=message,
             preserve=preserve,
+            filesystem_strict=filesystem_strict,
             dry_run=dry_run,
             **meta,
         )
@@ -748,6 +750,7 @@ class Client:
         mode: MergeMode | str | None = None,
         message: str | None = None,
         preserve: bool | None = None,
+        filesystem_strict: bool | None = None,
         dry_run: bool | None = None,
         **meta: Any,
     ) -> "MergeOperationHandle":
@@ -759,6 +762,7 @@ class Client:
             mode=mode,
             message=message,
             preserve=preserve,
+            filesystem_strict=filesystem_strict,
             dry_run=dry_run,
             **meta,
         )
@@ -785,6 +789,7 @@ class Client:
         mode: MergeMode | str | None,
         message: str | None,
         preserve: bool | None,
+        filesystem_strict: bool | None,
         dry_run: bool | None,
         **meta: Any,
     ) -> MergeRequest:
@@ -796,6 +801,9 @@ class Client:
             mode=_enum_value(MergeMode, mode),
             message=message,
             preserve=preserve,
+            # DR-1: start only. Core refuses it on any other op, and both CLIs
+            # refuse it before the call.
+            filesystem_strict=filesystem_strict,
         )
 
     async def diff(
