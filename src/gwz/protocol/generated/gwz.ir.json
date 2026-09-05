@@ -277,7 +277,9 @@
         "detach_repo_member": 23,
         "attach_repo_member": 24,
         "merge": 25,
-        "log": 26
+        "log": 26,
+        "clone_local_workspace": 27,
+        "local_family": 28
       }
     },
     {
@@ -354,6 +356,22 @@
         "normal": 0,
         "ff_only": 1,
         "no_ff": 2
+      }
+    },
+    {
+      "name": "LocalCloneMode",
+      "members": {
+        "verbatim": 0,
+        "clean": 1,
+        "bare": 2
+      }
+    },
+    {
+      "name": "LocalFamilyOp",
+      "members": {
+        "list": 0,
+        "dispose": 1,
+        "disband": 2
       }
     },
     {
@@ -6995,6 +7013,146 @@
           "optional": true,
           "transient": false,
           "merge": null
+        },
+        {
+          "name": "local_source_name",
+          "tag": 9,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "CloneLocalWorkspaceRequest",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "meta",
+          "tag": 1,
+          "type": {
+            "k": "msg",
+            "name": "RequestMeta"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "name",
+          "tag": 2,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "dest",
+          "tag": 3,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "mode",
+          "tag": 4,
+          "type": {
+            "k": "enum",
+            "name": "LocalCloneMode"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "branch",
+          "tag": 5,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "LocalFamilyRequest",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "meta",
+          "tag": 1,
+          "type": {
+            "k": "msg",
+            "name": "RequestMeta"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "op",
+          "tag": 2,
+          "type": {
+            "k": "enum",
+            "name": "LocalFamilyOp"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "name",
+          "tag": 3,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "keep",
+          "tag": 4,
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "force_hazards",
+          "tag": 5,
+          "type": {
+            "k": "list",
+            "elem": {
+              "k": "scalar",
+              "scalar": "str"
+            }
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
         }
       ]
     },
@@ -7698,6 +7856,44 @@
             "name": "MergeCrashRecovery"
           },
           "optional": true,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "CloneLocalWorkspaceResponse",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "response",
+          "tag": 1,
+          "type": {
+            "k": "msg",
+            "name": "ResponseEnvelope"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "LocalFamilyResponse",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "response",
+          "tag": 1,
+          "type": {
+            "k": "msg",
+            "name": "ResponseEnvelope"
+          },
+          "optional": false,
           "transient": false,
           "merge": null
         }
@@ -9975,6 +10171,52 @@
               "type": {
                 "k": "msg",
                 "name": "MergeResponse"
+              }
+            }
+          ]
+        },
+        {
+          "name": "clone_local_workspace",
+          "role": "in",
+          "shape": "unary",
+          "params": [
+            {
+              "name": "request",
+              "type": {
+                "k": "msg",
+                "name": "CloneLocalWorkspaceRequest"
+              }
+            }
+          ],
+          "out": [
+            {
+              "slot": "value",
+              "type": {
+                "k": "msg",
+                "name": "CloneLocalWorkspaceResponse"
+              }
+            }
+          ]
+        },
+        {
+          "name": "local_family",
+          "role": "in",
+          "shape": "unary",
+          "params": [
+            {
+              "name": "request",
+              "type": {
+                "k": "msg",
+                "name": "LocalFamilyRequest"
+              }
+            }
+          ],
+          "out": [
+            {
+              "slot": "value",
+              "type": {
+                "k": "msg",
+                "name": "LocalFamilyResponse"
               }
             }
           ]

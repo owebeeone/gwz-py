@@ -34,8 +34,23 @@ DEFAULT_IR = ROOT / "src" / "gwz" / "protocol" / "generated" / "gwz.ir.json"
 # only delta is the one new `handles_ok` field object, and the previous pin
 # below reproduced exactly on the pre-regeneration tree.
 #   was: sha256:7a66e301c5c0147a12c59b2cddb6f2ebc1515ef4d65297ec53c3b312a3769697
+#
+# Moved deliberately again on 2026-09-05 by LCM1.0c (gwz-dev
+# dev-docs/GwzLocalCloneDesign.md §7, GwzLocalClonePlan.md §3 "1.0c"), which
+# allocates the local clone family surface: ActionKind.clone_local_workspace
+# (27) and local_family (28), the LocalCloneMode and LocalFamilyOp enums, the
+# CloneLocalWorkspaceRequest/Response and LocalFamilyRequest/Response
+# messages, their two GwzCore service methods, and the optional
+# MergeRequest.local_source_name (slot 9). `pre_log_projection` strips only
+# `Log*` items, so all of these are inside the projection and the pin moves
+# with them. MEASURED additive, not assumed: gwz-core's own
+# protocol/check_log_additive.py rendered the projection on both trees and
+# diffed them -- 242 added lines, 0 removed, every added object one of the
+# items above -- and the previous pin reproduced exactly on the pre-allocation
+# schema (gwz-core 87207c2). The two pins are one fingerprint of one schema.
+#   was: sha256:71bf6b9223ba6d2b4d12049e425e567254ca79396d67922be737c86c6dd97a40
 PRE_LOG_WIRE_FINGERPRINT = (
-    "sha256:71bf6b9223ba6d2b4d12049e425e567254ca79396d67922be737c86c6dd97a40"
+    "sha256:3c34bd741b32f366f63928211eec83c920b5b0ca0ed1d847447f4d3428c22031"
 )
 
 

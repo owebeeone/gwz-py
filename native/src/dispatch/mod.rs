@@ -1,6 +1,7 @@
 mod branch_stash;
 mod diff;
 mod git_mutation;
+mod local_family;
 mod log;
 mod materialize;
 mod merge;
@@ -45,6 +46,9 @@ pub(crate) fn call(
         "merge" => merge::call(method, request_message, response_message, request_bytes),
         "diff" => diff::call(method, request_message, response_message, request_bytes),
         "log" => log::call(method, request_message, response_message, request_bytes),
+        "clone_local_workspace" | "local_family" => {
+            local_family::call(method, request_message, response_message, request_bytes)
+        }
         other => Err(error::unsupported_method(other)),
     }
 }
@@ -74,6 +78,9 @@ pub(crate) fn submit(
         }
         "push" => submit_push(method, request_message, response_message, request_bytes),
         "merge" => merge::submit(method, request_message, response_message, request_bytes),
+        "clone_local_workspace" => {
+            local_family::submit(method, request_message, response_message, request_bytes)
+        }
         other => Err(error::unsupported_method(other)),
     }
 }

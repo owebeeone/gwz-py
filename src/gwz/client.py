@@ -804,6 +804,10 @@ class Client:
             # DR-1: start only. Core refuses it on any other op, and both CLIs
             # refuse it before the call.
             filesystem_strict=filesystem_strict,
+            # LCM1.0c: the local-family selector (`gwz merge --remote <name>`)
+            # is parsed by the Python driver lane's local-family module; the
+            # generic client never sets it.
+            local_source_name=None,
         )
 
     async def diff(

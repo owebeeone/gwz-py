@@ -31,6 +31,8 @@ class ActionKind(Enum):
     attach_repo_member = 24
     merge = 25
     log = 26
+    clone_local_workspace = 27
+    local_family = 28
 
 class TagOp(Enum):
     create = 0
@@ -83,6 +85,16 @@ class MergeMode(Enum):
     normal = 0
     ff_only = 1
     no_ff = 2
+
+class LocalCloneMode(Enum):
+    verbatim = 0
+    clean = 1
+    bare = 2
+
+class LocalFamilyOp(Enum):
+    list = 0
+    dispose = 1
+    disband = 2
 
 class MergeAnalysisKind(Enum):
     up_to_date = 0
@@ -1265,6 +1277,23 @@ class MergeRequest:
     message: str | None
     preserve: bool | None
     filesystem_strict: bool | None
+    local_source_name: str | None
+
+@dataclass(slots=True)
+class CloneLocalWorkspaceRequest:
+    meta: RequestMeta
+    name: str
+    dest: str | None
+    mode: LocalCloneMode
+    branch: str | None
+
+@dataclass(slots=True)
+class LocalFamilyRequest:
+    meta: RequestMeta
+    op: LocalFamilyOp
+    name: str | None
+    keep: bool | None
+    force_hazards: list[str]
 
 @dataclass(slots=True)
 class CreateWorkspaceResponse:
@@ -1384,6 +1413,14 @@ class MergeResponse:
     publication_step: MergePublicationStep | None
     record: MergeRecordProjection | None
     crash_recovery: MergeCrashRecovery | None
+
+@dataclass(slots=True)
+class CloneLocalWorkspaceResponse:
+    response: ResponseEnvelope
+
+@dataclass(slots=True)
+class LocalFamilyResponse:
+    response: ResponseEnvelope
 
 @dataclass(slots=True)
 class DiffComparison:

@@ -36,6 +36,16 @@ def test_repo_member_lifecycle_protocol_is_pinned() -> None:
     assert generated.PlannedAction.attach_member.value == 16
     assert generated.GwzErrorCode.source_identity_mismatch.value == 36
     assert generated.ActionKind.merge.value == 25
+    # LCM1.0c (2026-09-05): the local clone family allocation.
+    assert generated.ActionKind.log.value == 26
+    assert generated.ActionKind.clone_local_workspace.value == 27
+    assert generated.ActionKind.local_family.value == 28
+    assert generated.LocalCloneMode.verbatim.value == 0
+    assert generated.LocalCloneMode.clean.value == 1
+    assert generated.LocalCloneMode.bare.value == 2
+    assert generated.LocalFamilyOp.list.value == 0
+    assert generated.LocalFamilyOp.dispose.value == 1
+    assert generated.LocalFamilyOp.disband.value == 2
     assert generated.GwzErrorCode.deprecated_operation.value == 37
     assert generated.GwzErrorCode.unsupported_record_version.value == 46
     assert generated.GwzErrorCode.terminal_rollback_mismatch.value == 61

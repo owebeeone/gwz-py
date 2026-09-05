@@ -62,9 +62,13 @@ fn run(
     recorder: &operations::OperationRecorder,
 ) -> PyResult<gwz_core::MergeResponse> {
     let meta = request.meta.clone();
+    // LCM1.0c: every merge request goes through the family-aware entry. A
+    // request without `local_source_name` reaches the engine exactly as
+    // before; one with the selector takes the family wrapper, which refuses
+    // as unsupported at this checkpoint before any effect.
     let result =
         shims::backend_with_recorder(operation_id, recorder, |backend, operation_id, events| {
-            gwz_core::workspace_ops::handle_merge_with_events(
+            gwz_core::workspace_ops::handle_merge_with_local_family(
                 backend,
                 start,
                 request,
