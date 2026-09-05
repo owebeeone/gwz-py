@@ -66,8 +66,22 @@ DEFAULT_IR = ROOT / "src" / "gwz" / "protocol" / "generated" / "gwz.ir.json"
 # gwz-core protocol/check_log_additive.py and src/tests/test_log_protocol.py)
 # are one fingerprint of one schema.
 #   was: sha256:3c34bd741b32f366f63928211eec83c920b5b0ca0ed1d847447f4d3428c22031
+#
+# Moved deliberately again on 2026-09-06 by LCM1.0c follow-up 3 (the
+# operator's cross-driver ruling 3 of 2026-09-06, gwz-dev
+# dev-docs/GwzLocalClone-LCM1.0c-Checkpoint.md §12, GwzLocalCloneDesign.md
+# §7/§8.1), which allocates exactly one more optional response field,
+# LocalFamilyResponse.root_path (tag 3): the family root's path, which a
+# driver joins with each member's root-relative `path`. `pre_log_projection`
+# strips only `Log*` items, so it is inside the projection and the pin moves
+# with it. MEASURED additive, not assumed: gwz-core's own
+# protocol/check_log_additive.py rendered the projection on both trees and
+# diffed them -- 11 added lines, 0 removed, 1 hunk, the one `root_path` field
+# object -- and the previous pin reproduced exactly on the pre-allocation
+# schema (gwz-core 7e962d2). The three pins are one fingerprint of one schema.
+#   was: sha256:26f0d16ffebdcdc26bbbe682a6347688781cd202694333dbb0c066d087fb6b4e
 PRE_LOG_WIRE_FINGERPRINT = (
-    "sha256:26f0d16ffebdcdc26bbbe682a6347688781cd202694333dbb0c066d087fb6b4e"
+    "sha256:2eca6469ed1281e77a95f1e419aa4065002aa94c77507a73ada6f6f9c8bb5503"
 )
 
 

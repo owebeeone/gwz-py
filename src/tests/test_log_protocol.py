@@ -49,7 +49,16 @@ from gwz.protocol.codec import decode_message, encode_message, from_wire, schema
 # checkpoint record §11 so a move cannot skip one again.
 #   was: 71bf6b9223ba6d2b4d12049e425e567254ca79396d67922be737c86c6dd97a40
 #   (LCM1.0c's value, never pinned here: 3c34bd741b32f366f63928211eec83c920b5b0ca0ed1d847447f4d3428c22031)
-PRE_LOG_WIRE_SHA256 = "26f0d16ffebdcdc26bbbe682a6347688781cd202694333dbb0c066d087fb6b4e"
+#
+# Moved deliberately again on 2026-09-06 by LCM1.0c follow-up 3 (operator
+# ruling 3 of 2026-09-06, checkpoint record §12): LocalFamilyResponse
+# .root_path (tag 3, optional), the family root's path a driver joins with
+# each member's root-relative `path`. MEASURED additive on both trees by
+# gwz-core's protocol/check_log_additive.py (11 added / 0 removed, the one
+# field object). Kept identical to gwz-core protocol/check_log_additive.py
+# and scripts/check_protocol_drift.py.
+#   was: 26f0d16ffebdcdc26bbbe682a6347688781cd202694333dbb0c066d087fb6b4e
+PRE_LOG_WIRE_SHA256 = "2eca6469ed1281e77a95f1e419aa4065002aa94c77507a73ada6f6f9c8bb5503"
 
 
 def _round_trip(message_name: str, value: object) -> None:

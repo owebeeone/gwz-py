@@ -8024,6 +8024,17 @@
           "optional": false,
           "transient": false,
           "merge": null
+        },
+        {
+          "name": "root_path",
+          "tag": 3,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
         }
       ]
     },

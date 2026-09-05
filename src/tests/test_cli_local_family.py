@@ -116,7 +116,7 @@ RESPONSE_EXTRAS: dict[type[Any], dict[str, Any]] = {
     # payload; empty for every other op and whenever the envelope carries an
     # error (design §7). The list rendering of a non-empty payload is lane
     # CP's.
-    LocalFamilyResponse: {"members": []},
+    LocalFamilyResponse: {"members": [], "root_path": None},
     MergeResponse: {
         "merge_id": None,
         "state": MergeOperationState.completed,
@@ -653,6 +653,10 @@ class FamilyListingBridge(RecordingBridge):
         return LocalFamilyResponse(
             response=envelope(status=self.status, message=self.message),
             members=list(self.members),
+            # LCM1.0c follow-up 3 (operator ruling 2026-09-06): the family
+            # root's path a renderer joins with each member's `path`; the
+            # listing tests pin the root-relative column, so it is absent here.
+            root_path=None,
         )
 
 

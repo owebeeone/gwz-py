@@ -1452,6 +1452,7 @@ class LocalFamilyMemberEntry:
 class LocalFamilyResponse:
     response: ResponseEnvelope
     members: list[LocalFamilyMemberEntry]
+    root_path: str | None
 
 @dataclass(slots=True)
 class DiffComparison:
