@@ -25,6 +25,8 @@ from .protocol.generated import (
     BranchResponse,
     CaptureRequest,
     CaptureResponse,
+    CloneLocalWorkspaceRequest,
+    CloneLocalWorkspaceResponse,
     CloneWorkspaceRequest,
     CloneWorkspaceResponse,
     CloneRepoMemberRequest,
@@ -52,6 +54,10 @@ from .protocol.generated import (
     InitFromSourcesResponse,
     ListSnapshotsRequest,
     ListSnapshotsResponse,
+    LocalCloneMode,
+    LocalFamilyOp,
+    LocalFamilyRequest,
+    LocalFamilyResponse,
     LsRequest,
     LsResponse,
     LogOptions,
@@ -352,6 +358,55 @@ class Client:
             target=str(target),
         )
         return self._stream_call("clone_workspace", request, CloneWorkspaceResponse)
+
+    async def clone_local_workspace(
+        self,
+        name: str,
+        dest: str | Path | None = None,
+        *,
+        mode: LocalCloneMode | str = LocalCloneMode.verbatim,
+        branch: str | None = None,
+        **meta: Any,
+    ) -> CloneLocalWorkspaceResponse:
+        """Create a local clone of this workspace (design §4).
+
+        `dest` is optional: core derives `../<root-dirname>-<name>` when it is
+        absent. `branch` is the clean/bare `-b` branch, created in every member
+        before the destination becomes ready.
+        """
+        request = CloneLocalWorkspaceRequest(
+            meta=self.meta(**meta),
+            name=name,
+            dest=None if dest is None else str(dest),
+            mode=_enum_value(LocalCloneMode, mode),
+            branch=branch,
+        )
+        return await self._call(
+            "clone_local_workspace", request, CloneLocalWorkspaceResponse
+        )
+
+    async def local_family(
+        self,
+        op: LocalFamilyOp | str = LocalFamilyOp.list,
+        *,
+        name: str | None = None,
+        keep: bool | None = None,
+        force_hazards: Iterable[str] = (),
+        **meta: Any,
+    ) -> LocalFamilyResponse:
+        """List, dispose from, or disband the local clone family (design §5).
+
+        An absent or empty `force_hazards` is no force at all; core validates
+        the hazard names and refuses `keep` together with a force.
+        """
+        request = LocalFamilyRequest(
+            meta=self.meta(**meta),
+            op=_enum_value(LocalFamilyOp, op),
+            name=name,
+            keep=keep,
+            force_hazards=list(force_hazards),
+        )
+        return await self._call("local_family", request, LocalFamilyResponse)
 
     async def clone_repo_member(
         self,
@@ -725,6 +780,7 @@ class Client:
         message: str | None = None,
         preserve: bool | None = None,
         filesystem_strict: bool | None = None,
+        local_source_name: str | None = None,
         dry_run: bool | None = None,
         **meta: Any,
     ) -> MergeResponse:
@@ -736,6 +792,7 @@ class Client:
             message=message,
             preserve=preserve,
             filesystem_strict=filesystem_strict,
+            local_source_name=local_source_name,
             dry_run=dry_run,
             **meta,
         )
@@ -751,6 +808,7 @@ class Client:
         message: str | None = None,
         preserve: bool | None = None,
         filesystem_strict: bool | None = None,
+        local_source_name: str | None = None,
         dry_run: bool | None = None,
         **meta: Any,
     ) -> "MergeOperationHandle":
@@ -763,6 +821,7 @@ class Client:
             message=message,
             preserve=preserve,
             filesystem_strict=filesystem_strict,
+            local_source_name=local_source_name,
             dry_run=dry_run,
             **meta,
         )
@@ -790,6 +849,7 @@ class Client:
         message: str | None,
         preserve: bool | None,
         filesystem_strict: bool | None,
+        local_source_name: str | None,
         dry_run: bool | None,
         **meta: Any,
     ) -> MergeRequest:
@@ -804,10 +864,11 @@ class Client:
             # DR-1: start only. Core refuses it on any other op, and both CLIs
             # refuse it before the call.
             filesystem_strict=filesystem_strict,
-            # LCM1.0c: the local-family selector (`gwz merge --remote <name>`)
-            # is parsed by the Python driver lane's local-family module; the
-            # generic client never sets it.
-            local_source_name=None,
+            # LCM1.0c: the local-family selector (`gwz merge --remote <name>`,
+            # design §6/§7). It is a request field, not `OperationPolicy.remote`,
+            # and start-only: core's engine guard refuses it on every other op.
+            # `cli_local_family` is what parses it; a plain merge leaves it None.
+            local_source_name=local_source_name,
         )
 
     async def diff(

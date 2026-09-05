@@ -9,6 +9,7 @@ from . import (
     cli_branch_stash,
     cli_diff,
     cli_local,
+    cli_local_family,
     cli_log,
     cli_merge,
     cli_mutation,
@@ -65,6 +66,8 @@ def register_commands(registry: CommandRegistry) -> None:
     cli_branch_stash.register_commands(registry)
     cli_merge.register_commands(registry)
     cli_local.register_commands(registry)
+    # Last: it extends the `clone` and `merge` commands registered above.
+    cli_local_family.register_commands(registry)
 
 
 async def run(args: argparse.Namespace) -> int:
