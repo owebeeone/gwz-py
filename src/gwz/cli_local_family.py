@@ -11,9 +11,10 @@ table, and every flag shape the design refuses raises a typed
 :class:`CliUsageError` before a request is encoded. Core owns every other
 refusal: unknown hazard names, family lifecycle state, and the unsupported
 family ``--dry-run``, which is therefore passed through rather than
-pre-empted here. Those rows live in the shared parity fixture
-``src/tests/fixtures/cli_parity/parser_cases.json``; the Rust driver asserts
-against the same file.
+pre-empted here. Those rows live in the one cross-driver parity fixture
+``gwz-core/protocol/fixtures/cli_parity/local_family_cases.json`` (operator
+ruling 1 of 2026-09-06, design §11 item 17); the Rust driver asserts against
+the same file, and neither driver keeps a copy.
 
 This module also renders ``gwz local list`` (design §8.1), because that is
 the one response whose human form is a table of its own payload rather than

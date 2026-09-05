@@ -2,9 +2,11 @@
 
 Every request assertion below is one row of the design's §7 CLI -> live
 message table (`dev-docs/GwzLocalCloneDesign.md`), and the rows themselves
-live in the shared parity fixture `fixtures/cli_parity/parser_cases.json`
-rather than inline here: the Rust driver asserts against the same file, so a
-row added on one side cannot silently go missing on the other.
+live in the one cross-driver parity fixture
+`gwz-core/protocol/fixtures/cli_parity/local_family_cases.json` rather than
+inline here: the Rust driver asserts against the same file, so a row added on
+one side cannot silently go missing on the other. Neither driver keeps a copy
+(operator ruling 1 of 2026-09-06, design §11 item 17).
 
 Core still answers `unsupported_operation` for every local-family operation
 (lane S is building the store), so the `gwz local list` rendering cases drive
@@ -65,24 +67,91 @@ from gwz.protocol.generated import (
 )
 
 
+#: The single cross-driver source (operator ruling 1 of 2026-09-06): the
+#: fixture lives in `gwz-core`, beside the existing `merge_response.json`, and
+#: both drivers read it from there. `scripts/check_protocol_drift.py` already
+#: reaches the sibling checkout the same way.
 PARITY_FIXTURE = (
-    Path(__file__).parent / "fixtures" / "cli_parity" / "parser_cases.json"
+    Path(__file__).resolve().parents[3]
+    / "gwz-core"
+    / "protocol"
+    / "fixtures"
+    / "cli_parity"
+    / "local_family_cases.json"
 )
 
+#: A wheel-installed or standalone `gwz-py` checkout has no `gwz-core` sibling.
+#: The parity rows are then unreadable, which is a gap in coverage, not a
+#: failure of this driver -- so the rows skip, saying exactly what is missing.
+FIXTURE_MISSING_REASON = (
+    f"the cross-driver parity fixture is not in this checkout: {PARITY_FIXTURE}"
+    " (it lives in the sibling gwz-core repository)"
+)
 
-def parity_cases(key: str) -> list[dict[str, Any]]:
-    """The fixture rows this driver is expected to satisfy."""
+#: Rows the fixture scopes away from this driver, with the reason each is not
+#: assertable here. Pinned so that a row scoped `rust` later cannot quietly
+#: become a hole in the Python driver's coverage.
+ROWS_THIS_DRIVER_CANNOT_ASSERT = {
+    "message_cases": {},
+    "message_refusals": {
+        # `dispose C dirty` is an unrecognized operand, so argparse exits
+        # before `handle_local` runs: a parser exit, not the typed
+        # `CliUsageError` this harness reads a message from. Refused before
+        # encoding either way -- `test_local_rejects_unsupported_shapes_at_parse`
+        # covers the parser exit.
+        "local-dispose-hazards-without-force": "argparse exits before the handler",
+    },
+}
 
-    document = json.loads(PARITY_FIXTURE.read_text(encoding="utf-8"))
+
+def parity_document() -> dict[str, Any]:
+    return json.loads(PARITY_FIXTURE.read_text(encoding="utf-8"))
+
+
+def parity_cases(key: str) -> list[Any]:
+    """The fixture rows this driver is expected to satisfy.
+
+    `drivers` scopes a row to the drivers that can express it (fixture
+    `_schema`); a row this driver is not in is skipped, never asserted.
+    """
+
+    if not PARITY_FIXTURE.exists():
+        return [
+            pytest.param(
+                None,
+                id="parity-fixture-missing",
+                marks=pytest.mark.skip(reason=FIXTURE_MISSING_REASON),
+            )
+        ]
     return [
         case
-        for case in document[key]
+        for case in parity_document()[key]
         if "python" in case.get("drivers", ["python", "rust"])
     ]
 
 
-def case_id(case: dict[str, Any]) -> str:
-    return case["id"]
+def require_parity_fixture() -> dict[str, Any]:
+    if not PARITY_FIXTURE.exists():
+        pytest.skip(FIXTURE_MISSING_REASON)
+    return parity_document()
+
+
+def case_id(case: Any) -> str:
+    return case["id"] if isinstance(case, dict) else "parity-fixture-missing"
+
+
+def needles(case: dict[str, Any]) -> list[str]:
+    """The substrings this driver's refusal message must contain.
+
+    The shared `message_contains` plus `driver_message_contains.python`: the
+    wording around a shared needle differs per driver, so each driver pins the
+    rest of its own message beside the needles both must carry.
+    """
+
+    return [
+        *case["message_contains"],
+        *case.get("driver_message_contains", {}).get("python", []),
+    ]
 
 
 def resolve_field(request: Any, path: str) -> Any:
@@ -332,16 +401,37 @@ def test_parity_fixture_refusals_precede_any_request(case: dict[str, Any]) -> No
     assert case["refused_by"] == "cli"
     message = reject(case["argv"])
 
-    for fragment in case["message_contains"]:
+    for fragment in needles(case):
         assert fragment in message, f"{case['id']}: {fragment!r} not in {message!r}"
 
 
 def test_parity_fixture_covers_every_design_row_message() -> None:
     """Every message the §7 table names has at least one fixture row."""
 
+    require_parity_fixture()
     covered = {case["message"] for case in parity_cases("message_cases")}
 
     assert covered == set(MESSAGE_ROUTES)
+
+
+@pytest.mark.parametrize("key", sorted(ROWS_THIS_DRIVER_CANNOT_ASSERT))
+def test_parity_rows_scoped_away_from_this_driver_are_the_known_ones(key: str) -> None:
+    """A row scoped away from Python is one this driver documents, not a hole.
+
+    The fixture never deletes a case a driver cannot express -- it scopes it
+    with `drivers` -- so the set that this harness silently drops has to stay
+    the set whose reason is recorded above.
+    """
+
+    document = require_parity_fixture()
+
+    scoped_away = {
+        case["id"]
+        for case in document[key]
+        if "python" not in case.get("drivers", ["python", "rust"])
+    }
+
+    assert scoped_away == set(ROWS_THIS_DRIVER_CANNOT_ASSERT[key])
 
 
 # --------------------------------------------------------------------------
@@ -386,8 +476,9 @@ def test_local_rejects_unsupported_shapes_at_parse(argv: list[str]) -> None:
 
 @pytest.mark.parametrize("lifecycle", [["--abort"], ["--status"], ["--gc"]])
 def test_merge_remote_is_start_only(lifecycle: list[str]) -> None:
-    # `--continue` is the fixture's shared row; the rest are the same refusal
-    # reached through this driver's other lifecycle dests.
+    # All four lifecycle spellings are shared fixture rows now. These stay as
+    # this repository's own cover for them, because a checkout without the
+    # gwz-core sibling skips every fixture row.
     assert "start" in reject(["merge", "--remote", "A", *lifecycle])
 
 
