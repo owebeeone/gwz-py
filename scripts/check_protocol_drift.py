@@ -80,8 +80,22 @@ DEFAULT_IR = ROOT / "src" / "gwz" / "protocol" / "generated" / "gwz.ir.json"
 # object -- and the previous pin reproduced exactly on the pre-allocation
 # schema (gwz-core 7e962d2). The three pins are one fingerprint of one schema.
 #   was: sha256:26f0d16ffebdcdc26bbbe682a6347688781cd202694333dbb0c066d087fb6b4e
+#
+# Moved deliberately again on 2026-09-06 by LCM1.1 fix 1 (lane C, gwz-dev
+# dev-docs/GwzLocalClone-LCM1.0c-Checkpoint.md §14; GwzLocalCloneDesign.md
+# §4, §4.0, §4.1, §12), which allocates exactly four more GwzErrorCode
+# members for the local-create outcomes LCM1.1's wiring had folded into
+# unsupported_operation and io_error: unsupported_source_layout (63),
+# copy_failed (64), source_drift (65) and destination_incomplete (66). No
+# message, field or slot changed. MEASURED additive, not assumed: gwz-core's
+# own protocol/check_log_additive.py rendered the projection on both trees
+# and diffed them -- 4 added lines, 0 removed, 3 hunks, the four enum members
+# as map keys -- and the previous pin reproduced exactly on the
+# pre-allocation schema (gwz-core 81fcaf2). The three pins are one
+# fingerprint of one schema.
+#   was: sha256:2eca6469ed1281e77a95f1e419aa4065002aa94c77507a73ada6f6f9c8bb5503
 PRE_LOG_WIRE_FINGERPRINT = (
-    "sha256:2eca6469ed1281e77a95f1e419aa4065002aa94c77507a73ada6f6f9c8bb5503"
+    "sha256:0a173de982aaa93225e26581d678b4722356afc967fb4543de531708900cf981"
 )
 
 

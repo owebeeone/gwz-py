@@ -430,9 +430,15 @@ def member_display_path(root_path: str | None, path: str) -> str:
     if not root_path:
         return path
     # The wire spells a member path with `/` whatever the host is
-    # (`gwz_family_model::normalize`), so the components are re-joined with the
-    # platform's own separator, which is how `root_path` is already spelled.
-    return os.path.normpath(os.path.join(root_path, *path.split("/")))
+    # (`gwz_family_model::normalize`); `normpath` maps that to the platform's
+    # own separator, which is how `root_path` is already spelled. The path is
+    # joined whole, never split on `/` first: splitting dropped the leading
+    # empty segment of an absolute member path and nested it under the root,
+    # where the Rust driver's join lets it replace the root -- the one case
+    # the cross-driver listing fixture found the two joins disagreeing on
+    # (LCM1.1 fix 3, lane C, 2026-09-06). The wire never carries an absolute
+    # member path; if one ever arrives, both drivers now show it as recorded.
+    return os.path.normpath(os.path.join(root_path, path))
 
 
 def _state_cell(entry: Any) -> str:

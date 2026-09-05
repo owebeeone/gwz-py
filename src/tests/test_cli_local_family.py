@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
@@ -560,6 +561,46 @@ REFUSALS = {
         "merge --remote C: 'C' is not a ready local family member (incomplete)",
         "UnknownLocal",
     ),
+    # LCM1.1 fix 1 (lane C, 2026-09-06): the four local-create outcomes that
+    # were folded into unsupported_operation and io_error. Each is a typed
+    # refusal like its neighbours -- the human line carries core's message
+    # unedited and machine output the PascalCase label -- so a driver and an
+    # operator can tell a design section 4.0 hazard from "not built yet",
+    # and a stopped copy, a moved source or an incomplete destination from a
+    # plain I/O failure.
+    "unsupported_source_layout": (
+        GwzErrorCode.unsupported_source_layout,
+        "local clone `A` -> /Users/limbo/gwz-dev-A: inventory source failed: "
+        "/Users/limbo/gwz-dev/app: unsupported layout: Alternates; "
+        "nothing was reserved",
+        "UnsupportedSourceLayout",
+    ),
+    "copy_failed": (
+        GwzErrorCode.copy_failed,
+        "local clone `A` -> /Users/limbo/gwz-dev-A: copy tree failed: copy failed "
+        "at app/locked.txt: SourceUnreadable: Permission denied; effects: "
+        "[RowAllocated, DestinationAllocated, ErrorRecorded]; the `creating` "
+        "row `A` and /Users/limbo/gwz-dev-A are retained for inspection",
+        "CopyFailed",
+    ),
+    "source_drift": (
+        GwzErrorCode.source_drift,
+        "local clone `A` -> /Users/limbo/gwz-dev-A: recheck source failed: source "
+        "drift: repository @root changed; effects: [RowAllocated, "
+        "DestinationAllocated, TreeCopied, DestinationGitInstalled, "
+        "PointerInstalled, ErrorRecorded]; the `creating` row `A` and "
+        "/Users/limbo/gwz-dev-A are retained for inspection",
+        "SourceDrift",
+    ),
+    "destination_incomplete": (
+        GwzErrorCode.destination_incomplete,
+        "local clone `A` -> /Users/limbo/gwz-dev-A: check destination failed: "
+        "destination is incomplete: mem_app: objects missing from the destination "
+        "store (7 objects in the store, 3 roots): 3f6b4a59 (below 8ec04f1d); "
+        "effects: [RowAllocated, DestinationAllocated, TreeCopied, "
+        "DestinationGitInstalled, PointerInstalled, ErrorRecorded]",
+        "DestinationIncomplete",
+    ),
 }
 
 
@@ -860,6 +901,64 @@ def test_local_list_without_a_root_path_renders_the_relative_path_unchanged(
     # populated listing without one is a core that has not caught up. Show the
     # path core did send rather than invent a root for it.
     assert listing_paths([member_entry("A", path=path)], None) == [path]
+
+
+#: The cross-driver rendering fixture (LCM1.1 fix 3, lane C, 2026-09-06),
+#: beside the argv fixture in gwz-core: every case is a `root_path`, a member
+#: `path` and the display path BOTH drivers must render from them. The Rust
+#: driver asserts the same file; a disagreement is a finding, never a reason
+#: to bend the expected value.
+LISTING_FIXTURE = PARITY_FIXTURE.with_name("local_family_listing_cases.json")
+
+LISTING_FIXTURE_MISSING_REASON = (
+    f"the cross-driver listing fixture is not in this checkout: {LISTING_FIXTURE}"
+    " (it lives in the sibling gwz-core repository)"
+)
+
+#: The shapes the fixture must cover (the fix 3 brief), by case id.
+REQUIRED_LISTING_CASES = {
+    "plain-child",
+    "sibling-through-parent",
+    "nested-member",
+    "two-level-escape",
+    "absent-root",
+    "empty-root",
+    "already-absolute-member-path",
+}
+
+
+def listing_cases() -> list[Any]:
+    if not LISTING_FIXTURE.exists():
+        return [
+            pytest.param(
+                {},
+                id="fixture-missing",
+                marks=pytest.mark.skip(reason=LISTING_FIXTURE_MISSING_REASON),
+            )
+        ]
+    document = json.loads(LISTING_FIXTURE.read_text(encoding="utf-8"))
+    return [pytest.param(case, id=case["id"]) for case in document["cases"]]
+
+
+@pytest.mark.parametrize("case", listing_cases())
+def test_listing_fixture_case_renders_the_expected_display_path(
+    case: dict[str, Any],
+) -> None:
+    # The join is lexical and never touches a filesystem, so the fixture's
+    # paths need not exist. `expected` is spelled with `/`; a host whose
+    # separator differs is compared after mapping it (fixture `_schema`).
+    rendered = cli_local_family.member_display_path(case["root_path"], case["path"])
+    assert rendered.replace(os.sep, "/") == case["expected"], case.get("note", "")
+
+
+@pytest.mark.skipif(
+    not LISTING_FIXTURE.exists(), reason=LISTING_FIXTURE_MISSING_REASON
+)
+def test_listing_fixture_covers_the_required_shapes_once_each() -> None:
+    document = json.loads(LISTING_FIXTURE.read_text(encoding="utf-8"))
+    ids = [case["id"] for case in document["cases"]]
+    assert len(ids) == len(set(ids)), "case ids are unique"
+    assert REQUIRED_LISTING_CASES <= set(ids)
 
 
 def test_local_list_shows_a_divergent_observed_state_and_the_last_error(

@@ -71,6 +71,16 @@ def test_repo_member_lifecycle_protocol_is_pinned() -> None:
     assert generated.LocalObservedState.malformed.value == 6
     assert generated.LocalObservedState.unobserved.value == 7
     assert generated.GwzErrorCode.unknown_local.value == 62
+    # LCM1.1 fix 1 (lane C, 2026-09-06, gwz-dev
+    # dev-docs/GwzLocalClone-LCM1.0c-Checkpoint.md §14): the four
+    # local-create outcomes that were folded into unsupported_operation and
+    # io_error, each distinct from both.
+    assert generated.GwzErrorCode.unsupported_source_layout.value == 63
+    assert generated.GwzErrorCode.copy_failed.value == 64
+    assert generated.GwzErrorCode.source_drift.value == 65
+    assert generated.GwzErrorCode.destination_incomplete.value == 66
+    assert generated.GwzErrorCode.unsupported_operation.value == 14
+    assert generated.GwzErrorCode.io_error.value == 28
     assert generated.MergeRecordRequiredWave.a1.value == 0
     assert generated.MergeRecordRequiredWave.a4.value == 3
     pinned = (
