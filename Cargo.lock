@@ -342,6 +342,8 @@ version = "0.1.0"
 dependencies = [
  "gwz-family-model",
  "gwz-family-store-contract",
+ "serde",
+ "serde_yaml",
 ]
 
 [[package]]
@@ -389,6 +391,9 @@ name = "gwz-refcopy"
 version = "0.1.0"
 dependencies = [
  "gwz-copy-contract",
+ "libc",
+ "rustix",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -406,6 +411,7 @@ dependencies = [
 name = "gwz-repo-inspect"
 version = "0.1.0"
 dependencies = [
+ "git2",
  "gwz-repo-contract",
 ]
 
