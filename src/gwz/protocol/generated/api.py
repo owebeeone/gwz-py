@@ -476,6 +476,9 @@ class GwzErrorCode(Enum):
     destination_incomplete = 66
     pairing_mismatch = 67
     import_incomplete = 68
+    unwaived_hazard = 69
+    unknown_evidence = 70
+    disposal_incomplete = 71
 
 class MergeRecordRequiredWave(Enum):
     a1 = 0

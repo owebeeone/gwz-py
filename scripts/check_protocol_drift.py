@@ -106,8 +106,21 @@ DEFAULT_IR = ROOT / "src" / "gwz" / "protocol" / "generated" / "gwz.ir.json"
 # reproduced exactly on the pre-allocation schema (gwz-core 63f1332). The
 # three pins are one fingerprint of one schema.
 #   was: sha256:0a173de982aaa93225e26581d678b4722356afc967fb4543de531708900cf981
+#
+# Moved deliberately again on 2026-09-06 by LCM2.1/LCM2.2 (lane C, gwz-dev
+# dev-docs/GwzLocalClone-LCM1.0c-Checkpoint.md §17; GwzLocalCloneDesign.md
+# §5, §5.1, §5.2, §12), which allocates exactly three more GwzErrorCode
+# members for the ordinary-disposal outcomes: unwaived_hazard (69),
+# unknown_evidence (70) and disposal_incomplete (71). No message, field or
+# slot changed. MEASURED additive, not assumed: gwz-core's own
+# protocol/check_log_additive.py rendered the projection on both trees and
+# diffed them -- 3 added lines, 0 removed, 2 hunks, the three enum members as
+# map keys -- and the previous pin reproduced exactly on the pre-allocation
+# schema (gwz-core 6d1a28e). The three pins are one fingerprint of one
+# schema.
+#   was: sha256:ba55594fa54123b865e06eb4bedfbf1eba4c9f52467a468831f9b699df0763a2
 PRE_LOG_WIRE_FINGERPRINT = (
-    "sha256:ba55594fa54123b865e06eb4bedfbf1eba4c9f52467a468831f9b699df0763a2"
+    "sha256:e99ce51a85b439fb03bb43df5beb3a33156048b8212d3f2fc609ba2db163db32"
 )
 
 

@@ -13,8 +13,12 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
+import pytest
+
+from gwz.errors import GwzBridgeError
 from gwz.protocol.generated import (
     AggregateStatus,
+    LocalFamilyOp,
     MergeOp,
     MergeOperationState,
     MergeParticipantState,
@@ -70,3 +74,57 @@ def test_a_family_merge_by_name_integrates_the_clones_commits(tmp_path: Path) ->
     assert git(member, "rev-parse", "HEAD") == more
     assert git(member, "rev-parse", repo.source_ref) == work
     assert git(member, "rev-parse", repo_again.source_ref) == more
+
+
+def test_ordinary_dispose_deletes_a_preserved_lane_and_refuses_unique_history(
+    tmp_path: Path,
+) -> None:
+    """LCM2.1/LCM2.2 through the native bridge (design §5, §12).
+
+    A clean lane whose every protected root the root holds is deleted by a
+    plain dispose; a lane holding a commit nothing else holds refuses
+    `unwaived_hazard` with its directory intact, and deletes once the
+    operator names the loss -- the same loop
+    `gwz-cli/tests/local_family_workflows.rs` drives through the binary.
+    """
+
+    native_module()
+    root = tmp_path / "root"
+    member, _base = create_workspace_with_member(root)
+    git(root, "add", "-A")
+    git(root, "commit", "-m", "init workspace")
+    client = native_client(root)
+
+    dest = tmp_path / "root-A"
+    created = asyncio.run(client.clone_local_workspace("A", dest))
+    assert created.response.meta.aggregate_status is AggregateStatus.ok
+    deleted = asyncio.run(client.local_family(LocalFamilyOp.dispose, name="A"))
+    assert deleted.response.meta.aggregate_status is AggregateStatus.ok
+    message = deleted.response.meta.message or ""
+    assert "deleted local clone `A`" in message and "its row removed" in message
+    assert not dest.exists(), "the directory is gone"
+
+    dest_b = tmp_path / "root-B"
+    asyncio.run(client.clone_local_workspace("B", dest_b))
+    unique = commit_file(dest_b / "repos" / "app", "feature.txt", "from B\n", "only in B")
+    # The native bridge raises a core refusal with its typed code label
+    # ahead of core's message, unedited.
+    with pytest.raises(GwzBridgeError) as refused:
+        asyncio.run(client.local_family(LocalFamilyOp.dispose, name="B"))
+    message = str(refused.value)
+    assert "UnwaivedHazard: local dispose `B`" in message
+    assert "<unpreserved-history>" in message and unique in message
+    assert "nothing was removed" in message
+    assert (dest_b / "repos" / "app" / "feature.txt").is_file(), "nothing was removed"
+
+    forced = asyncio.run(
+        client.local_family(
+            LocalFamilyOp.dispose, name="B", force_hazards=["unpreserved-history"]
+        )
+    )
+    assert forced.response.meta.aggregate_status is AggregateStatus.ok
+    assert "forced past: unpreserved-history" in (forced.response.meta.message or "")
+    assert not dest_b.exists()
+    listed = asyncio.run(client.local_family(LocalFamilyOp.list))
+    assert [entry.name for entry in listed.members] == ["root"]
+    assert git(member, "rev-parse", "HEAD") == _base, "the root is untouched"

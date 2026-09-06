@@ -625,6 +625,42 @@ REFUSALS = {
         "entered; a retry mints a fresh transfer id",
         "ImportIncomplete",
     ),
+    # LCM2.1/LCM2.2 (lane C, 2026-09-06): the three ordinary-disposal
+    # outcomes. A known hazard --force did not name, evidence that could not
+    # be established (no force name waives it), and a removal that stopped
+    # part-way (the row is `disposing`). Presented like every other typed
+    # refusal: the message names every finding, the recovery and the effects.
+    "unwaived_hazard": (
+        GwzErrorCode.unwaived_hazard,
+        "local dispose `B` at /Users/limbo/gwz-dev-B: unwaived hazard(s): "
+        "`mem_app` <unpreserved-history>: 1 protected root(s) of mem_app are "
+        "preserved whole in no surviving family repository: Head "
+        "2f44c2f5f825e785ae19c1b85bc358fb4e89d61d; name each accepted loss "
+        "with --force <hazard,...> to delete, or --keep to detach and retain "
+        "every file; nothing was removed; effects: []",
+        "UnwaivedHazard",
+    ),
+    "unknown_evidence": (
+        GwzErrorCode.unknown_evidence,
+        "local dispose `A` at /Users/limbo/gwz-dev-A: unknown evidence: "
+        "UnsupportedEvidence: `@root`: OpenGwzStash has no waiver (1 gwz stash "
+        "record(s) under /Users/limbo/gwz-dev-A/.gwz/stash/bundles: this build "
+        "does not decode gwz stash coordination records); no force name waives "
+        "unknown evidence: make it interpretable, or --keep to detach and "
+        "retain every file; nothing was removed; effects: []",
+        "UnknownEvidence",
+    ),
+    "disposal_incomplete": (
+        GwzErrorCode.disposal_incomplete,
+        "local dispose `A` at /Users/limbo/gwz-dev-A: removal stopped "
+        "(/Users/limbo/gwz-dev-A/app/locked/held: Permission denied (os error "
+        "13)); remaining: /Users/limbo/gwz-dev-A, "
+        "/Users/limbo/gwz-dev-A/app/locked/held; the row is `disposing` and the "
+        "remainder is retained for inspection; there is no replay and a repeat "
+        "is refused: clean up by hand, then an explicit dispose removes the "
+        "stale row, or --keep detaches the remainder; effects: [RowDisposing]",
+        "DisposalIncomplete",
+    ),
 }
 
 

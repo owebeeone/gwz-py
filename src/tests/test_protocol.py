@@ -86,6 +86,16 @@ def test_repo_member_lifecycle_protocol_is_pinned() -> None:
     assert generated.GwzErrorCode.import_incomplete.value == 68
     assert generated.GwzErrorCode.member_not_found.value != 67
     assert generated.GwzErrorCode.git_command_failed.value != 68
+    # LCM2.1/LCM2.2 (lane C, 2026-09-06, gwz-dev
+    # dev-docs/GwzLocalClone-LCM1.0c-Checkpoint.md §17): the three
+    # ordinary-disposal outcomes, distinct from the codes they would have
+    # folded into.
+    assert generated.GwzErrorCode.unwaived_hazard.value == 69
+    assert generated.GwzErrorCode.unknown_evidence.value == 70
+    assert generated.GwzErrorCode.disposal_incomplete.value == 71
+    assert generated.GwzErrorCode.permission_denied.value != 69
+    assert generated.GwzErrorCode.unsupported_operation.value != 70
+    assert generated.GwzErrorCode.io_error.value != 71
     assert generated.GwzErrorCode.unsupported_operation.value == 14
     assert generated.GwzErrorCode.io_error.value == 28
     assert generated.MergeRecordRequiredWave.a1.value == 0
