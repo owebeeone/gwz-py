@@ -601,6 +601,30 @@ REFUSALS = {
         "DestinationGitInstalled, PointerInstalled, ErrorRecorded]",
         "DestinationIncomplete",
     ),
+    # LCM1.2 (lane C, 2026-09-06): the two family-merge import outcomes. A
+    # pairing set mismatch is refused before any fetch with nothing written;
+    # an import that stopped before the engine names every retained import
+    # ref. Presented like every other typed refusal.
+    "pairing_mismatch": (
+        GwzErrorCode.pairing_mismatch,
+        "local family merge from `A`: import of HEAD from `A` as "
+        "refs/gwz/local-imports/xfer_0123456789abcdef0123456789abcdef failed: "
+        "import pairing is incomplete; unpaired: mem_extra; no import ref was "
+        "created; nothing was written; the merge engine was not entered; a retry "
+        "mints a fresh transfer id",
+        "PairingMismatch",
+    ),
+    "import_incomplete": (
+        GwzErrorCode.import_incomplete,
+        "local family merge from `A`: import of HEAD from `A` as "
+        "refs/gwz/local-imports/xfer_0123456789abcdef0123456789abcdef failed: "
+        "mem_lib: transfer failed: /Users/limbo/gwz-dev/lib: failed to update "
+        "refs; retained import refs (ordinary Git refs, never pruned by gwz): "
+        "mem_app refs/gwz/local-imports/xfer_0123456789abcdef0123456789abcdef = "
+        "2f44c2f5f825e785ae19c1b85bc358fb4e89d61d; the merge engine was not "
+        "entered; a retry mints a fresh transfer id",
+        "ImportIncomplete",
+    ),
 }
 
 

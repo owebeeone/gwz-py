@@ -79,6 +79,13 @@ def test_repo_member_lifecycle_protocol_is_pinned() -> None:
     assert generated.GwzErrorCode.copy_failed.value == 64
     assert generated.GwzErrorCode.source_drift.value == 65
     assert generated.GwzErrorCode.destination_incomplete.value == 66
+    # LCM1.2 (lane C, 2026-09-06, gwz-dev
+    # dev-docs/GwzLocalClone-LCM1.0c-Checkpoint.md §16): the two family-merge
+    # import outcomes, distinct from the codes they would have folded into.
+    assert generated.GwzErrorCode.pairing_mismatch.value == 67
+    assert generated.GwzErrorCode.import_incomplete.value == 68
+    assert generated.GwzErrorCode.member_not_found.value != 67
+    assert generated.GwzErrorCode.git_command_failed.value != 68
     assert generated.GwzErrorCode.unsupported_operation.value == 14
     assert generated.GwzErrorCode.io_error.value == 28
     assert generated.MergeRecordRequiredWave.a1.value == 0

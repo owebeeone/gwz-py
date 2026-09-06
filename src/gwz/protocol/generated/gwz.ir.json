@@ -882,7 +882,9 @@
         "unsupported_source_layout": 63,
         "copy_failed": 64,
         "source_drift": 65,
-        "destination_incomplete": 66
+        "destination_incomplete": 66,
+        "pairing_mismatch": 67,
+        "import_incomplete": 68
       }
     },
     {
