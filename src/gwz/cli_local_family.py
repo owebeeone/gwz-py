@@ -1,10 +1,17 @@
 """CLI surface for the local clone family (design §4-§7; LCM1.0c, lane CP).
 
-Three verbs reach the two new protocol slots and the merge selector:
+One verb reaches the two new protocol slots, and the merge selector the third:
 
-* ``gwz clone --local --name <name> [dest]`` -> ``CloneLocalWorkspaceRequest``
-* ``gwz local list|dispose|disband``         -> ``LocalFamilyRequest``
-* ``gwz merge --remote <name> [<ref>]``      -> ``MergeRequest.local_source_name``
+* ``gwz local clone <name> [dest]``     -> ``CloneLocalWorkspaceRequest``
+* ``gwz local list|dispose|disband``    -> ``LocalFamilyRequest``
+* ``gwz merge --remote <name> [<ref>]`` -> ``MergeRequest.local_source_name``
+
+Creation lives under the family's own verb, with the member name positional
+like ``dispose <name>``'s (operator ruling 2026-09-06, design §11 item 28).
+``gwz clone --local`` was removed without an alias -- nothing had been released
+-- so ``gwz clone`` is the URL form only and this module no longer touches it.
+The wire did not move: the request ``local clone`` builds is the one
+``clone --local`` built.
 
 Requests are built field-for-field from the design's §7 CLI -> live message
 table, and every flag shape the design refuses raises a typed
@@ -24,11 +31,10 @@ root-relative ``path`` for the human table; ``--json`` takes the generic
 protocol document unchanged, so a machine reader gets both wire fields as
 core sent them.
 
-``clone`` and ``merge`` are registered by ``cli_local`` and ``cli_merge``,
-which this lane does not own, and argparse rejects a second subparser with
-either name. The two commands are therefore extended in place: the URL clone
-and every merge without ``--remote`` still run their original handler,
-unchanged.
+``merge`` is registered by ``cli_merge``, which this lane does not own, and
+argparse rejects a second subparser with that name. The command is therefore
+extended in place: every merge without ``--remote`` still runs its original
+handler, unchanged. ``clone`` (``cli_local``) is not extended at all.
 """
 
 from __future__ import annotations
@@ -64,25 +70,13 @@ BARE_FORCE_REFUSAL = (
     + ")"
 )
 
-#: `clone` flags that only mean something with `--local`.
-LOCAL_ONLY_FLAGS = (
-    ("name", "--name"),
-    ("verbatim", "--verbatim"),
-    ("clean", "--clean"),
-    ("bare", "--bare"),
-    ("branch", "-b"),
-    ("from_source", "--from"),
-)
-
-
 def register_commands(registry: CommandRegistry) -> None:
     registry.register(
         "local",
-        help="Inspect and manage the local clone family",
+        help="Create, inspect and retire the local clone family",
         configure=configure_local,
         handler=handle_local,
     )
-    extend_command(registry, "clone", configure=configure_clone_local, wrap=wrap_clone)
     extend_command(registry, "merge", configure=configure_merge_remote, wrap=wrap_merge)
 
 
@@ -123,20 +117,19 @@ def _chain_configure(
 
 
 # ---------------------------------------------------------------------------
-# gwz clone --local  (design §4)
+# gwz local clone <name> [dest]  (design §4; operator ruling 2026-09-06)
 # ---------------------------------------------------------------------------
 
 
-def configure_clone_local(parser: argparse.ArgumentParser) -> None:
-    # A local create has no URL (design §4), so the URL clone's positional
-    # becomes optional and carries the destination in `--local` mode.
-    _make_positional_optional(parser, "url")
+def configure_local_clone(parser: argparse.ArgumentParser) -> None:
+    # The name is a required positional, as `dispose <name>` already has it;
+    # a missing name is argparse's own error, an empty one the handler's.
+    parser.add_argument("name", help="Family member name for the new clone")
     parser.add_argument(
-        "--local",
-        action="store_true",
-        help="Create a local clone of this workspace instead of cloning a URL",
+        "dest",
+        nargs="?",
+        help="Destination directory (default ../<root-dirname>-<name>)",
     )
-    parser.add_argument("--name", metavar="name", help="Family name for the new clone")
     parser.add_argument(
         "--verbatim",
         action="store_true",
@@ -166,48 +159,27 @@ def configure_clone_local(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def wrap_clone(base: CommandHandler) -> CommandHandler:
-    async def handle_clone(context: CommandContext) -> Any:
-        if getattr(context.args, "local", False):
-            return await handle_clone_local(context)
-        _reject_local_only_flags(context.args)
-        if not context.args.url:
-            raise CliUsageError(
-                "clone requires a workspace URL, or --local --name <name>",
-                code="InvalidRequest",
-            )
-        return await base(context)
-
-    return handle_clone
-
-
-async def handle_clone_local(context: CommandContext) -> Any:
+async def handle_local_clone(context: CommandContext) -> Any:
     args = context.args
-    if args.directory is not None:
-        raise CliUsageError(
-            "clone --local takes one destination path", code="InvalidRequest"
-        )
     if not args.name:
-        raise CliUsageError(
-            "clone --local requires --name <name>", code="InvalidRequest"
-        )
+        # Ruling 4 of 2026-09-06 (design §7, §11 item 20): an empty name
+        # refuses here, before a workspace discovery and a family read learn
+        # the same thing from core's own shape check.
+        raise CliUsageError("local clone <name> must not be empty", code="InvalidRequest")
     mode = _local_clone_mode(args)
     if args.branch is not None and mode is LocalCloneMode.verbatim:
         raise CliUsageError(
-            "clone --local -b <branch> requires --clean or --bare",
+            "-b <branch> is accepted only with --clean or --bare",
             code="InvalidRequest",
         )
     if args.from_source is not None and not args.from_source:
         # An absent `copy_source` is what "the cwd workspace" means (design
         # §4), so an empty one is not a shorter spelling of it: it would ask
         # core to resolve a nameless source.
-        raise CliUsageError(
-            "clone --local --from <name|path> must not be empty",
-            code="InvalidRequest",
-        )
+        raise CliUsageError("--from <name|path> must not be empty", code="InvalidRequest")
     return await context.client.clone_local_workspace(
         args.name,
-        dest=args.url,
+        dest=args.dest,
         mode=mode,
         branch=args.branch,
         # Design §7 tag 6, §11 item 11: `--from` is `copy_source` on the wire.
@@ -235,23 +207,6 @@ def _local_clone_mode(args: argparse.Namespace) -> LocalCloneMode:
     return LocalCloneMode.verbatim
 
 
-def _reject_local_only_flags(args: argparse.Namespace) -> None:
-    for attribute, flag in LOCAL_ONLY_FLAGS:
-        value = getattr(args, attribute, None)
-        if value:
-            raise CliUsageError(
-                f"clone {flag} requires --local", code="InvalidRequest"
-            )
-
-
-def _make_positional_optional(parser: argparse.ArgumentParser, dest: str) -> None:
-    for action in parser._actions:  # noqa: SLF001 - argparse has no public form
-        if action.dest == dest and not action.option_strings:
-            action.nargs = "?"
-            return
-    raise AssertionError(f"clone parser has no positional '{dest}'")
-
-
 # ---------------------------------------------------------------------------
 # gwz local list | dispose | disband  (design §5)
 # ---------------------------------------------------------------------------
@@ -262,6 +217,14 @@ def configure_local(parser: argparse.ArgumentParser) -> None:
     # One parent instance per nested parser: argparse's "resolve" handler
     # mutates the conflicting action, which parents share by reference, and
     # `dispose` redefines `--force` to take hazard names.
+    configure_local_clone(
+        subparsers.add_parser(
+            "clone",
+            help="Create a local clone of this workspace as a new family member",
+            parents=[global_options_parent("_nested_")],
+            conflict_handler="resolve",
+        )
+    )
     subparsers.add_parser(
         "list",
         help="List the family this workspace belongs to",
@@ -298,6 +261,8 @@ def configure_local(parser: argparse.ArgumentParser) -> None:
 
 async def handle_local(context: CommandContext) -> Any:
     command = context.args.local_command
+    if command == "clone":
+        return await handle_local_clone(context)
     if command == "list":
         return await context.client.local_family(LocalFamilyOp.list, **context.meta)
     if command == "disband":

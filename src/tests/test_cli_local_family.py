@@ -18,9 +18,11 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import io
 import json
 import os
 from collections.abc import AsyncIterator
+from contextlib import redirect_stderr
 from pathlib import Path
 from typing import Any
 
@@ -95,13 +97,28 @@ FIXTURE_MISSING_REASON = (
 ROWS_THIS_DRIVER_CANNOT_ASSERT = {
     "message_cases": {},
     "message_refusals": {
-        # `dispose C dirty` is an unrecognized operand, so argparse exits
-        # before `handle_local` runs: a parser exit, not the typed
-        # `CliUsageError` this harness reads a message from. Refused before
-        # encoding either way -- `test_local_rejects_unsupported_shapes_at_parse`
-        # covers the parser exit.
-        "local-dispose-hazards-without-force": "argparse exits before the handler",
+        # Scoped to no driver at all: with the member name positional
+        # (operator ruling 2026-09-06) a lone operand is the name, never a
+        # destination without one -- the same argv shape is now the message
+        # case `local-clone-single-operand-is-the-name`.
+        "clone-local-dest-without-name": "not expressible on the positional surface",
     },
+}
+
+#: Refusal rows the argument parser itself answers here -- an unknown flag on
+#: `clone`, a missing or surplus operand on `local clone` or `local dispose` --
+#: so argparse exits before any handler runs. `reject` reads the parser's own
+#: message for these; every other refusal row must be the typed
+#: `CliUsageError` the driver raises from its validation.
+ROWS_REFUSED_BY_THE_PARSER = {
+    "clone-local-without-name",
+    "clone-local-url-and-dest",
+    "clone-local-flags-without-local",
+    "clone-clean-without-local",
+    "clone-from-without-local",
+    "clone-local-spelling-is-removed",
+    "clone-local-clean-spelling-is-removed",
+    "local-dispose-hazards-without-force",
 }
 
 
@@ -341,14 +358,29 @@ def sole_request(bridge: RecordingBridge) -> Any:
     return bridge.calls[0][3]
 
 
-def reject(argv: list[str]) -> str:
-    """Run one argv row and return the CLI usage refusal it raises."""
+def reject(argv: list[str], *, parser_exit: bool = False) -> str:
+    """Run one argv row and return the refusal it earns before any request.
+
+    A typed `CliUsageError` from the driver's own validation by default; with
+    `parser_exit`, argparse's own rejection -- it exits non-zero before any
+    handler runs, and its message (usage plus the error line) is what a
+    person sees on stderr, so that is what the fixture's needles are read
+    against.
+    """
 
     bridge = RecordingBridge()
-    with pytest.raises(CliUsageError) as raised:
-        run_cli(argv, bridge)
+    if parser_exit:
+        stderr = io.StringIO()
+        with redirect_stderr(stderr), pytest.raises(SystemExit) as exited:
+            run_cli(argv, bridge)
+        assert exited.value.code not in (0, None), "argparse must reject, not exit 0"
+        message = stderr.getvalue()
+    else:
+        with pytest.raises(CliUsageError) as raised:
+            run_cli(argv, bridge)
+        message = str(raised.value)
     assert bridge.calls == [], "a CLI refusal must precede any request"
-    return str(raised.value)
+    return message
 
 
 # --------------------------------------------------------------------------
@@ -400,10 +432,19 @@ def test_parity_fixture_message_cases_build_the_design_row_request(
 @pytest.mark.parametrize("case", parity_cases("message_refusals"), ids=case_id)
 def test_parity_fixture_refusals_precede_any_request(case: dict[str, Any]) -> None:
     assert case["refused_by"] == "cli"
-    message = reject(case["argv"])
+    message = reject(case["argv"], parser_exit=case["id"] in ROWS_REFUSED_BY_THE_PARSER)
 
     for fragment in needles(case):
         assert fragment in message, f"{case['id']}: {fragment!r} not in {message!r}"
+
+
+def test_parser_refused_rows_are_fixture_rows() -> None:
+    """Every id `reject` reads a parser exit for is a row that still exists."""
+
+    document = require_parity_fixture()
+    ids = {case["id"] for case in document["message_refusals"]}
+
+    assert ROWS_REFUSED_BY_THE_PARSER <= ids
 
 
 def test_parity_fixture_covers_every_design_row_message() -> None:
@@ -443,21 +484,18 @@ def test_parity_rows_scoped_away_from_this_driver_are_the_known_ones(key: str) -
 @pytest.mark.parametrize(
     "argv,expected",
     [
-        (["clone", "--local", "--name", "A", "dest", "extra"], "one destination"),
-        # Ruling 4 of 2026-09-06: an empty --name refuses at the driver, before
+        # Ruling 4 of 2026-09-06: an empty name refuses at the driver, before
         # a workspace discovery and a family read learn the same thing from
-        # core's own shape check. A shared fixture row now, kept here too as
-        # the cover for a checkout without the gwz-core sibling.
-        (["clone", "--local", "--name", ""], "--name"),
-        (["clone", "--name", "A"], "--local"),
-        (["clone", "--clean", "https://example.invalid/ws.git"], "--local"),
-        (["clone", "--bare", "https://example.invalid/ws.git"], "--local"),
-        (["clone", "--verbatim", "https://example.invalid/ws.git"], "--local"),
-        (["clone", "-b", "lane/x", "https://example.invalid/ws.git"], "--local"),
-        (["clone"], "requires a workspace URL"),
+        # core's own shape check. A shared fixture row too, kept here as the
+        # cover for a checkout without the gwz-core sibling.
+        (["local", "clone", ""], "local clone <name> must not be empty"),
+        (["local", "clone", "--verbatim", "--clean", "A"], "mutually exclusive"),
+        (["local", "clone", "--verbatim", "--bare", "A"], "mutually exclusive"),
+        (["local", "clone", "-b", "lane/x", "A"], "--clean or --bare"),
+        (["local", "clone", "--from", "", "A"], "--from <name|path> must not be empty"),
     ],
 )
-def test_clone_local_flag_validation_precedes_any_request(
+def test_local_clone_flag_validation_precedes_any_request(
     argv: list[str], expected: str
 ) -> None:
     assert expected in reject(argv)
@@ -467,10 +505,13 @@ def test_clone_local_flag_validation_precedes_any_request(
     "argv",
     [
         ["local"],
+        ["local", "clone"],
+        ["local", "clone", "A", "dest", "extra"],
         ["local", "dispose"],
         ["local", "bogus"],
         ["local", "list", "--keep"],
         ["local", "disband", "--force", "dirty"],
+        ["clone"],
     ],
 )
 def test_local_rejects_unsupported_shapes_at_parse(argv: list[str]) -> None:
@@ -478,6 +519,60 @@ def test_local_rejects_unsupported_shapes_at_parse(argv: list[str]) -> None:
         build_parser().parse_args(argv)
 
     assert raised.value.code != 0
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["clone", "--local", "--name", "A", "../gwz-dev-A"],
+        ["clone", "--local", "--clean", "-b", "lane/x", "--name", "C", "dest"],
+        ["clone", "--local", "--bare", "--name", "hub", "dest"],
+        ["clone", "--local", "--name", "A"],
+    ],
+)
+def test_clone_local_is_removed_without_an_alias(argv: list[str]) -> None:
+    """The old create spelling is rejected, not aliased and not re-read.
+
+    Operator ruling 2026-09-06 (design §11 item 28): nothing had been
+    released, so `gwz clone --local` went without a compatibility alias.
+    argparse rejects `--local` as an unrecognized argument and exits 2 before
+    any handler runs -- in particular the row is never read as a URL clone of
+    the `--name` operand.
+    """
+
+    stderr = io.StringIO()
+    with redirect_stderr(stderr), pytest.raises(SystemExit) as exited:
+        build_parser().parse_args(argv)
+
+    assert exited.value.code == 2
+    assert "unrecognized arguments" in stderr.getvalue()
+    assert "--local" in stderr.getvalue()
+
+
+def test_clone_declares_no_local_flag_and_local_owns_creation() -> None:
+    """`gwz clone` is the URL form only; `gwz local` has exactly four verbs."""
+
+    subparsers = next(
+        action
+        for action in build_parser()._actions
+        if isinstance(action, argparse._SubParsersAction)
+    )
+    clone = subparsers.choices["clone"]
+    declared = {option for action in clone._actions for option in action.option_strings}
+    assert declared.isdisjoint(
+        {"--local", "--name", "--verbatim", "--clean", "--bare", "-b", "--from"}
+    ), sorted(declared)
+    positionals = [action.dest for action in clone._actions if not action.option_strings]
+    assert positionals == ["url", "directory"]
+    assert "local" not in clone.format_help()
+
+    local = subparsers.choices["local"]
+    nested = next(
+        action for action in local._actions if isinstance(action, argparse._SubParsersAction)
+    )
+    assert list(nested.choices) == ["clone", "list", "dispose", "disband"]
+    # The verb's summary, in the root command list, covers creation too.
+    assert "Create, inspect and retire the local clone family" in build_parser().format_help()
 
 
 @pytest.mark.parametrize("lifecycle", [["--abort"], ["--status"], ["--gc"]])
@@ -690,7 +785,7 @@ def refusing_client_factory(
         ["local", "list"],
         ["local", "dispose", "C"],
         ["local", "disband"],
-        ["clone", "--local", "--name", "A"],
+        ["local", "clone", "A"],
     ],
 )
 def test_human_presentation_of_core_refusals(
@@ -1291,13 +1386,17 @@ def run_with_client(argv: list[str], client: Any) -> Any:
     return asyncio.run(args.command_handler(context))
 
 
-def test_existing_forall_registration_is_untouched() -> None:
+def test_existing_forall_and_clone_registrations_are_untouched() -> None:
+    # `gwz clone <url>` is `cli_local`'s own command, handler and parser alike:
+    # since the 2026-09-06 surface ruling this module extends `merge` only.
     registry = CommandRegistry()
     cli.register_commands(registry)
     specs = {spec.name: spec for spec in registry._commands}
 
     assert specs["forall"].handler is cli_local.handle_forall
     assert specs["forall"].configure is cli_local.configure_forall
+    assert specs["clone"].handler is cli_local.handle_clone
+    assert specs["clone"].configure is cli_local.configure_clone
     assert {"clone", "local", "merge"} <= set(specs)
 
 

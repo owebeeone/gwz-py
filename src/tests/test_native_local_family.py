@@ -2,7 +2,7 @@
 
 `test_cli_local_family.py` pins what the Python driver *sends* against the
 cross-driver parity fixture; this file runs the served verbs against real
-core: a verbatim `clone --local`, work committed in the clone, and
+core: a verbatim `local clone`, work committed in the clone, and
 `merge --remote A` integrating it through the retained import ref -- the
 same loop `gwz-cli/tests/local_family_workflows.rs` drives through the Rust
 binary, so the two drivers are compared on the same outcome.
