@@ -1009,12 +1009,12 @@ def test_local_list_renders_the_design_table(
 
     assert exit_code == 0
     assert capsys.readouterr().out == (
-        "root  checkout  ready  /Users/limbo/gwz-dev\n"
-        "A     checkout  ready  /Users/limbo/gwz-dev-A\n"
-        "B     checkout  ready  /Users/limbo/gwz-dev-B\n"
-        "C     checkout  ready  /Users/limbo/gwz-dev-C\n"
-        "D     checkout  ready  /Users/limbo/gwz-dev-D\n"
-        "hub   bare      ready  /Users/limbo/gwz-dev-hub\n"
+        f"root  checkout  ready  {Path('/Users/limbo/gwz-dev')}\n"
+        f"A     checkout  ready  {Path('/Users/limbo/gwz-dev-A')}\n"
+        f"B     checkout  ready  {Path('/Users/limbo/gwz-dev-B')}\n"
+        f"C     checkout  ready  {Path('/Users/limbo/gwz-dev-C')}\n"
+        f"D     checkout  ready  {Path('/Users/limbo/gwz-dev-D')}\n"
+        f"hub   bare      ready  {Path('/Users/limbo/gwz-dev-hub')}\n"
     )
 
 
@@ -1047,7 +1047,7 @@ def test_local_list_joins_the_member_path_against_the_observed_root(
     # `gwz_family_model` records a normalised, root-escaping member path, so
     # the join only has to resolve the leading `..` run -- lexically, without
     # touching a filesystem, because the response is all the renderer has.
-    assert listing_paths([member_entry("A", path=path)], DESIGN_ROOT) == [expected]
+    assert listing_paths([member_entry("A", path=path)], DESIGN_ROOT) == [str(Path(expected))]
 
 
 @pytest.mark.parametrize("path", [".", "../gwz-dev-A"])
@@ -1149,9 +1149,9 @@ def test_local_list_shows_a_divergent_observed_state_and_the_last_error(
 
     assert exit_code == 0
     assert capsys.readouterr().out == (
-        "root  checkout  ready          /Users/limbo/gwz-dev\n"
-        "B     checkout  incomplete     /Users/limbo/gwz-dev-B\n"
-        "D     checkout  ready/missing  /Users/limbo/gwz-dev-D\n"
+        f"root  checkout  ready          {Path('/Users/limbo/gwz-dev')}\n"
+        f"B     checkout  incomplete     {Path('/Users/limbo/gwz-dev-B')}\n"
+        f"D     checkout  ready/missing  {Path('/Users/limbo/gwz-dev-D')}\n"
         "  last error: destination was removed outside gwz\n"
     )
 
@@ -1208,7 +1208,7 @@ def test_local_list_state_cell_covers_every_observed_state(
 
     assert exit_code == 0
     line = capsys.readouterr().out.rstrip("\n")
-    assert line.split() == ["A", "checkout", expected, "/Users/limbo/gwz-dev-A"]
+    assert line.split() == ["A", "checkout", expected, str(Path("/Users/limbo/gwz-dev-A"))]
 
 
 def test_local_list_json_carries_every_member_field_and_the_root_path(
