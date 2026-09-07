@@ -49,18 +49,23 @@ def test_a_family_merge_by_name_integrates_the_clones_commits(tmp_path: Path) ->
     assert git(clone_member, "rev-parse", "HEAD") == base
 
     work = commit_file(clone_member, "feature.txt", "from A\n", "work in A")
+    root_work = commit_file(dest, "root-work.txt", "root work\n", "root work in A")
     merged = asyncio.run(client.merge(local_source_name="A"))
     assert merged.response.meta.aggregate_status is AggregateStatus.ok
     assert merged.state is MergeOperationState.completed
     assert merged.open is False
-    [repo] = merged.repos
+    assert {repo.target_id for repo in merged.repos} == {"@root", "mem_app"}
+    root_repo = next(repo for repo in merged.repos if repo.target_id == "@root")
+    assert root_repo.source_commit == root_work
+    repo = next(repo for repo in merged.repos if repo.target_id == "mem_app")
     assert repo.target_id == "mem_app"
     assert repo.state is MergeParticipantState.fast_forwarded
     assert repo.source_ref.startswith("refs/gwz/local-imports/xfer_")
     assert repo.source_commit == work
     assert repo.resulting_commit == work
     message = merged.response.meta.message or ""
-    assert f"imported HEAD of family member `A` as {repo.source_ref} (mem_app={work})" in message
+    assert f"imported HEAD of family member `A` as {repo.source_ref}" in message
+    assert f"mem_app={work}" in message and f"@root={root_work}" in message
     assert git(member, "rev-parse", "HEAD") == work
     assert git(member, "rev-parse", repo.source_ref) == work, "the import ref is retained"
     assert git(member, "remote") == "", "no family remote is persisted"
@@ -69,11 +74,13 @@ def test_a_family_merge_by_name_integrates_the_clones_commits(tmp_path: Path) ->
     more = commit_file(clone_member, "feature.txt", "more from A\n", "more work in A")
     again = asyncio.run(client.merge(op=MergeOp.start, local_source_name="A"))
     assert again.state is MergeOperationState.completed
-    [repo_again] = again.repos
+    repo_again = next(repo for repo in again.repos if repo.target_id == "mem_app")
     assert repo_again.source_ref != repo.source_ref
     assert git(member, "rev-parse", "HEAD") == more
     assert git(member, "rev-parse", repo.source_ref) == work
     assert git(member, "rev-parse", repo_again.source_ref) == more
+    asyncio.run(client.local_family(LocalFamilyOp.dispose, name="A"))
+    assert not dest.exists()
 
 
 def test_ordinary_dispose_deletes_a_preserved_lane_and_refuses_unique_history(

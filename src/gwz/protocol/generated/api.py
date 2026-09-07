@@ -612,6 +612,16 @@ class OperationPolicy:
     max_connections_per_host: int | None
 
 @dataclass(slots=True)
+class RemoteSshIdentity:
+    remote: str
+    private_key_path: str
+
+@dataclass(slots=True)
+class TransportOptions:
+    default_identity: str | None
+    remote_identities: list[RemoteSshIdentity]
+
+@dataclass(slots=True)
 class RequestMeta:
     request_id: str
     schema_version: str
@@ -620,6 +630,7 @@ class RequestMeta:
     policy: OperationPolicy | None
     dry_run: bool | None
     attribution: OperationAttribution | None
+    transport: TransportOptions | None
 
 @dataclass(slots=True)
 class ResponseMeta:

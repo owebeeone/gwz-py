@@ -590,6 +590,11 @@ class Client:
         )
         return await self._call("ls", request, LsResponse)
 
+    async def resolve_forall_targets(self, *, include_unmaterialized: bool | None = False, **meta: Any) -> LsResponse:
+        """Resolve execution targets through core without running a command."""
+        request = LsRequest(meta=self.meta(**meta), include_unmaterialized=include_unmaterialized)
+        return await self._call("resolve_forall_targets", request, LsResponse)
+
     async def materialize(
         self,
         target: str | MaterializeTargetKind | MaterializeTarget = "lock",

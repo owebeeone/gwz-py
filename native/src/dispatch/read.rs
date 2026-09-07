@@ -25,7 +25,9 @@ pub(crate) fn call(
             call_detach_repo_member(method, request_message, response_message, request_bytes)
         }
         "status" => call_status(method, request_message, response_message, request_bytes),
-        "ls" => call_ls(method, request_message, response_message, request_bytes),
+        "ls" | "resolve_forall_targets" => {
+            call_ls(method, request_message, response_message, request_bytes)
+        }
         "list_snapshots" => {
             call_list_snapshots(method, request_message, response_message, request_bytes)
         }
@@ -197,7 +199,11 @@ fn call_ls(
     let request_id = request.meta.request_id.clone();
     let start = current_dir()?;
     let response = shims::no_backend(&request_id, |operation_id| {
-        gwz_core::workspace_ops::handle_ls(&start, request, operation_id)
+        if method == "resolve_forall_targets" {
+            gwz_core::workspace_ops::resolve_forall_targets(&start, request, operation_id)
+        } else {
+            gwz_core::workspace_ops::handle_ls(&start, request, operation_id)
+        }
     })?;
     codec::encode_message("encode LsResponse", || response.to_cbor())
 }

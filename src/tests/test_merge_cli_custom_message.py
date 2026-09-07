@@ -99,6 +99,7 @@ def test_custom_message_start_is_equivalent_in_every_driver_output_mode(
     fast_forward_workspace(template)
     rust_root, python_root = copy_pair(template, tmp_path)
     command = [
+        "--target", "@all", "--no-target", "@root",
         "--dry-run",
         "merge",
         "feature/source",
@@ -139,7 +140,7 @@ def test_custom_message_bytes_and_recovery_are_equivalent_across_drivers(
             driver,
             rust_gwz_binary,
             root,
-            ["merge", "feature/source", "-m", custom_body],
+            ["--target", "@all", "--no-target", "@root", "merge", "feature/source", "-m", custom_body],
         )
         assert code == 1
         starts.append((root, records))

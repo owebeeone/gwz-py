@@ -604,7 +604,7 @@ def test_clean_merge_jsonl_reports_verified_publication_artifacts_in_order(
             driver,
             rust_gwz_binary,
             root,
-            ["merge", "feature/source"],
+            ["--target", "@all", "--no-target", "@root", "merge", "feature/source"],
         )
         assert code == 0
         artifact_paths = [

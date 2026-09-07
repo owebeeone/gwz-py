@@ -1375,6 +1375,69 @@
       ]
     },
     {
+      "name": "RemoteSshIdentity",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "remote",
+          "tag": 1,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "private_key_path",
+          "tag": 2,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "TransportOptions",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "default_identity",
+          "tag": 1,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "remote_identities",
+          "tag": 2,
+          "type": {
+            "k": "list",
+            "elem": {
+              "k": "msg",
+              "name": "RemoteSshIdentity"
+            }
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
       "name": "RequestMeta",
       "reserved_tags": [],
       "reserved_names": [],
@@ -1452,6 +1515,17 @@
           "type": {
             "k": "msg",
             "name": "OperationAttribution"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "transport",
+          "tag": 8,
+          "type": {
+            "k": "msg",
+            "name": "TransportOptions"
           },
           "optional": true,
           "transient": false,
@@ -10026,6 +10100,29 @@
         },
         {
           "name": "ls",
+          "role": "in",
+          "shape": "unary",
+          "params": [
+            {
+              "name": "request",
+              "type": {
+                "k": "msg",
+                "name": "LsRequest"
+              }
+            }
+          ],
+          "out": [
+            {
+              "slot": "value",
+              "type": {
+                "k": "msg",
+                "name": "LsResponse"
+              }
+            }
+          ]
+        },
+        {
+          "name": "resolve_forall_targets",
           "role": "in",
           "shape": "unary",
           "params": [

@@ -169,7 +169,7 @@ def test_native_cli_merge_conflict_preserves_structured_response(
     git(repo, "checkout", "main")
     commit_file(repo, "README.md", "target\n", "target")
 
-    argv = ["--root", str(tmp_path)]
+    argv = ["--root", str(tmp_path), "--target", "mem_app"]
     if machine_flag is not None:
         argv.append(machine_flag)
     assert cli_module.main([*argv, *command, "feature/source"]) == 1
