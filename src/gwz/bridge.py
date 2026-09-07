@@ -395,6 +395,8 @@ def _bytes(value: NativeBytePayload, message_name: str) -> bytes:
 
 
 def _native_bridge_error(prefix: str, error: BaseException) -> GwzBridgeError:
+    meta_bytes = getattr(error, "response_meta_cbor", None)
+    response_meta = decode_message("ResponseMeta", _bytes(meta_bytes, "ResponseMeta")) if meta_bytes is not None else None
     return GwzBridgeError(
         f"{prefix}: {error}",
         code=getattr(error, "code", None),
@@ -404,4 +406,5 @@ def _native_bridge_error(prefix: str, error: BaseException) -> GwzBridgeError:
         detail=getattr(error, "detail", None),
         machine_message=getattr(error, "machine_message", None),
         record_context=getattr(error, "record_context", None),
+        response_meta=response_meta,
     )

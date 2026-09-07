@@ -5,10 +5,11 @@ import re
 from typing import Any
 
 from .common import enum_label
-from .machine import merge_error_json, record_context_json
+from .machine import merge_error_json, record_context_json, json_default, transport_human_lines
 
 
 def render_error(error: BaseException, *, json_mode: bool = False) -> str:
+    meta = getattr(error, "response_meta", None)
     if json_mode:
         operation_errors = getattr(error, "member_errors", None) or []
         if operation_errors:
@@ -18,14 +19,17 @@ def render_error(error: BaseException, *, json_mode: bool = False) -> str:
         return json.dumps(
             {
                 "kind": "response",
-                "meta": None,
+                "meta": meta,
                 "members": [],
                 "errors": errors,
                 "workspace_git_status": None,
             },
             sort_keys=True,
+            default=json_default,
         )
-    return f"gwz: {error}"
+    lines = [f"gwz: {error}"]
+    lines.extend(transport_human_lines(getattr(meta, "transport", None) or []))
+    return "\n".join(lines)
 
 
 def exception_error_json(error: BaseException) -> dict[str, Any]:

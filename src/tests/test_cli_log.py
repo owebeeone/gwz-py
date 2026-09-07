@@ -51,6 +51,7 @@ def _response(status: AggregateStatus) -> LogResponse:
                 operation_id="op_cli_log",
                 message=None,
                 attribution=None,
+                transport=None,
             ),
             members=[],
             errors=[],

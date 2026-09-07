@@ -74,6 +74,7 @@ def _response(action: ActionKind) -> ResponseEnvelope:
             operation_id=None,
             message=None,
             attribution=None,
+            transport=None,
         ),
         members=[],
         errors=[],

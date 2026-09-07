@@ -46,6 +46,7 @@ def _manifest_response(output: DiffOutputLogRef | None = None) -> DiffManifestRe
                 operation_id=None,
                 message=None,
                 attribution=None,
+                transport=None,
             ),
             members=[],
             errors=[],

@@ -126,6 +126,7 @@ def test_repo_member_lifecycle_protocol_is_pinned() -> None:
             policy=None,
             dry_run=None,
             attribution=None,
+            transport=None,
         ),
         source=generated.SourceUrl(
             url="ssh://git.example.test/team/shared.git",
@@ -199,6 +200,7 @@ def test_generated_dataclasses_convert_to_wire_dicts() -> None:
             policy=None,
             dry_run=None,
             attribution=None,
+            transport=None,
         ),
         mode=StatusMode.combined,
         include_file_changes=None,

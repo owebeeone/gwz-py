@@ -165,6 +165,7 @@ def test_repo_clone_human_output_uses_stream_route() -> None:
                 members=[],
                 errors=[],
                 attribution=None,
+                transport=None,
             )
 
     client = StreamingClient()

@@ -45,6 +45,21 @@ def test_native_module_health() -> None:
     assert native.version()
 
 
+def test_native_module_reports_compiled_core_provenance() -> None:
+    import os
+    import re
+    import subprocess
+
+    native = native_module()
+    provenance = native.provenance()
+    assert re.search(r"source-sha256=[0-9a-f]{64}", provenance)
+    assert "build=cargo" in provenance
+    binary = os.environ.get("GWZ_RUST_BIN")
+    if binary:
+        version = subprocess.check_output([binary, "--version"], text=True)
+        assert f"core {native.version()}: {provenance}" in version
+
+
 def test_native_bridge_ls(tmp_path: Path) -> None:
     native = native_module()
     write_minimal_workspace(tmp_path)
@@ -70,6 +85,7 @@ def test_native_bridge_routes_unsupported_methods_explicitly() -> None:
             policy=None,
             dry_run=None,
             attribution=None,
+            transport=None,
         ),
         include_unmaterialized=True,
     )

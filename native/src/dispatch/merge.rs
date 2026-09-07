@@ -93,6 +93,7 @@ fn accepted_response(meta: &gwz_core::RequestMeta, operation_id: &str) -> gwz_co
     gwz_core::MergeResponse {
         response: gwz_core::ResponseEnvelope {
             meta: gwz_core::ResponseMeta {
+                transport: None,
                 request_id: meta.request_id.clone(),
                 schema_version: meta.schema_version.clone(),
                 action: gwz_core::ActionKind::Merge,

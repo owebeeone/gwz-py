@@ -11,6 +11,10 @@ pub(crate) fn runtime(message: impl Into<String>) -> PyErr {
 }
 
 pub(crate) fn model(error: gwz_core::model::ModelError) -> PyErr {
+    let response_meta = error
+        .response_meta
+        .as_ref()
+        .map(|meta| gwz_core::encode(&meta.to_cbor()));
     let display = error.to_string();
     let code = format!("{:?}", error.code);
     let member_id = error.member_id;
@@ -41,6 +45,9 @@ pub(crate) fn model(error: gwz_core::model::ModelError) -> PyErr {
         value.setattr("target_kind", target_kind)?;
         value.setattr("detail", None::<String>)?;
         value.setattr("machine_message", machine_message)?;
+        if let Some(bytes) = response_meta {
+            value.setattr("response_meta_cbor", pyo3::types::PyBytes::new(py, &bytes))?;
+        }
         if let Some((merge_id, schema, version, required_wave, legacy_mode)) = record_context {
             let context = PyDict::new(py);
             context.set_item("merge_id", merge_id)?;

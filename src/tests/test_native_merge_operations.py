@@ -43,6 +43,7 @@ def merge_request(root: Path, request_id: str, op: MergeOp) -> MergeRequest:
             policy=None,
             dry_run=None,
             attribution=None,
+            transport=None,
         ),
         op=op,
         source_ref=None,

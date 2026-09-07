@@ -74,6 +74,8 @@ async def run(args: argparse.Namespace) -> int:
     validate_args(args)
     handler = getattr(args, "command_handler")
     async with Client(root=args.root) as client:
+        if args.ssh_timeout is not None:
+            await client.configure_transport_timeout(args.ssh_timeout)
         context = CommandContext(args=args, client=client, meta=meta_kwargs(args))
         try:
             response = await handler(context)

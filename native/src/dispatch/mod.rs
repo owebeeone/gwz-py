@@ -29,7 +29,10 @@ pub(crate) fn call(
     request_bytes: &[u8],
 ) -> PyResult<Vec<u8>> {
     match method {
-        "create_workspace"
+        "configure_transport_runtime"
+        | "remote_identity"
+        | "transport_capabilities"
+        | "create_workspace"
         | "init_from_sources"
         | "add_existing_repo"
         | "create_repo"
@@ -258,6 +261,7 @@ fn submit_accepted(
     let recorder = operations::begin(&operation_id);
     let envelope = gwz_core::ResponseEnvelope {
         meta: gwz_core::ResponseMeta {
+            transport: None,
             request_id: meta.request_id.clone(),
             schema_version: meta.schema_version.clone(),
             action,

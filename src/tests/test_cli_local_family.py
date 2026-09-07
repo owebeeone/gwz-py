@@ -235,6 +235,7 @@ def envelope(
             operation_id=operation_id,
             message=message,
             attribution=None,
+            transport=None,
         ),
         members=[],
         errors=list(errors or []),
@@ -304,6 +305,7 @@ class RecordingBridge:
             members=[],
             errors=list(self.errors or []),
             attribution=None,
+            transport=None,
         )
 
 
@@ -1365,6 +1367,7 @@ class CloneUrlClient:
             members=[],
             errors=[],
             attribution=None,
+            transport=None,
         )
 
     def meta(self, **kwargs: Any) -> RequestMeta:
@@ -1376,6 +1379,7 @@ class CloneUrlClient:
             policy=None,
             dry_run=kwargs.get("dry_run"),
             attribution=None,
+            transport=None,
         )
 
 

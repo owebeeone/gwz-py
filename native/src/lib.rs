@@ -21,6 +21,11 @@ fn version() -> &'static str {
 }
 
 #[pyfunction]
+fn provenance() -> &'static str {
+    gwz_core::BUILD_PROVENANCE
+}
+
+#[pyfunction]
 fn call(
     py: Python<'_>,
     method: &str,
@@ -175,6 +180,7 @@ fn merge_operation_response(py: Python<'_>, operation_id: &str) -> PyResult<Vec<
 fn _gwz_core(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(health, module)?)?;
     module.add_function(wrap_pyfunction!(version, module)?)?;
+    module.add_function(wrap_pyfunction!(provenance, module)?)?;
     module.add_function(wrap_pyfunction!(call, module)?)?;
     module.add_function(wrap_pyfunction!(submit, module)?)?;
     module.add_function(wrap_pyfunction!(subscribe_events, module)?)?;

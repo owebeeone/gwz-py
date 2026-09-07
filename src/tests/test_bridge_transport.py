@@ -41,6 +41,7 @@ def status_request() -> StatusRequest:
             policy=None,
             dry_run=None,
             attribution=None,
+            transport=None,
         ),
         mode=StatusMode.summary,
         include_file_changes=None,
@@ -60,6 +61,7 @@ def status_response() -> StatusResponse:
                 operation_id="op_transport",
                 message="ok",
                 attribution=None,
+                transport=None,
             ),
             members=[],
             errors=[],
@@ -101,6 +103,7 @@ def operation_result() -> OperationResult:
         members=[],
         errors=[],
         attribution=None,
+        transport=None,
     )
 
 
@@ -117,6 +120,7 @@ def merge_response(
                 operation_id="op_transport",
                 message=None,
                 attribution=None,
+                transport=None,
             ),
             members=[],
             errors=[],
@@ -309,6 +313,7 @@ class SubmittedMergeBridge:
             members=[],
             errors=[],
             attribution=None,
+            transport=None,
         )
 
     async def submit(
@@ -375,6 +380,7 @@ def test_merge_stream_raises_from_structured_terminal_result() -> None:
         members=[],
         errors=[error],
         attribution=None,
+        transport=None,
     )
     client = Client(root="/tmp/workspace", bridge=SubmittedMergeBridge(terminal))
 

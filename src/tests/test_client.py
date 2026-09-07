@@ -117,6 +117,7 @@ def ok_response(response_type: type[Any]) -> Any:
                 operation_id="op_test",
                 message="ok",
                 attribution=None,
+                transport=None,
             ),
             members=[],
             errors=[],
@@ -155,6 +156,7 @@ class FakeBridge:
             members=[],
             errors=[],
             attribution=None,
+            transport=None,
         )
 
 
@@ -587,3 +589,87 @@ def test_public_operations_are_async() -> None:
     ]
     for name in async_methods:
         assert inspect.iscoroutinefunction(getattr(Client, name)), name
+
+
+@pytest.mark.parametrize("stream", [False, True])
+def test_explicit_transport_refuses_legacy_core_before_dispatch(stream: bool) -> None:
+    from gwz.errors import GwzBridgeError
+    from gwz.protocol.generated import TransportOptions
+
+    class LegacyBridge(FakeBridge):
+        async def call(self, method, request_message, response_message, request):
+            if method == "transport_capabilities":
+                self.calls.append((method, request_message, response_message, request))
+                raise GwzBridgeError("unsupported method", code="UnsupportedOperation")
+            return await super().call(method, request_message, response_message, request)
+
+        async def submit(self, method, request_message, response_message, request):
+            return await super().call(method, request_message, response_message, request)
+
+    bridge = LegacyBridge()
+    client = Client(root=Path("/tmp/workspace"), bridge=bridge)
+    transport = TransportOptions(default_identity="/tmp/key", remote_identities=[])
+
+    async def run():
+        if stream:
+            async for _ in client.push_stream(transport=transport):
+                pass
+        else:
+            await client.push(transport=transport)
+
+    with pytest.raises(GwzBridgeError, match="identity|transport"):
+        asyncio.run(run())
+    assert [call[0] for call in bridge.calls] == ["transport_capabilities"]
+
+
+@pytest.mark.parametrize("supported", [False, True])
+@pytest.mark.parametrize("stream", [False, True])
+def test_transport_capability_controls_operation_submission(supported: bool, stream: bool) -> None:
+    from gwz.errors import GwzBridgeError
+    from gwz.protocol.generated import TransportOptions, TransportCapabilitiesResponse
+
+    class CapabilityBridge(FakeBridge):
+        async def call(self, method, request_message, response_message, request):
+            if method == "transport_capabilities":
+                self.calls.append((method, request_message, response_message, request))
+                return TransportCapabilitiesResponse(
+                    file_identity=supported, exact_agent_identity=False,
+                )
+            return await super().call(method, request_message, response_message, request)
+
+        async def submit(self, method, request_message, response_message, request):
+            return await super().call(method, request_message, response_message, request)
+
+    bridge = CapabilityBridge()
+    client = Client(root=Path("/tmp/workspace"), bridge=bridge)
+    transport = TransportOptions(default_identity="/tmp/key", remote_identities=[])
+
+    async def run():
+        if stream:
+            async for _ in client.push_stream(transport=transport):
+                pass
+        else:
+            await client.push(transport=transport)
+
+    if supported:
+        asyncio.run(run())
+        assert [call[0] for call in bridge.calls] == ["transport_capabilities", "push"]
+    else:
+        with pytest.raises(GwzBridgeError, match="identity"):
+            asyncio.run(run())
+        assert [call[0] for call in bridge.calls] == ["transport_capabilities"]
+
+
+def test_timeout_configuration_is_a_typed_startup_call() -> None:
+    from gwz.protocol.generated import TransportRuntimeResponse
+
+    class RuntimeBridge(FakeBridge):
+        async def call(self, method, request_message, response_message, request):
+            self.calls.append((method, request_message, response_message, request))
+            return TransportRuntimeResponse(server_timeout_ms=request.server_timeout_ms)
+
+    bridge = RuntimeBridge()
+    client = Client(bridge=bridge)
+    response = asyncio.run(client.configure_transport_timeout(2))
+    assert bridge.calls[0][:3] == ("configure_transport_runtime", "TransportRuntimeRequest", "TransportRuntimeResponse")
+    assert response.server_timeout_ms == 2000

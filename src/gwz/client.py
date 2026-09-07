@@ -16,6 +16,14 @@ from .client_helpers import (
     sources as _sources,
 )
 from .protocol.generated import (
+    TransportOptions,
+    TransportCapabilitiesRequest,
+    TransportCapabilitiesResponse,
+    TransportRuntimeRequest,
+    TransportRuntimeResponse,
+    RemoteIdentityRequest,
+    RemoteIdentityResponse,
+    RemoteIdentityOp,
     AddExistingRepoRequest,
     AddExistingRepoResponse,
     AttachRepoMemberRequest,
@@ -188,6 +196,7 @@ class Client:
         progress_min_interval_ms: int | None = None,
         max_connections_per_host: int | None = None,
         attribution: OperationAttribution | None = None,
+        transport: TransportOptions | None = None,
     ) -> RequestMeta:
         selected_member_ids = list(member_ids)
         selected_paths = list(paths)
@@ -252,9 +261,36 @@ class Client:
             policy=policy,
             dry_run=dry_run,
             attribution=attribution,
+            transport=transport,
         )
 
+    async def _require_transport_capability(self, request: Any) -> None:
+        transport = getattr(getattr(request, "meta", None), "transport", None)
+        if transport is None or (
+            transport.default_identity is None and not transport.remote_identities
+        ):
+            return
+        try:
+            capabilities = await self.bridge.call(
+                "transport_capabilities",
+                "TransportCapabilitiesRequest",
+                "TransportCapabilitiesResponse",
+                TransportCapabilitiesRequest(schema_version=SCHEMA_VERSION),
+            )
+        except GwzBridgeError as exc:
+            raise GwzBridgeError(
+                "The installed core cannot confirm explicit SSH identity support; "
+                "update the core before using transport identity options.",
+                code="UnsupportedOperation",
+            ) from exc
+        if not isinstance(capabilities, TransportCapabilitiesResponse) or not capabilities.file_identity:
+            raise GwzBridgeError(
+                "The installed core does not support explicit SSH file identity selection.",
+                code="UnsupportedOperation",
+            )
+
     async def _call(self, method: str, request: Any, response_type: type[Any]) -> Any:
+        await self._require_transport_capability(request)
         result = await self.bridge.call(method, type(request).__name__, response_type.__name__, request)
         raise_for_response(result)
         return result
@@ -269,6 +305,7 @@ class Client:
         if submit is None:
             response = await self._call(method, request, response_type)
         else:
+            await self._require_transport_capability(request)
             response = await submit(method, type(request).__name__, response_type.__name__, request)
             raise_for_response(response)
         operation_id = getattr(getattr(response.response, "meta", None), "operation_id", None)
@@ -277,6 +314,27 @@ class Client:
         async for event in self.bridge.subscribe_events(operation_id):
             yield event
         await self.operation_result(operation_id)
+
+    async def configure_transport_timeout(self, seconds: int) -> TransportRuntimeResponse:
+        if seconds < 0:
+            raise ValueError("transport timeout cannot be negative")
+        return await self.bridge.call(
+            "configure_transport_runtime", "TransportRuntimeRequest", "TransportRuntimeResponse",
+            TransportRuntimeRequest(server_timeout_ms=min(seconds * 1000, 2**31 - 1), schema_version=SCHEMA_VERSION),
+        )
+
+    async def remote_identity(
+        self, remote: str, *, key_path: str | None = None,
+        unset: bool = False, **meta: Any,
+    ) -> RemoteIdentityResponse:
+        if unset and key_path is not None:
+            raise ValueError("identity set and unset are mutually exclusive")
+        request = RemoteIdentityRequest(
+            meta=self.meta(**meta), remote=remote,
+            op=RemoteIdentityOp.unset if unset else RemoteIdentityOp.set if key_path is not None else RemoteIdentityOp.get,
+            private_key_path=key_path,
+        )
+        return await self._call("remote_identity", request, RemoteIdentityResponse)
 
     async def create_workspace(
         self,

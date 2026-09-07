@@ -91,6 +91,7 @@ class FakeClient:
             members=[],
             errors=[],
             attribution=None,
+            transport=None,
         )
 
     def meta(self, **kwargs: Any) -> RequestMeta:
@@ -102,6 +103,7 @@ class FakeClient:
             policy=None,
             dry_run=kwargs.get("dry_run"),
             attribution=None,
+            transport=None,
         )
 
 
@@ -115,6 +117,7 @@ def response_envelope(action: ActionKind) -> ResponseEnvelope:
             operation_id=None,
             message="ok",
             attribution=None,
+            transport=None,
         ),
         members=[],
         errors=[],

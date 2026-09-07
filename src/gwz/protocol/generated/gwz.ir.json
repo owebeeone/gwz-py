@@ -279,7 +279,8 @@
         "merge": 25,
         "log": 26,
         "clone_local_workspace": 27,
-        "local_family": 28
+        "local_family": 28,
+        "remote_identity": 29
       }
     },
     {
@@ -1014,6 +1015,41 @@
         "entry": 0,
         "degradation": 1
       }
+    },
+    {
+      "name": "RemoteIdentityOp",
+      "members": {
+        "get": 0,
+        "set": 1,
+        "unset": 2
+      }
+    },
+    {
+      "name": "TransportCredentialMethod",
+      "members": {
+        "unknown": 0,
+        "file": 1,
+        "agent": 2,
+        "helper": 3
+      }
+    },
+    {
+      "name": "TransportSelectionSource",
+      "members": {
+        "ambient": 0,
+        "invocation_remote": 1,
+        "invocation_default": 2,
+        "local_configuration": 3
+      }
+    },
+    {
+      "name": "TransportOperation",
+      "members": {
+        "clone": 0,
+        "fetch": 1,
+        "push": 2,
+        "read_advertisement": 3
+      }
     }
   ],
   "messages": [
@@ -1405,6 +1441,337 @@
       ]
     },
     {
+      "name": "RemoteIdentityRequest",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "meta",
+          "tag": 1,
+          "type": {
+            "k": "msg",
+            "name": "RequestMeta"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "remote",
+          "tag": 2,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "op",
+          "tag": 3,
+          "type": {
+            "k": "enum",
+            "name": "RemoteIdentityOp"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "private_key_path",
+          "tag": 4,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "RemoteIdentityEntry",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "member_id",
+          "tag": 1,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "member_path",
+          "tag": 2,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "remote",
+          "tag": 3,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "private_key_path",
+          "tag": 4,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "RemoteIdentityResponse",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "response",
+          "tag": 1,
+          "type": {
+            "k": "msg",
+            "name": "ResponseEnvelope"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "identities",
+          "tag": 2,
+          "type": {
+            "k": "list",
+            "elem": {
+              "k": "msg",
+              "name": "RemoteIdentityEntry"
+            }
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "TransportRuntimeRequest",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "server_timeout_ms",
+          "tag": 1,
+          "type": {
+            "k": "scalar",
+            "scalar": "int"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "schema_version",
+          "tag": 2,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "TransportRuntimeResponse",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "server_timeout_ms",
+          "tag": 1,
+          "type": {
+            "k": "scalar",
+            "scalar": "int"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "TransportCapabilitiesRequest",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "schema_version",
+          "tag": 1,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "TransportCapabilitiesResponse",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "file_identity",
+          "tag": 1,
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "exact_agent_identity",
+          "tag": 2,
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "TransportObservation",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "repository_path",
+          "tag": 1,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "remote",
+          "tag": 2,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "operation",
+          "tag": 3,
+          "type": {
+            "k": "enum",
+            "name": "TransportOperation"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "credential_method",
+          "tag": 4,
+          "type": {
+            "k": "enum",
+            "name": "TransportCredentialMethod"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "selection_source",
+          "tag": 5,
+          "type": {
+            "k": "enum",
+            "name": "TransportSelectionSource"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "credential_offered",
+          "tag": 6,
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "authenticated",
+          "tag": 7,
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "public_key_fingerprint",
+          "tag": 8,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
       "name": "TransportOptions",
       "reserved_tags": [],
       "reserved_names": [],
@@ -1611,6 +1978,20 @@
           "type": {
             "k": "msg",
             "name": "OperationAttribution"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "transport",
+          "tag": 8,
+          "type": {
+            "k": "list",
+            "elem": {
+              "k": "msg",
+              "name": "TransportObservation"
+            }
           },
           "optional": true,
           "transient": false,
@@ -5742,6 +6123,20 @@
           "optional": true,
           "transient": false,
           "merge": null
+        },
+        {
+          "name": "transport",
+          "tag": 10,
+          "type": {
+            "k": "list",
+            "elem": {
+              "k": "msg",
+              "name": "TransportObservation"
+            }
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
         }
       ]
     },
@@ -9845,6 +10240,75 @@
     {
       "name": "GwzCore",
       "methods": [
+        {
+          "name": "configure_transport_runtime",
+          "role": "in",
+          "shape": "unary",
+          "params": [
+            {
+              "name": "request",
+              "type": {
+                "k": "msg",
+                "name": "TransportRuntimeRequest"
+              }
+            }
+          ],
+          "out": [
+            {
+              "slot": "value",
+              "type": {
+                "k": "msg",
+                "name": "TransportRuntimeResponse"
+              }
+            }
+          ]
+        },
+        {
+          "name": "remote_identity",
+          "role": "in",
+          "shape": "unary",
+          "params": [
+            {
+              "name": "request",
+              "type": {
+                "k": "msg",
+                "name": "RemoteIdentityRequest"
+              }
+            }
+          ],
+          "out": [
+            {
+              "slot": "value",
+              "type": {
+                "k": "msg",
+                "name": "RemoteIdentityResponse"
+              }
+            }
+          ]
+        },
+        {
+          "name": "transport_capabilities",
+          "role": "in",
+          "shape": "unary",
+          "params": [
+            {
+              "name": "request",
+              "type": {
+                "k": "msg",
+                "name": "TransportCapabilitiesRequest"
+              }
+            }
+          ],
+          "out": [
+            {
+              "slot": "value",
+              "type": {
+                "k": "msg",
+                "name": "TransportCapabilitiesResponse"
+              }
+            }
+          ]
+        },
         {
           "name": "create_workspace",
           "role": "in",

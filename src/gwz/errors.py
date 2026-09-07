@@ -26,6 +26,7 @@ class GwzBridgeError(GwzError):
         detail: str | None = None,
         machine_message: str | None = None,
         record_context: Any | None = None,
+        response_meta: Any | None = None,
     ) -> None:
         super().__init__(message)
         self.code = code
@@ -35,6 +36,7 @@ class GwzBridgeError(GwzError):
         self.detail = detail
         self.machine_message = machine_message
         self.record_context = record_context
+        self.response_meta = response_meta
 
 
 class GwzCoreLoadError(GwzBridgeError):
@@ -51,6 +53,24 @@ class GwzOperationError(GwzError):
     operation_id: str | None = None
     request_id: str | None = None
     member_errors: list[Any] = field(default_factory=list)
+
+    @property
+    def response_meta(self) -> Any | None:
+        from .protocol.generated import OperationResult, ResponseMeta
+
+        meta = getattr(getattr(self.response, "response", None), "meta", None)
+        if meta is not None and getattr(meta, "transport", None):
+            return meta
+        if isinstance(self.response, OperationResult) and self.response.transport:
+            # The v0 stream result carries the same evidence outside an envelope.
+            result = self.response
+            return ResponseMeta(
+                request_id=result.request_id, schema_version="gwz.protocol/v0",
+                action=result.action, aggregate_status=result.aggregate_status,
+                operation_id=result.operation_id, message=None,
+                attribution=result.attribution, transport=result.transport,
+            )
+        return None
 
     def __str__(self) -> str:
         return self.message

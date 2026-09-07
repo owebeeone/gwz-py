@@ -15,6 +15,15 @@ from gwz.cli_shared import (
 )
 from gwz.protocol.generated import SyncBehavior
 
+def test_ssh_identity_flags_preserve_remote_overrides_and_equals_in_paths() -> None:
+    args = build_parser().parse_args(["--identity", "default=key", "push", "--remote-identity", "origin=work=key", "--remote-identity", "upstream=other-key"])
+    validate_args(args)
+    transport = meta_kwargs(args)["transport"]
+    assert transport.default_identity == "default=key"
+    assert [(entry.remote, entry.private_key_path) for entry in transport.remote_identities] == [("origin", "work=key"), ("upstream", "other-key")]
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(["push", "--remote-identity", "missing-separator"])
+
 
 @pytest.mark.parametrize(
     "argv,command",
@@ -209,3 +218,13 @@ def test_command_registry_allows_modules_to_attach_commands() -> None:
     assert args.command == "demo"
     assert args.flag is True
     assert args.command_handler is handler
+
+
+def test_local_identity_configuration_parser() -> None:
+    args = build_parser().parse_args(["auth", "identity", "origin", "--set", "key=one", "--member", "@root"])
+    validate_args(args)
+    assert args.key_path == "key=one"
+    assert args.remote_name == "origin"
+    assert meta_kwargs(args)["targets"] == ["@root"]
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(["auth", "identity", "origin", "--set", "key", "--unset"])

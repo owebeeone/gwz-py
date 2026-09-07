@@ -33,6 +33,7 @@ class ActionKind(Enum):
     log = 26
     clone_local_workspace = 27
     local_family = 28
+    remote_identity = 29
 
 class TagOp(Enum):
     create = 0
@@ -566,6 +567,29 @@ class LogOutputRecordKind(Enum):
     entry = 0
     degradation = 1
 
+class RemoteIdentityOp(Enum):
+    get = 0
+    set = 1
+    unset = 2
+
+class TransportCredentialMethod(Enum):
+    unknown = 0
+    file = 1
+    agent = 2
+    helper = 3
+
+class TransportSelectionSource(Enum):
+    ambient = 0
+    invocation_remote = 1
+    invocation_default = 2
+    local_configuration = 3
+
+class TransportOperation(Enum):
+    clone = 0
+    fetch = 1
+    push = 2
+    read_advertisement = 3
+
 @dataclass(slots=True)
 class WorkspaceRef:
     root: str | None
@@ -617,6 +641,54 @@ class RemoteSshIdentity:
     private_key_path: str
 
 @dataclass(slots=True)
+class RemoteIdentityRequest:
+    meta: RequestMeta
+    remote: str
+    op: RemoteIdentityOp
+    private_key_path: str | None
+
+@dataclass(slots=True)
+class RemoteIdentityEntry:
+    member_id: str
+    member_path: str
+    remote: str
+    private_key_path: str | None
+
+@dataclass(slots=True)
+class RemoteIdentityResponse:
+    response: ResponseEnvelope
+    identities: list[RemoteIdentityEntry]
+
+@dataclass(slots=True)
+class TransportRuntimeRequest:
+    server_timeout_ms: int
+    schema_version: str
+
+@dataclass(slots=True)
+class TransportRuntimeResponse:
+    server_timeout_ms: int
+
+@dataclass(slots=True)
+class TransportCapabilitiesRequest:
+    schema_version: str
+
+@dataclass(slots=True)
+class TransportCapabilitiesResponse:
+    file_identity: bool
+    exact_agent_identity: bool
+
+@dataclass(slots=True)
+class TransportObservation:
+    repository_path: str
+    remote: str
+    operation: TransportOperation
+    credential_method: TransportCredentialMethod
+    selection_source: TransportSelectionSource
+    credential_offered: bool
+    authenticated: bool | None
+    public_key_fingerprint: str | None
+
+@dataclass(slots=True)
 class TransportOptions:
     default_identity: str | None
     remote_identities: list[RemoteSshIdentity]
@@ -641,6 +713,7 @@ class ResponseMeta:
     operation_id: str | None
     message: str | None
     attribution: OperationAttribution | None
+    transport: list[TransportObservation] | None
 
 @dataclass(slots=True)
 class MergeRecordCompatibilityContext:
@@ -1127,6 +1200,7 @@ class OperationResult:
     members: list[MemberResponse]
     errors: list[GwzError]
     attribution: OperationAttribution | None
+    transport: list[TransportObservation] | None
 
 @dataclass(slots=True)
 class CreateWorkspaceRequest:

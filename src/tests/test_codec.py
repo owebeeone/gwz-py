@@ -62,6 +62,7 @@ def _request_meta(request_id: str = "req_test") -> generated.RequestMeta:
             git_committer=None,
             credential_ref=None,
         ),
+        transport=None,
     )
 
 
@@ -75,6 +76,7 @@ def _response_envelope(action: generated.ActionKind) -> generated.ResponseEnvelo
             operation_id="op_test",
             message=None,
             attribution=None,
+            transport=None,
         ),
         members=[],
         errors=[],
@@ -195,6 +197,7 @@ def test_merge_reserved_lifecycle_shape_round_trip() -> None:
             policy=None,
             dry_run=None,
             attribution=None,
+            transport=None,
         ),
         op=generated.MergeOp.start,
         source_ref="feature/x",
@@ -220,8 +223,9 @@ def test_merge_reserved_lifecycle_shape_round_trip() -> None:
     # stays byte-identical to gwz-core's own parity pin in tests/protocol.rs.
     #   was: "a801a701697265715f6d65726765026667777a2e763003f604f605f606f607f6"
     #        "02000369666561747572652f7804f6050006f607f608f6"
+    # DR-5: RequestMeta adds optional transport at tag 8 (null); older tags unchanged.
     assert encode_message("MergeRequest", parity_request).hex() == (
-        "a901a701697265715f6d65726765026667777a2e763003f604f605f606f607f6"
+        "a901a801697265715f6d65726765026667777a2e763003f604f605f606f607f608f6"
         "02000369666561747572652f7804f6050006f607f608f609f6"
     )
     # LCM1.0c follow-up 2 (operator rulings 2026-09-05, gwz-dev

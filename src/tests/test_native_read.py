@@ -123,3 +123,99 @@ def test_native_init_from_sources_dry_run_plans_without_cloning(tmp_path: Path) 
     assert member.planned is not None
     assert member.planned.action is PlannedAction.clone
     assert not (tmp_path / "gwz.conf" / "gwz.yml").exists()
+
+
+def test_native_transport_capabilities_are_typed_and_version_checked() -> None:
+    import pytest
+    from gwz.bridge import NativeCoreBridge
+    from gwz.errors import GwzBridgeError
+    from gwz.protocol.generated import TransportCapabilitiesRequest
+
+    bridge = NativeCoreBridge()
+
+    async def read(version):
+        return await bridge.call(
+            "transport_capabilities", "TransportCapabilitiesRequest",
+            "TransportCapabilitiesResponse",
+            TransportCapabilitiesRequest(schema_version=version),
+        )
+
+    response = asyncio.run(read("gwz.protocol/v0"))
+    assert response.file_identity is True
+    assert response.exact_agent_identity is False
+    with pytest.raises(GwzBridgeError):
+        asyncio.run(read("gwz.protocol/future"))
+
+
+def test_native_local_identity_configuration_preserves_workspace_files(tmp_path: Path) -> None:
+    from gwz.cli_render import render_response
+
+    client = native_client(tmp_path)
+    asyncio.run(client.create_workspace(workspace_id="ws_identity"))
+    git(tmp_path, "remote", "add", "origin", "ssh://git@example.invalid/root")
+    key = tmp_path / "key=one"
+    key.write_text("fixture path only")
+    before = {p.name: p.read_bytes() for p in (tmp_path / "gwz.conf").iterdir() if p.is_file()}
+    response = asyncio.run(client.remote_identity("origin", key_path=str(key), targets=["@root"], dry_run=True))
+    assert "planned" in render_response(response)
+    assert "gwzSshIdentity" not in (tmp_path / ".git" / "config").read_text()
+    response = asyncio.run(client.remote_identity("origin", key_path=str(key), targets=["@root"]))
+    assert git(tmp_path, "config", "--local", "--get", "remote.origin.gwzSshIdentity") == str(key)
+    assert response.identities[0].private_key_path == str(key)
+    assert str(key) in render_response(response)
+    assert '"identities"' in render_response(response, json_mode=True)
+    key.unlink()
+    response = asyncio.run(client.remote_identity("origin", targets=["@root"]))
+    assert response.identities[0].private_key_path == str(key)
+    asyncio.run(client.remote_identity("origin", unset=True, targets=["@root"]))
+    assert "gwzSshIdentity" not in (tmp_path / ".git" / "config").read_text()
+    assert {p.name: p.read_bytes() for p in (tmp_path / "gwz.conf").iterdir() if p.is_file()} == before
+
+
+def test_native_transport_failure_retains_typed_observations(tmp_path: Path) -> None:
+    import json
+    import pytest
+    from gwz.errors import GwzBridgeError
+    from gwz.cli_render import render_error
+    from gwz.protocol.generated import TransportOptions
+
+    client = native_client(tmp_path)
+    asyncio.run(client.create_workspace(workspace_id="ws_auth_failure"))
+    git(tmp_path, "remote", "add", "origin", "ssh://git@127.0.0.1:1/unreachable")
+    key = tmp_path / "key"
+    key.write_text("fixture file; no server is contacted successfully")
+    with pytest.raises(GwzBridgeError) as caught:
+        asyncio.run(client.tag(op="list", remote="origin", targets=["@root"], transport=TransportOptions(default_identity=str(key), remote_identities=[])))
+    meta = getattr(caught.value, "response_meta", None)
+    assert meta is not None and meta.transport
+    assert meta.transport[0].credential_offered is False
+    assert meta.transport[0].authenticated is None
+    value = json.loads(render_error(caught.value, json_mode=True))
+    assert value["meta"]["transport"][0]["authenticated"] is None
+    assert "authenticated=unknown" in render_error(caught.value)
+
+
+def test_native_timeout_is_configured_before_backend_use(tmp_path: Path) -> None:
+    import subprocess
+    import sys
+
+    program = '''
+import asyncio, sys
+from gwz import Client
+from gwz.errors import GwzBridgeError
+async def main():
+    client = Client(root=sys.argv[1])
+    assert (await client.configure_transport_timeout(1)).server_timeout_ms == 1000
+    await client.create_workspace(workspace_id="ws_timeout")
+    await client.status()
+    assert (await client.configure_transport_timeout(1)).server_timeout_ms == 1000
+    try:
+        await client.configure_transport_timeout(2)
+    except GwzBridgeError as error:
+        assert error.code == "UnsupportedOperation"
+    else:
+        raise AssertionError("late process-wide timeout change was accepted")
+asyncio.run(main())
+'''
+    result = subprocess.run([sys.executable, "-c", program, str(tmp_path)], capture_output=True, text=True, timeout=15)
+    assert result.returncode == 0, result.stderr

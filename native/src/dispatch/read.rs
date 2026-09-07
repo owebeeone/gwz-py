@@ -10,6 +10,50 @@ pub(crate) fn call(
     request_bytes: &[u8],
 ) -> PyResult<Vec<u8>> {
     match method {
+        "configure_transport_runtime" => {
+            codec::require_request(method, request_message, "TransportRuntimeRequest")?;
+            codec::require_response(method, response_message, "TransportRuntimeResponse")?;
+            let request =
+                codec::decode_message(request_bytes, "decode TransportRuntimeRequest", |cbor| {
+                    gwz_core::TransportRuntimeRequest::from_cbor(cbor)
+                })?;
+            let response = gwz_core::protocol::transport_capabilities::configure_runtime(request)
+                .map_err(error::model)?;
+            codec::encode_message("encode TransportRuntimeResponse", || response.to_cbor())
+        }
+        "remote_identity" => {
+            codec::require_request(method, request_message, "RemoteIdentityRequest")?;
+            codec::require_response(method, response_message, "RemoteIdentityResponse")?;
+            let request =
+                codec::decode_message(request_bytes, "decode RemoteIdentityRequest", |cbor| {
+                    gwz_core::RemoteIdentityRequest::from_cbor(cbor)
+                })?;
+            let request_id = request.meta.request_id.clone();
+            let start = current_dir()?;
+            let response = shims::no_backend(&request_id, |operation_id| {
+                gwz_core::workspace_ops::handle_remote_identity(
+                    &gwz_core::git::Git2Backend::new(),
+                    &start,
+                    request,
+                    operation_id,
+                )
+            })?;
+            codec::encode_message("encode RemoteIdentityResponse", || response.to_cbor())
+        }
+        "transport_capabilities" => {
+            codec::require_request(method, request_message, "TransportCapabilitiesRequest")?;
+            codec::require_response(method, response_message, "TransportCapabilitiesResponse")?;
+            let request = codec::decode_message(
+                request_bytes,
+                "decode TransportCapabilitiesRequest",
+                |cbor| gwz_core::TransportCapabilitiesRequest::from_cbor(cbor),
+            )?;
+            let response = gwz_core::protocol::transport_capabilities::handle(request)
+                .map_err(error::model)?;
+            codec::encode_message("encode TransportCapabilitiesResponse", || {
+                response.to_cbor()
+            })
+        }
         "create_workspace" => {
             call_create_workspace(method, request_message, response_message, request_bytes)
         }

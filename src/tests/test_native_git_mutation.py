@@ -83,4 +83,9 @@ def test_native_push_dry_run_and_push_to_local_bare_remote(tmp_path: Path) -> No
     assert dry_run.response.members[0].planned.action is PlannedAction.push
     assert pushed.response.meta.aggregate_status is AggregateStatus.ok
     assert pushed.response.members[0].status is MemberStatus.ok
+    observations = pushed.response.meta.transport
+    assert observations is not None and len(observations) == 2
+    assert all(not row.credential_offered and row.authenticated is None for row in observations)
+    result = asyncio.run(client.operation_result(pushed.response.meta.operation_id))
+    assert result.transport == observations
     assert bare_ref(remote, "refs/heads/main") == commit
