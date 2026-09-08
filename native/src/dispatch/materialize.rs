@@ -174,7 +174,14 @@ fn call_tag(
     let request_id = request.meta.request_id.clone();
     let start = current_dir()?;
     let response = shims::backend(&request_id, |backend, operation_id| {
-        gwz_core::workspace_ops::handle_tag(backend, &start, request, operation_id)
+        let services = backend.operation_services();
+        gwz_core::workspace_ops::handle_tag_with_services(
+            &services,
+            backend,
+            &start,
+            request,
+            operation_id,
+        )
     })?;
     codec::encode_message("encode TagResponse", || response.to_cbor())
 }
