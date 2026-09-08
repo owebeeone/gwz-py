@@ -192,7 +192,7 @@ def test_native_transport_failure_retains_typed_observations(tmp_path: Path) -> 
     assert meta.transport[0].authenticated is None
     value = json.loads(render_error(caught.value, json_mode=True))
     assert value["meta"]["transport"][0]["authenticated"] is None
-    assert "authenticated=unknown" in render_error(caught.value)
+    assert "authenticated=unknown" in render_error(caught.value, show_transport=True)
 
 
 def test_native_timeout_is_configured_before_backend_use(tmp_path: Path) -> None:

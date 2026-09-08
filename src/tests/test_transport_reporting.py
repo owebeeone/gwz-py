@@ -20,9 +20,11 @@ def test_transport_output_does_not_turn_an_offer_into_authentication() -> None:
         transport=[row], aggregate_status=AggregateStatus.ok,
     )))
     human = render_response(response)
+    assert "credential=file" not in human
+    human = render_response(response, show_transport=True)
     assert "credential=file source=invocation_default offered=true authenticated=unknown" in human
     row.authenticated = True
-    assert "authenticated=yes" in render_response(response)
+    assert "authenticated=yes" in render_response(response, show_transport=True)
 
 
 def test_transport_rows_are_serializable_without_secret_material() -> None:
@@ -69,7 +71,10 @@ def test_failed_operations_keep_transport_evidence_in_error_output(streamed: boo
         ))
     with pytest.raises(GwzOperationError) as caught:
         raise_for_response(response)
-    assert "offered=true authenticated=unknown" in render_error(caught.value)
+    assert "offered=true authenticated=unknown" not in render_error(caught.value)
+    assert "offered=true authenticated=unknown" in render_error(
+        caught.value, show_transport=True
+    )
     machine = json.loads(render_error(caught.value, json_mode=True))
     assert machine["meta"]["operation_id"] == "op_failure"
     assert machine["meta"]["transport"][0]["authenticated"] is None

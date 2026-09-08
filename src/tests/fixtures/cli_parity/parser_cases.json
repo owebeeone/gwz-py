@@ -16,6 +16,7 @@
     ["status", "--no-combined"],
     ["status", "--porcelain"],
     ["--jsonl", "status"],
+    ["--verbose", "status"],
     ["--ssh-timeout", "3", "status"],
     ["ls", "--unmaterialized"],
     ["init", "https://example.invalid/repo.git"],
@@ -70,6 +71,7 @@
   ],
   "rust_accept": [
     ["--jsonl", "status"],
+    ["--verbose", "status"],
     ["--ssh-timeout", "10", "status"],
     ["status", "--porcelain"],
     ["forall", "--command-string", "echo hi"],

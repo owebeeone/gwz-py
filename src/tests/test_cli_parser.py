@@ -113,13 +113,16 @@ def test_version_flags_exit_success(flag: str, capsys: pytest.CaptureFixture[str
     assert capsys.readouterr().out == f"gwz-py {__version__}\n"
 
 
-def test_jsonl_and_ssh_timeout_parse_as_globals() -> None:
-    args = build_parser().parse_args(["--jsonl", "status", "--ssh-timeout", "3"])
+def test_jsonl_ssh_timeout_and_verbose_parse_as_globals() -> None:
+    args = build_parser().parse_args(
+        ["--jsonl", "status", "--ssh-timeout", "3", "--verbose"]
+    )
 
     validate_args(args)
     assert args.jsonl is True
     assert args.json is False
     assert args.ssh_timeout == 3
+    assert args.verbose is True
     assert meta_kwargs(args) == {}
 
 
