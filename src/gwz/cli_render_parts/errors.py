@@ -8,7 +8,9 @@ from .common import enum_label
 from .machine import merge_error_json, record_context_json, json_default, transport_human_lines
 
 
-def render_error(error: BaseException, *, json_mode: bool = False) -> str:
+def render_error(
+    error: BaseException, *, json_mode: bool = False, show_transport: bool = False
+) -> str:
     meta = getattr(error, "response_meta", None)
     if json_mode:
         operation_errors = getattr(error, "member_errors", None) or []
@@ -28,7 +30,8 @@ def render_error(error: BaseException, *, json_mode: bool = False) -> str:
             default=json_default,
         )
     lines = [f"gwz: {error}"]
-    lines.extend(transport_human_lines(getattr(meta, "transport", None) or []))
+    if show_transport:
+        lines.extend(transport_human_lines(getattr(meta, "transport", None) or []))
     return "\n".join(lines)
 
 

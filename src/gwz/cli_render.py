@@ -44,10 +44,10 @@ __all__ = [
 
 def render_response(
     response: Any, *, json_mode: bool = False, local_paths: bool = False,
-    porcelain: bool = False,
+    porcelain: bool = False, show_transport: bool = False,
 ) -> str:
     rendered = _render_response(response, json_mode=json_mode, local_paths=local_paths, porcelain=porcelain)
-    if json_mode or porcelain:
+    if json_mode or porcelain or not show_transport:
         return rendered
     meta = getattr(getattr(response, "response", None), "meta", None)
     for line in transport_human_lines(getattr(meta, "transport", None) or []):

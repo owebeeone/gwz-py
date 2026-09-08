@@ -24,6 +24,7 @@ GLOBAL_BOOL_ATTRS = (
     "destructive",
     "json",
     "jsonl",
+    "verbose",
 )
 GLOBAL_SCALAR_ATTRS = (
     "identity",
@@ -43,6 +44,7 @@ GLOBAL_BOOL_OPTIONS = {
     "--force",
     "--json",
     "--jsonl",
+    "--verbose",
 }
 GLOBAL_VALUE_OPTIONS = {
     "--identity",
@@ -75,6 +77,7 @@ GLOBAL_SINGLETON_OPTIONS = {
     "--progress-interval",
     "--json",
     "--jsonl",
+    "--verbose",
     "--ssh-timeout",
 }
 
@@ -319,6 +322,13 @@ def add_global_options(
         action="store_true",
         default=bool_default,
         help="Render newline-delimited JSON events",
+    )
+    parser.add_argument(
+        "--verbose",
+        dest=f"{dest_prefix}verbose",
+        action="store_true",
+        default=bool_default,
+        help="Show transport authentication diagnostics in human output",
     )
     parser.add_argument(
         "--ssh-timeout",

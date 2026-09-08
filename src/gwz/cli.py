@@ -103,6 +103,7 @@ async def run(args: argparse.Namespace) -> int:
             json_mode=machine,
             local_paths=getattr(args, "local", False),
             porcelain=getattr(args, "porcelain", False),
+            show_transport=args.verbose,
         )
     if rendered:
         print(rendered)
@@ -139,15 +140,23 @@ def main(argv: list[str] | None = None) -> int:
     except (CliUsageError, GwzError) as exc:
         machine = args.json or getattr(args, "jsonl", False)
         if getattr(args, "command", None) == "log":
-            return _write_log_error(exc, machine=machine)
-        print(render_error(exc, json_mode=machine), file=sys.stdout if machine else sys.stderr)
+            return _write_log_error(exc, machine=machine, show_transport=args.verbose)
+        print(
+            render_error(exc, json_mode=machine, show_transport=args.verbose),
+            file=sys.stdout if machine else sys.stderr,
+        )
         return exit_code_for_error(exc)
 
 
-def _write_log_error(error: BaseException, *, machine: bool) -> int:
+def _write_log_error(
+    error: BaseException, *, machine: bool, show_transport: bool
+) -> int:
     stream = sys.stdout if machine else sys.stderr
     try:
-        cli_log._write_and_flush(stream, render_error(error, json_mode=machine) + "\n")
+        cli_log._write_and_flush(
+            stream,
+            render_error(error, json_mode=machine, show_transport=show_transport) + "\n",
+        )
     except OSError as write_error:
         if machine and _is_broken_pipe(write_error):
             _silence_broken_stdout(stream)
