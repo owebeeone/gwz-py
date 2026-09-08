@@ -1,4 +1,17 @@
 {
+  "_schema": {
+    "purpose": "gwz-py's own CLI parser parity fixture: argv lists whose classification -- parses, is rejected by the parser, is refused by validation -- this driver must share with the Rust CLI. Add a case here, not in a test module.",
+    "stability": "Keys are stable. Append cases; do not reorder existing ones.",
+    "local_family": "The design section 7 local clone family rows -- the `CLI -> live message` table and the refusals a driver makes before encoding -- are NOT in this file. They live in the one cross-driver fixture `gwz-core/protocol/fixtures/cli_parity/local_family_cases.json` (operator ruling 1 of 2026-09-06, design section 11 item 17), which both drivers read; this file's copy of them was removed when gwz-py re-pointed at it. `src/tests/test_cli_local_family.py` asserts against that file.",
+    "argv_lists": {
+      "what": "Each entry is a bare argv list: no program name, no shell quoting.",
+      "accept": "parses and validates in both drivers",
+      "parse_reject": "rejected by the argument parser itself",
+      "semantic_reject": "parses, then refused by validation or the command handler before any core call",
+      "rust_accept": "flag spellings that originate in the Rust CLI and must also parse in the Python CLI",
+      "rust_version": "argv that prints a version and exits 0"
+    }
+  },
   "accept": [
     ["status", "--no-combined"],
     ["status", "--porcelain"],

@@ -62,6 +62,7 @@ def _request_meta(request_id: str = "req_test") -> generated.RequestMeta:
             git_committer=None,
             credential_ref=None,
         ),
+        transport=None,
     )
 
 
@@ -75,6 +76,7 @@ def _response_envelope(action: generated.ActionKind) -> generated.ResponseEnvelo
             operation_id="op_test",
             message=None,
             attribution=None,
+            transport=None,
         ),
         members=[],
         errors=[],
@@ -182,6 +184,7 @@ def test_merge_reserved_lifecycle_shape_round_trip() -> None:
         message=None,
         preserve=None,
         filesystem_strict=None,
+        local_source_name=None,
     )
     _assert_cbor_round_trip("MergeRequest", request)
 
@@ -194,6 +197,7 @@ def test_merge_reserved_lifecycle_shape_round_trip() -> None:
             policy=None,
             dry_run=None,
             attribution=None,
+            transport=None,
         ),
         op=generated.MergeOp.start,
         source_ref="feature/x",
@@ -202,6 +206,7 @@ def test_merge_reserved_lifecycle_shape_round_trip() -> None:
         message=None,
         preserve=None,
         filesystem_strict=None,
+        local_source_name=None,
     )
     # Moved 2026-09-03 by DR-1 ship (1) W1
     # (gwz-dev dev-docs/GwzM5-8DR1-WarnOrRefuse-Charter.md §3.7): MergeRequest
@@ -211,10 +216,38 @@ def test_merge_reserved_lifecycle_shape_round_trip() -> None:
     # to gwz-core's own parity pin in tests/protocol.rs.
     #   was: "a701a701697265715f6d65726765026667777a2e763003f604f605f606f607f6"
     #        "02000369666561747572652f7804f6050006f607f6"
+    # Moved 2026-09-05 by LCM1.0c (gwz-dev dev-docs/GwzLocalCloneDesign.md §7):
+    # MergeRequest gained the optional `local_source_name` in slot 9, so the
+    # map header grows from a8 to a9 and a trailing `09 f6` (slot 9 = null) is
+    # appended. Every pre-existing slot stays byte-identical, and this hex
+    # stays byte-identical to gwz-core's own parity pin in tests/protocol.rs.
+    #   was: "a801a701697265715f6d65726765026667777a2e763003f604f605f606f607f6"
+    #        "02000369666561747572652f7804f6050006f607f608f6"
+    # DR-5: RequestMeta adds optional transport at tag 8 (null); older tags unchanged.
     assert encode_message("MergeRequest", parity_request).hex() == (
-        "a801a701697265715f6d65726765026667777a2e763003f604f605f606f607f6"
-        "02000369666561747572652f7804f6050006f607f608f6"
+        "a901a801697265715f6d65726765026667777a2e763003f604f605f606f607f608f6"
+        "02000369666561747572652f7804f6050006f607f608f609f6"
     )
+    # LCM1.0c follow-up 2 (operator rulings 2026-09-05, gwz-dev
+    # dev-docs/GwzLocalCloneDesign.md revision 9 §7, §11 item 12): the `gwz
+    # local list` payload row. Six slots, the three enums by the wire values
+    # pinned in test_protocol.py (checkout=0, ready=1, pointer_removed=4),
+    # `last_error` null. Byte-identical to gwz-core's parity pin in
+    # tests/protocol.rs (`local_clone_follow_up_2_allocations_are_pinned`).
+    # The MergeRequest pin above is UNMOVED by follow-up 2: no MergeRequest
+    # slot changed.
+    entry = generated.LocalFamilyMemberEntry(
+        name="A",
+        kind=generated.LocalMemberKind.checkout,
+        recorded_state=generated.LocalMemberState.ready,
+        observed_state=generated.LocalObservedState.pointer_removed,
+        path="../ws-A",
+        last_error=None,
+    )
+    assert encode_message("LocalFamilyMemberEntry", entry).hex() == (
+        "a601614102000301040405672e2e2f77732d4106f6"
+    )
+    _assert_cbor_round_trip("LocalFamilyMemberEntry", entry)
 
     response = generated.MergeResponse(
         response=_response_envelope(generated.ActionKind.merge),

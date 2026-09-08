@@ -56,12 +56,13 @@ async def handle_forall(context: CommandContext) -> ExecResponse:
     if context.args.json or context.args.jsonl:
         raise CliUsageError("forall does not support --json/--jsonl")
     projects, mode, command = _forall_invocation(context.args.tokens, context.args.command_string)
-    ls_meta = dict(context.meta)
+    target_meta = dict(context.meta)
     if projects:
-        ls_meta["targets"] = [*ls_meta.get("targets", ()), *projects]
-    listed = await context.client.ls(include_unmaterialized=False, **ls_meta)
+        target_meta["targets"] = [*target_meta.get("targets", ()), *projects]
+    listed = await context.client.resolve_forall_targets(include_unmaterialized=False, **target_meta)
     members = listed.members or []
-    results = _run_forall(
+    dry_run = bool(context.meta.get("dry_run"))
+    results = [] if dry_run else _run_forall(
         members=members,
         mode=mode,
         command=command,
@@ -73,6 +74,8 @@ async def handle_forall(context: CommandContext) -> ExecResponse:
         AggregateStatus.ok if all(_result_ok(result) for result in results) else AggregateStatus.failed
     )
     message = "ok" if aggregate_status is AggregateStatus.ok else "one or more member commands failed"
+    if dry_run:
+        message = f"dry run: {command!r} in {', '.join(member.path for member in members)}"
     meta = context.client.meta(**context.meta)
     return ExecResponse(
         response=ResponseEnvelope(
@@ -84,6 +87,7 @@ async def handle_forall(context: CommandContext) -> ExecResponse:
                 operation_id=None,
                 message=message,
                 attribution=meta.attribution,
+                transport=None,
             ),
             members=[],
             errors=[],
@@ -164,6 +168,7 @@ def response_envelope_from_result(result: OperationResult) -> ResponseEnvelope:
             operation_id=result.operation_id,
             message=None,
             attribution=result.attribution,
+            transport=None,
         ),
         members=result.members,
         errors=result.errors,

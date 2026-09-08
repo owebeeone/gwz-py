@@ -250,3 +250,21 @@ def vars_from_fields(value: Any) -> dict[str, Any]:
 
 def json_fields(value: Any, *names: str) -> dict[str, Any]:
     return {name: getattr(value, name) for name in names}
+
+
+def transport_human_lines(rows: Any) -> list[str]:
+    lines = []
+    for row in rows:
+        method = row.credential_method.name
+        if method == "unknown" and not row.credential_offered:
+            continue
+        authenticated = "unknown" if row.authenticated is None else "yes" if row.authenticated else "no"
+        line = (
+            f"{row.repository_path} {row.remote}: credential={method} "
+            f"source={row.selection_source.name} offered={str(row.credential_offered).lower()} "
+            f"authenticated={authenticated}"
+        )
+        if row.public_key_fingerprint is not None:
+            line += f" fingerprint={row.public_key_fingerprint}"
+        lines.append(line)
+    return lines

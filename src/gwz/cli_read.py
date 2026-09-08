@@ -11,6 +11,10 @@ from .protocol.generated import CloneRepoMemberResponse
 
 def register_commands(registry: CommandRegistry) -> None:
     registry.register(
+        "auth", help="Manage local SSH identity configuration",
+        configure=configure_auth, handler=handle_auth,
+    )
+    registry.register(
         "status",
         help="Show workspace status",
         configure=configure_status,
@@ -33,6 +37,25 @@ def register_commands(registry: CommandRegistry) -> None:
         help="Manage workspace repositories",
         configure=configure_repo,
         handler=handle_repo,
+    )
+
+
+def configure_auth(parser: argparse.ArgumentParser) -> None:
+    commands = parser.add_subparsers(dest="auth_command", required=True)
+    identity = commands.add_parser(
+        "identity", help="Read or change a remote's local key path",
+        parents=[global_options_parent("_nested_")], allow_abbrev=False,
+    )
+    identity.add_argument("remote_name", metavar="REMOTE")
+    options = identity.add_mutually_exclusive_group()
+    options.add_argument("--set", dest="key_path", metavar="PATH")
+    options.add_argument("--unset", action="store_true")
+
+
+async def handle_auth(context: CommandContext) -> Any:
+    return await context.client.remote_identity(
+        context.args.remote_name, key_path=context.args.key_path,
+        unset=context.args.unset, **context.meta,
     )
 
 

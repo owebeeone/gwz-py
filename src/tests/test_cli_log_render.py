@@ -361,6 +361,7 @@ def _response(status: AggregateStatus = AggregateStatus.ok) -> LogResponse:
                 operation_id="op_s36",
                 message=None,
                 attribution=None,
+                transport=None,
             ),
             members=[],
             errors=[],

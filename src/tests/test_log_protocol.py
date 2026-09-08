@@ -1,3 +1,14 @@
+# DR-5 startup timeout: removing the service method and two messages exactly
+# reproduces prior projection 9f338f2287cf7127b760b5dfaf4e86a5f5152fb38234fb9c5ca94949db3e271d.
+# DR-5 observation fields: removing the message, three enums and two optional
+# slots exactly reproduces prior projection f45ebbb8cfa1ed81f29cf18c4e6df03314ee45d4584229d2a8daa1b9e16bdc73.
+# DR-5 local configuration: removing method, three messages, op enum and action 29
+# exactly reproduces prior projection ab44d75d4ef6bca60864c7150c44f381c318aaa642db143aad619951fa4ff44a.
+# DR-5 capability query: removing only its service method and two messages
+# exactly reproduces previous projection 09f98f645608b84b2eb9dbaede79f2b0d3750e8e6c337f2b254eca2b0da990ce.
+# DR-5 (2026-09-07): measured additive RemoteSshIdentity, TransportOptions,
+# and optional RequestMeta.transport slot 8. Removing exactly these additions
+# reproduced prior projection 6fd2f8829a920d6e4264a102f995a28ccc5d3dc47b25c66eca98980ad5488ca7.
 """S2.0 protocol parity for the streamed unified commit log."""
 
 from __future__ import annotations
@@ -29,7 +40,79 @@ from gwz.protocol.codec import decode_message, encode_message, from_wire, schema
 # no pre-existing slot changed. The projection strips only `Log*`, so
 # MergeCrashRecovery is inside it and this pin moves with the field.
 #   was: 7a66e301c5c0147a12c59b2cddb6f2ebc1515ef4d65297ec53c3b312a3769697
-PRE_LOG_WIRE_SHA256 = "71bf6b9223ba6d2b4d12049e425e567254ca79396d67922be737c86c6dd97a40"
+#
+# ESCAPED DEFECT, repaired 2026-09-05 by LCM1.0c follow-up 2: LCM1.0c
+# (gwz-py afcd5a3, 2026-09-05) moved scripts/check_protocol_drift.py to the
+# local-clone allocation's fingerprint 3c34bd74... but left this pin on the
+# pre-LCM1.0c value, so this test was RED on every clean tree from afcd5a3
+# until now. Because the pin below is the fingerprint of the follow-up 2
+# schema, the LCM1.0c move is folded into this one: both allocations
+# (LCM1.0c -- ActionKind 27/28, LocalCloneMode, LocalFamilyOp, the four
+# local-family messages, the two service methods, MergeRequest
+# .local_source_name (slot 9); follow-up 2 -- CloneLocalWorkspaceRequest
+# .copy_source (tag 6), LocalFamilyResponse.members (tag 2) with
+# LocalFamilyMemberEntry and the LocalMemberKind / LocalMemberState /
+# LocalObservedState enums, GwzErrorCode.unknown_local (62)) were MEASURED
+# additive on both trees by gwz-core's protocol/check_log_additive.py (242
+# added / 0 removed, then 128 added / 0 removed). Kept identical to gwz-core
+# protocol/check_log_additive.py and scripts/check_protocol_drift.py; every
+# gwz-py fast suite that pins a protocol hash is listed in the LCM1.0c
+# checkpoint record §11 so a move cannot skip one again.
+#   was: 71bf6b9223ba6d2b4d12049e425e567254ca79396d67922be737c86c6dd97a40
+#   (LCM1.0c's value, never pinned here: 3c34bd741b32f366f63928211eec83c920b5b0ca0ed1d847447f4d3428c22031)
+#
+# Moved deliberately again on 2026-09-06 by LCM1.0c follow-up 3 (operator
+# ruling 3 of 2026-09-06, checkpoint record §12): LocalFamilyResponse
+# .root_path (tag 3, optional), the family root's path a driver joins with
+# each member's root-relative `path`. MEASURED additive on both trees by
+# gwz-core's protocol/check_log_additive.py (11 added / 0 removed, the one
+# field object). Kept identical to gwz-core protocol/check_log_additive.py
+# and scripts/check_protocol_drift.py.
+#   was: 26f0d16ffebdcdc26bbbe682a6347688781cd202694333dbb0c066d087fb6b4e
+#
+# Moved deliberately again on 2026-09-06 by LCM1.1 fix 1 (lane C, gwz-dev
+# dev-docs/GwzLocalClone-LCM1.0c-Checkpoint.md §14; GwzLocalCloneDesign.md
+# §4, §4.0, §4.1, §12), which allocates exactly four more GwzErrorCode
+# members for the local-create outcomes LCM1.1's wiring had folded into
+# unsupported_operation and io_error: unsupported_source_layout (63),
+# copy_failed (64), source_drift (65) and destination_incomplete (66). No
+# message, field or slot changed. MEASURED additive, not assumed: gwz-core's
+# own protocol/check_log_additive.py rendered the projection on both trees
+# and diffed them -- 4 added lines, 0 removed, 3 hunks, the four enum members
+# as map keys -- and the previous pin reproduced exactly on the
+# pre-allocation schema (gwz-core 81fcaf2). The three pins are one
+# fingerprint of one schema. Kept identical to gwz-core
+# protocol/check_log_additive.py and scripts/check_protocol_drift.py.
+#   was: 2eca6469ed1281e77a95f1e419aa4065002aa94c77507a73ada6f6f9c8bb5503
+#
+# Moved deliberately again on 2026-09-06 by LCM1.2 (lane C, gwz-dev
+# dev-docs/GwzLocalClone-LCM1.0c-Checkpoint.md §16; GwzLocalCloneDesign.md
+# §6, §6.2, §12), which allocates exactly two more GwzErrorCode members for
+# the family-merge import outcomes: pairing_mismatch (67) and
+# import_incomplete (68). No message, field or slot changed. MEASURED
+# additive, not assumed: gwz-core's own protocol/check_log_additive.py
+# rendered the projection on both trees and diffed them -- 2 added lines, 0
+# removed, 2 hunks, the two enum members as map keys -- and the previous pin
+# reproduced exactly on the pre-allocation schema (gwz-core 63f1332). Kept
+# identical to gwz-core protocol/check_log_additive.py and
+# scripts/check_protocol_drift.py.
+#   was: 0a173de982aaa93225e26581d678b4722356afc967fb4543de531708900cf981
+#
+# Moved deliberately again on 2026-09-06 by LCM2.1/LCM2.2 (lane C, gwz-dev
+# dev-docs/GwzLocalClone-LCM1.0c-Checkpoint.md §17; GwzLocalCloneDesign.md
+# §5, §5.1, §5.2, §12), which allocates exactly three more GwzErrorCode
+# members for the ordinary-disposal outcomes: unwaived_hazard (69),
+# unknown_evidence (70) and disposal_incomplete (71). No message, field or
+# slot changed. MEASURED additive, not assumed: gwz-core's own
+# protocol/check_log_additive.py rendered the projection on both trees and
+# diffed them -- 3 added lines, 0 removed, 2 hunks, the three enum members as
+# map keys -- and the previous pin reproduced exactly on the pre-allocation
+# schema (gwz-core 6d1a28e). Kept identical to gwz-core
+# protocol/check_log_additive.py and scripts/check_protocol_drift.py.
+#   was: ba55594fa54123b865e06eb4bedfbf1eba4c9f52467a468831f9b699df0763a2
+# Debt recovery adds only GwzCore.resolve_forall_targets using existing messages.
+# Removing that method reproduces the prior e99ce51a85b439fb03bb43df5beb3a33156048b8212d3f2fc609ba2db163db32 pin exactly.
+PRE_LOG_WIRE_SHA256 = "8aa25038218daf2d085b62bb37fb4438afd06bb77628746dac80efe53a56e76c"
 
 
 def _round_trip(message_name: str, value: object) -> None:
@@ -48,6 +131,7 @@ def _meta() -> generated.RequestMeta:
         policy=None,
         dry_run=None,
         attribution=None,
+        transport=None,
     )
 
 

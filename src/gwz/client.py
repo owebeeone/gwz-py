@@ -16,6 +16,14 @@ from .client_helpers import (
     sources as _sources,
 )
 from .protocol.generated import (
+    TransportOptions,
+    TransportCapabilitiesRequest,
+    TransportCapabilitiesResponse,
+    TransportRuntimeRequest,
+    TransportRuntimeResponse,
+    RemoteIdentityRequest,
+    RemoteIdentityResponse,
+    RemoteIdentityOp,
     AddExistingRepoRequest,
     AddExistingRepoResponse,
     AttachRepoMemberRequest,
@@ -25,6 +33,8 @@ from .protocol.generated import (
     BranchResponse,
     CaptureRequest,
     CaptureResponse,
+    CloneLocalWorkspaceRequest,
+    CloneLocalWorkspaceResponse,
     CloneWorkspaceRequest,
     CloneWorkspaceResponse,
     CloneRepoMemberRequest,
@@ -52,6 +62,10 @@ from .protocol.generated import (
     InitFromSourcesResponse,
     ListSnapshotsRequest,
     ListSnapshotsResponse,
+    LocalCloneMode,
+    LocalFamilyOp,
+    LocalFamilyRequest,
+    LocalFamilyResponse,
     LsRequest,
     LsResponse,
     LogOptions,
@@ -182,6 +196,7 @@ class Client:
         progress_min_interval_ms: int | None = None,
         max_connections_per_host: int | None = None,
         attribution: OperationAttribution | None = None,
+        transport: TransportOptions | None = None,
     ) -> RequestMeta:
         selected_member_ids = list(member_ids)
         selected_paths = list(paths)
@@ -246,9 +261,36 @@ class Client:
             policy=policy,
             dry_run=dry_run,
             attribution=attribution,
+            transport=transport,
         )
 
+    async def _require_transport_capability(self, request: Any) -> None:
+        transport = getattr(getattr(request, "meta", None), "transport", None)
+        if transport is None or (
+            transport.default_identity is None and not transport.remote_identities
+        ):
+            return
+        try:
+            capabilities = await self.bridge.call(
+                "transport_capabilities",
+                "TransportCapabilitiesRequest",
+                "TransportCapabilitiesResponse",
+                TransportCapabilitiesRequest(schema_version=SCHEMA_VERSION),
+            )
+        except GwzBridgeError as exc:
+            raise GwzBridgeError(
+                "The installed core cannot confirm explicit SSH identity support; "
+                "update the core before using transport identity options.",
+                code="UnsupportedOperation",
+            ) from exc
+        if not isinstance(capabilities, TransportCapabilitiesResponse) or not capabilities.file_identity:
+            raise GwzBridgeError(
+                "The installed core does not support explicit SSH file identity selection.",
+                code="UnsupportedOperation",
+            )
+
     async def _call(self, method: str, request: Any, response_type: type[Any]) -> Any:
+        await self._require_transport_capability(request)
         result = await self.bridge.call(method, type(request).__name__, response_type.__name__, request)
         raise_for_response(result)
         return result
@@ -263,6 +305,7 @@ class Client:
         if submit is None:
             response = await self._call(method, request, response_type)
         else:
+            await self._require_transport_capability(request)
             response = await submit(method, type(request).__name__, response_type.__name__, request)
             raise_for_response(response)
         operation_id = getattr(getattr(response.response, "meta", None), "operation_id", None)
@@ -271,6 +314,27 @@ class Client:
         async for event in self.bridge.subscribe_events(operation_id):
             yield event
         await self.operation_result(operation_id)
+
+    async def configure_transport_timeout(self, seconds: int) -> TransportRuntimeResponse:
+        if seconds < 0:
+            raise ValueError("transport timeout cannot be negative")
+        return await self.bridge.call(
+            "configure_transport_runtime", "TransportRuntimeRequest", "TransportRuntimeResponse",
+            TransportRuntimeRequest(server_timeout_ms=min(seconds * 1000, 2**31 - 1), schema_version=SCHEMA_VERSION),
+        )
+
+    async def remote_identity(
+        self, remote: str, *, key_path: str | None = None,
+        unset: bool = False, **meta: Any,
+    ) -> RemoteIdentityResponse:
+        if unset and key_path is not None:
+            raise ValueError("identity set and unset are mutually exclusive")
+        request = RemoteIdentityRequest(
+            meta=self.meta(**meta), remote=remote,
+            op=RemoteIdentityOp.unset if unset else RemoteIdentityOp.set if key_path is not None else RemoteIdentityOp.get,
+            private_key_path=key_path,
+        )
+        return await self._call("remote_identity", request, RemoteIdentityResponse)
 
     async def create_workspace(
         self,
@@ -352,6 +416,63 @@ class Client:
             target=str(target),
         )
         return self._stream_call("clone_workspace", request, CloneWorkspaceResponse)
+
+    async def clone_local_workspace(
+        self,
+        name: str,
+        dest: str | Path | None = None,
+        *,
+        mode: LocalCloneMode | str = LocalCloneMode.verbatim,
+        branch: str | None = None,
+        copy_source: str | Path | None = None,
+        **meta: Any,
+    ) -> CloneLocalWorkspaceResponse:
+        """Create a local clone of this workspace (design §4).
+
+        `dest` is optional: core derives `../<root-dirname>-<name>` when it is
+        absent. `branch` is the clean/bare `-b` branch, created in every member
+        before the destination becomes ready. `copy_source` is the `--from`
+        selector -- a family name or a path -- and an absent one means the cwd
+        workspace; core resolves which of the two a given token is.
+        """
+        request = CloneLocalWorkspaceRequest(
+            meta=self.meta(**meta),
+            name=name,
+            dest=None if dest is None else str(dest),
+            mode=_enum_value(LocalCloneMode, mode),
+            branch=branch,
+            # Tag 6 `copy_source` (operator ruling 2026-09-05, design §7 and
+            # §11 item 11): `from` is a keyword in both generated languages.
+            # Runtime-required field only (LCM1.0c follow-up 2): the generated
+            # dataclass has no default.
+            copy_source=None if copy_source is None else str(copy_source),
+        )
+        return await self._call(
+            "clone_local_workspace", request, CloneLocalWorkspaceResponse
+        )
+
+    async def local_family(
+        self,
+        op: LocalFamilyOp | str = LocalFamilyOp.list,
+        *,
+        name: str | None = None,
+        keep: bool | None = None,
+        force_hazards: Iterable[str] = (),
+        **meta: Any,
+    ) -> LocalFamilyResponse:
+        """List, dispose from, or disband the local clone family (design §5).
+
+        An absent or empty `force_hazards` is no force at all; core validates
+        the hazard names and refuses `keep` together with a force.
+        """
+        request = LocalFamilyRequest(
+            meta=self.meta(**meta),
+            op=_enum_value(LocalFamilyOp, op),
+            name=name,
+            keep=keep,
+            force_hazards=list(force_hazards),
+        )
+        return await self._call("local_family", request, LocalFamilyResponse)
 
     async def clone_repo_member(
         self,
@@ -526,6 +647,11 @@ class Client:
             include_unmaterialized=include_unmaterialized,
         )
         return await self._call("ls", request, LsResponse)
+
+    async def resolve_forall_targets(self, *, include_unmaterialized: bool | None = False, **meta: Any) -> LsResponse:
+        """Resolve execution targets through core without running a command."""
+        request = LsRequest(meta=self.meta(**meta), include_unmaterialized=include_unmaterialized)
+        return await self._call("resolve_forall_targets", request, LsResponse)
 
     async def materialize(
         self,
@@ -725,6 +851,7 @@ class Client:
         message: str | None = None,
         preserve: bool | None = None,
         filesystem_strict: bool | None = None,
+        local_source_name: str | None = None,
         dry_run: bool | None = None,
         **meta: Any,
     ) -> MergeResponse:
@@ -736,6 +863,7 @@ class Client:
             message=message,
             preserve=preserve,
             filesystem_strict=filesystem_strict,
+            local_source_name=local_source_name,
             dry_run=dry_run,
             **meta,
         )
@@ -751,6 +879,7 @@ class Client:
         message: str | None = None,
         preserve: bool | None = None,
         filesystem_strict: bool | None = None,
+        local_source_name: str | None = None,
         dry_run: bool | None = None,
         **meta: Any,
     ) -> "MergeOperationHandle":
@@ -763,6 +892,7 @@ class Client:
             message=message,
             preserve=preserve,
             filesystem_strict=filesystem_strict,
+            local_source_name=local_source_name,
             dry_run=dry_run,
             **meta,
         )
@@ -790,6 +920,7 @@ class Client:
         message: str | None,
         preserve: bool | None,
         filesystem_strict: bool | None,
+        local_source_name: str | None,
         dry_run: bool | None,
         **meta: Any,
     ) -> MergeRequest:
@@ -804,6 +935,11 @@ class Client:
             # DR-1: start only. Core refuses it on any other op, and both CLIs
             # refuse it before the call.
             filesystem_strict=filesystem_strict,
+            # LCM1.0c: the local-family selector (`gwz merge --remote <name>`,
+            # design §6/§7). It is a request field, not `OperationPolicy.remote`,
+            # and start-only: core's engine guard refuses it on every other op.
+            # `cli_local_family` is what parses it; a plain merge leaves it None.
+            local_source_name=local_source_name,
         )
 
     async def diff(

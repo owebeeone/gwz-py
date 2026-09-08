@@ -188,6 +188,7 @@ impl OperationRecord {
             .clone()
             .ok_or_else(|| error::runtime("response is missing operation_id"))?;
         let result = gwz_core::OperationResult {
+            transport: envelope.meta.transport.clone(),
             operation_id,
             request_id: envelope.meta.request_id.clone(),
             action: envelope.meta.action,
@@ -220,6 +221,7 @@ impl OperationRecord {
         };
         self.complete(
             gwz_core::OperationResult {
+                transport: None,
                 operation_id,
                 request_id,
                 action,
@@ -243,6 +245,10 @@ impl OperationRecord {
     ) -> PyResult<()> {
         self.complete(
             gwz_core::OperationResult {
+                transport: error
+                    .response_meta
+                    .as_ref()
+                    .and_then(|meta| meta.transport.clone()),
                 operation_id,
                 request_id: meta.request_id.clone(),
                 action,
@@ -265,6 +271,7 @@ impl OperationRecord {
             .clone()
             .ok_or_else(|| error::runtime("response is missing operation_id"))?;
         let result = gwz_core::OperationResult {
+            transport: envelope.meta.transport.clone(),
             operation_id,
             request_id: envelope.meta.request_id.clone(),
             action: envelope.meta.action,
@@ -446,6 +453,7 @@ mod tests {
         gwz_core::MergeResponse {
             response: gwz_core::ResponseEnvelope {
                 meta: gwz_core::ResponseMeta {
+                    transport: None,
                     request_id: request_id.to_owned(),
                     schema_version: "gwz.protocol/v0".to_owned(),
                     action: gwz_core::ActionKind::Merge,

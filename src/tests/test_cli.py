@@ -51,6 +51,7 @@ def response_envelope(
             operation_id="op_test",
             message=None,
             attribution=None,
+            transport=None,
         ),
         members=[],
         errors=[],

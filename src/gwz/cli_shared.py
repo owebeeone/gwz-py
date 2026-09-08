@@ -10,13 +10,13 @@ from typing import Any
 
 from .client import Client
 from .client_helpers import SUCCESS_AGGREGATE_STATUS_NAMES
-from .protocol.generated import SyncBehavior
+from .protocol.generated import SyncBehavior, RemoteSshIdentity, TransportOptions
 
 CommandHandler = Callable[["CommandContext"], Awaitable[Any]]
 ConfigureParser = Callable[[argparse.ArgumentParser], None]
 
 
-GLOBAL_LIST_ATTRS = ("targets", "exclude_targets", "member_paths")
+GLOBAL_LIST_ATTRS = ("targets", "exclude_targets", "member_paths", "remote_identities")
 GLOBAL_BOOL_ATTRS = (
     "all_members",
     "dry_run",
@@ -26,6 +26,7 @@ GLOBAL_BOOL_ATTRS = (
     "jsonl",
 )
 GLOBAL_SCALAR_ATTRS = (
+    "identity",
     "root",
     "sync",
     "remote",
@@ -44,6 +45,8 @@ GLOBAL_BOOL_OPTIONS = {
     "--jsonl",
 }
 GLOBAL_VALUE_OPTIONS = {
+    "--identity",
+    "--remote-identity",
     "--root",
     "--target",
     "--member",
@@ -59,6 +62,7 @@ GLOBAL_VALUE_OPTIONS = {
     "--ssh-timeout",
 }
 GLOBAL_SINGLETON_OPTIONS = {
+    "--identity",
     "--root",
     "--all",
     "--dry-run",
@@ -174,6 +178,13 @@ class GwzArgumentParser(argparse.ArgumentParser):
         return parsed
 
 
+def remote_identity_argument(value: str) -> RemoteSshIdentity:
+    remote, separator, path = value.partition("=")
+    if not separator:
+        raise argparse.ArgumentTypeError("expected NAME=PATH for --remote-identity")
+    return RemoteSshIdentity(remote=remote, private_key_path=path)
+
+
 def global_options_parent(dest_prefix: str) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(add_help=False, argument_default=argparse.SUPPRESS)
     add_global_options(parser, dest_prefix=dest_prefix, defaults=False)
@@ -269,6 +280,11 @@ def add_global_options(
         default=scalar_default,
         help="Select the git remote name",
     )
+    parser.add_argument("--identity", dest=f"{dest_prefix}identity", default=scalar_default,
+                        metavar="PATH", help="Use only this SSH private-key file; no agent fallback")
+    parser.add_argument("--remote-identity", dest=f"{dest_prefix}remote_identities", action="append",
+                        type=remote_identity_argument, default=list_default(), metavar="NAME=PATH",
+                        help="Override SSH identity for this remote name across selected repositories; repeatable")
     parser.add_argument(
         "--jobs",
         dest=f"{dest_prefix}jobs",
@@ -419,6 +435,10 @@ def validate_args(args: argparse.Namespace) -> None:
 
 def meta_kwargs(args: argparse.Namespace) -> dict[str, Any]:
     meta: dict[str, Any] = {}
+    identity = getattr(args, "identity", None)
+    remote_identities = getattr(args, "remote_identities", None) or []
+    if identity is not None or remote_identities:
+        meta["transport"] = TransportOptions(default_identity=identity, remote_identities=remote_identities)
     if args.all_members:
         meta["all_members"] = True
     if args.targets:

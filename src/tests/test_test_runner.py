@@ -52,3 +52,25 @@ def test_runner_builds_and_exports_the_checked_out_sibling_cli(tmp_path: Path) -
     ]
     assert observed.is_file()
     assert env["GWZ_RUST_BIN"] == str(observed)
+
+
+def test_runner_finds_a_sibling_cli_built_in_the_parent_workspace(tmp_path: Path) -> None:
+    py_root = tmp_path / "gwz-py"
+    cli_root = tmp_path / "gwz-cli"
+    py_root.mkdir()
+    cli_root.mkdir()
+    (cli_root / "Cargo.toml").write_text("[package]\nname='gwz'\n", encoding="utf-8")
+    env: dict[str, str] = {}
+
+    def fake_run(_command: list[str], **_kwargs: Any) -> None:
+        name = "gwz.exe" if os.name == "nt" else "gwz"
+        _executable(tmp_path / "target" / "debug" / name)
+
+    observed = run_tests.provision_rust_cli(
+        env,
+        root=py_root,
+        run_command=fake_run,
+    )
+
+    assert observed.parent.parent == (tmp_path / "target").resolve()
+    assert env["GWZ_RUST_BIN"] == str(observed)

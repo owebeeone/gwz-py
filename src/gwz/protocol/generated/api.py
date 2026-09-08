@@ -31,6 +31,9 @@ class ActionKind(Enum):
     attach_repo_member = 24
     merge = 25
     log = 26
+    clone_local_workspace = 27
+    local_family = 28
+    remote_identity = 29
 
 class TagOp(Enum):
     create = 0
@@ -83,6 +86,35 @@ class MergeMode(Enum):
     normal = 0
     ff_only = 1
     no_ff = 2
+
+class LocalCloneMode(Enum):
+    verbatim = 0
+    clean = 1
+    bare = 2
+
+class LocalFamilyOp(Enum):
+    list = 0
+    dispose = 1
+    disband = 2
+
+class LocalMemberKind(Enum):
+    checkout = 0
+    bare = 1
+
+class LocalMemberState(Enum):
+    creating = 0
+    ready = 1
+    disposing = 2
+
+class LocalObservedState(Enum):
+    ready = 0
+    incomplete = 1
+    interrupted_disposal = 2
+    missing = 3
+    pointer_removed = 4
+    mismatched = 5
+    malformed = 6
+    unobserved = 7
 
 class MergeAnalysisKind(Enum):
     up_to_date = 0
@@ -438,6 +470,16 @@ class GwzErrorCode(Enum):
     terminal_evidence_mismatch = 59
     recovery_evidence_mismatch = 60
     terminal_rollback_mismatch = 61
+    unknown_local = 62
+    unsupported_source_layout = 63
+    copy_failed = 64
+    source_drift = 65
+    destination_incomplete = 66
+    pairing_mismatch = 67
+    import_incomplete = 68
+    unwaived_hazard = 69
+    unknown_evidence = 70
+    disposal_incomplete = 71
 
 class MergeRecordRequiredWave(Enum):
     a1 = 0
@@ -525,6 +567,29 @@ class LogOutputRecordKind(Enum):
     entry = 0
     degradation = 1
 
+class RemoteIdentityOp(Enum):
+    get = 0
+    set = 1
+    unset = 2
+
+class TransportCredentialMethod(Enum):
+    unknown = 0
+    file = 1
+    agent = 2
+    helper = 3
+
+class TransportSelectionSource(Enum):
+    ambient = 0
+    invocation_remote = 1
+    invocation_default = 2
+    local_configuration = 3
+
+class TransportOperation(Enum):
+    clone = 0
+    fetch = 1
+    push = 2
+    read_advertisement = 3
+
 @dataclass(slots=True)
 class WorkspaceRef:
     root: str | None
@@ -571,6 +636,64 @@ class OperationPolicy:
     max_connections_per_host: int | None
 
 @dataclass(slots=True)
+class RemoteSshIdentity:
+    remote: str
+    private_key_path: str
+
+@dataclass(slots=True)
+class RemoteIdentityRequest:
+    meta: RequestMeta
+    remote: str
+    op: RemoteIdentityOp
+    private_key_path: str | None
+
+@dataclass(slots=True)
+class RemoteIdentityEntry:
+    member_id: str
+    member_path: str
+    remote: str
+    private_key_path: str | None
+
+@dataclass(slots=True)
+class RemoteIdentityResponse:
+    response: ResponseEnvelope
+    identities: list[RemoteIdentityEntry]
+
+@dataclass(slots=True)
+class TransportRuntimeRequest:
+    server_timeout_ms: int
+    schema_version: str
+
+@dataclass(slots=True)
+class TransportRuntimeResponse:
+    server_timeout_ms: int
+
+@dataclass(slots=True)
+class TransportCapabilitiesRequest:
+    schema_version: str
+
+@dataclass(slots=True)
+class TransportCapabilitiesResponse:
+    file_identity: bool
+    exact_agent_identity: bool
+
+@dataclass(slots=True)
+class TransportObservation:
+    repository_path: str
+    remote: str
+    operation: TransportOperation
+    credential_method: TransportCredentialMethod
+    selection_source: TransportSelectionSource
+    credential_offered: bool
+    authenticated: bool | None
+    public_key_fingerprint: str | None
+
+@dataclass(slots=True)
+class TransportOptions:
+    default_identity: str | None
+    remote_identities: list[RemoteSshIdentity]
+
+@dataclass(slots=True)
 class RequestMeta:
     request_id: str
     schema_version: str
@@ -579,6 +702,7 @@ class RequestMeta:
     policy: OperationPolicy | None
     dry_run: bool | None
     attribution: OperationAttribution | None
+    transport: TransportOptions | None
 
 @dataclass(slots=True)
 class ResponseMeta:
@@ -589,6 +713,7 @@ class ResponseMeta:
     operation_id: str | None
     message: str | None
     attribution: OperationAttribution | None
+    transport: list[TransportObservation] | None
 
 @dataclass(slots=True)
 class MergeRecordCompatibilityContext:
@@ -1075,6 +1200,7 @@ class OperationResult:
     members: list[MemberResponse]
     errors: list[GwzError]
     attribution: OperationAttribution | None
+    transport: list[TransportObservation] | None
 
 @dataclass(slots=True)
 class CreateWorkspaceRequest:
@@ -1265,6 +1391,24 @@ class MergeRequest:
     message: str | None
     preserve: bool | None
     filesystem_strict: bool | None
+    local_source_name: str | None
+
+@dataclass(slots=True)
+class CloneLocalWorkspaceRequest:
+    meta: RequestMeta
+    name: str
+    dest: str | None
+    mode: LocalCloneMode
+    branch: str | None
+    copy_source: str | None
+
+@dataclass(slots=True)
+class LocalFamilyRequest:
+    meta: RequestMeta
+    op: LocalFamilyOp
+    name: str | None
+    keep: bool | None
+    force_hazards: list[str]
 
 @dataclass(slots=True)
 class CreateWorkspaceResponse:
@@ -1384,6 +1528,25 @@ class MergeResponse:
     publication_step: MergePublicationStep | None
     record: MergeRecordProjection | None
     crash_recovery: MergeCrashRecovery | None
+
+@dataclass(slots=True)
+class CloneLocalWorkspaceResponse:
+    response: ResponseEnvelope
+
+@dataclass(slots=True)
+class LocalFamilyMemberEntry:
+    name: str
+    kind: LocalMemberKind
+    recorded_state: LocalMemberState
+    observed_state: LocalObservedState
+    path: str
+    last_error: str | None
+
+@dataclass(slots=True)
+class LocalFamilyResponse:
+    response: ResponseEnvelope
+    members: list[LocalFamilyMemberEntry]
+    root_path: str | None
 
 @dataclass(slots=True)
 class DiffComparison:

@@ -9,6 +9,7 @@ from . import (
     cli_branch_stash,
     cli_diff,
     cli_local,
+    cli_local_family,
     cli_log,
     cli_merge,
     cli_mutation,
@@ -65,12 +66,16 @@ def register_commands(registry: CommandRegistry) -> None:
     cli_branch_stash.register_commands(registry)
     cli_merge.register_commands(registry)
     cli_local.register_commands(registry)
+    # Last: it extends the `clone` and `merge` commands registered above.
+    cli_local_family.register_commands(registry)
 
 
 async def run(args: argparse.Namespace) -> int:
     validate_args(args)
     handler = getattr(args, "command_handler")
     async with Client(root=args.root) as client:
+        if args.ssh_timeout is not None:
+            await client.configure_transport_timeout(args.ssh_timeout)
         context = CommandContext(args=args, client=client, meta=meta_kwargs(args))
         try:
             response = await handler(context)
@@ -86,12 +91,19 @@ async def run(args: argparse.Namespace) -> int:
     if cli_merge.is_merge_result(response):
         return response.exit_code
 
-    rendered = render_response(
-        response,
-        json_mode=args.json or getattr(args, "jsonl", False),
-        local_paths=getattr(args, "local", False),
-        porcelain=getattr(args, "porcelain", False),
-    )
+    machine = args.json or getattr(args, "jsonl", False)
+    if not machine and cli_local_family.is_family_listing(response):
+        # `gwz local list` is the one response whose human form is a table of
+        # its own payload (design §8.1); the machine form is the generic
+        # protocol document, so only the human side needs the hook.
+        rendered = cli_local_family.render_family_listing(response)
+    else:
+        rendered = render_response(
+            response,
+            json_mode=machine,
+            local_paths=getattr(args, "local", False),
+            porcelain=getattr(args, "porcelain", False),
+        )
     if rendered:
         print(rendered)
     return _exit_code_for_cli_response(args, response)

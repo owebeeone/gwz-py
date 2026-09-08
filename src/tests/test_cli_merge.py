@@ -269,7 +269,7 @@ def test_merge_human_and_machine_render_idle_without_fabricated_operation() -> N
     response = MergeResponse(
         ResponseEnvelope(ResponseMeta(
             "req-idle", "gwz.protocol/v0", ActionKind.merge, AggregateStatus.noop,
-            "op-idle", None, None,
+            "op-idle", None, None, None,
         ), [], []),
         None,
         MergeOperationState.idle,
@@ -519,7 +519,7 @@ def test_merge_jsonl_failure_ends_with_structured_terminal_error(
     )
     terminal = OperationResult(
         "op-fake", "req-fake", ActionKind.merge, AggregateStatus.failed,
-        1, 2, [], [member_error], None,
+        1, 2, [], [member_error], None, None,
     )
 
     class FailingHandle(FakeMergeHandle):
@@ -573,7 +573,7 @@ def test_halted_merge_response_unwraps_without_changing_generic_failures() -> No
 def merge_response() -> MergeResponse:
     envelope = ResponseEnvelope(ResponseMeta(
         "req-parity-1", "gwz.protocol/v0", ActionKind.merge, AggregateStatus.failed,
-        "op-parity-1", None, None,
+        "op-parity-1", None, None, None,
     ), [], [])
     repos = [
         merge_repo("lib", MergeParticipantState.planned),

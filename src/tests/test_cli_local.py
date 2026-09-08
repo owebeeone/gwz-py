@@ -34,8 +34,8 @@ class FakeClient:
         self.root = root
         self.calls: list[tuple[str, tuple[Any, ...], dict[str, Any]]] = []
 
-    async def ls(self, **kwargs: Any) -> LsResponse:
-        self.calls.append(("ls", (), kwargs))
+    async def resolve_forall_targets(self, **kwargs: Any) -> LsResponse:
+        self.calls.append(("resolve_forall_targets", (), kwargs))
         members = self.members
         targets = list(kwargs.get("targets") or ())
         if targets:
@@ -91,6 +91,7 @@ class FakeClient:
             members=[],
             errors=[],
             attribution=None,
+            transport=None,
         )
 
     def meta(self, **kwargs: Any) -> RequestMeta:
@@ -102,6 +103,7 @@ class FakeClient:
             policy=None,
             dry_run=kwargs.get("dry_run"),
             attribution=None,
+            transport=None,
         )
 
 
@@ -115,6 +117,7 @@ def response_envelope(action: ActionKind) -> ResponseEnvelope:
             operation_id=None,
             message="ok",
             attribution=None,
+            transport=None,
         ),
         members=[],
         errors=[],
@@ -195,7 +198,7 @@ def test_forall_runs_filtered_member_command(tmp_path: Path) -> None:
     assert response.response.meta.aggregate_status is AggregateStatus.ok
     assert [result.path for result in response.results] == ["repos/app"]
     assert response.results[0].exit_code == 0
-    assert client.calls == [("ls", (), {"include_unmaterialized": False, "targets": ["repos/app"]})]
+    assert client.calls == [("resolve_forall_targets", (), {"include_unmaterialized": False, "targets": ["repos/app"]})]
 
 
 def test_forall_runs_positionally_selected_root_target(tmp_path: Path) -> None:
@@ -223,7 +226,7 @@ def test_forall_runs_positionally_selected_root_target(tmp_path: Path) -> None:
     assert [result.path for result in response.results] == ["."]
     assert response.results[0].exit_code == 0
     assert client.calls == [
-        ("ls", (), {"include_unmaterialized": False, "targets": ["@root"]})
+        ("resolve_forall_targets", (), {"include_unmaterialized": False, "targets": ["@root"]})
     ]
 
 
@@ -325,3 +328,15 @@ def test_clone_stream_renders_warning_events(capsys: pytest.CaptureFixture[str])
         capsys.readouterr().err
         == "warning: accepted source identity with no historical evidence\n"
     )
+
+
+def test_forall_dry_run_resolves_targets_without_launching(tmp_path: Path) -> None:
+    client = FakeClient([root_member(tmp_path)], tmp_path)
+    response = run_handler([
+        "--dry-run", "forall", "--no-banner", "@root", "--", sys.executable,
+        "-c", "from pathlib import Path; Path('launched').write_text('bad')",
+    ], client)
+    assert not (tmp_path / "launched").exists()
+    assert response.results == []
+    assert "dry run" in response.response.meta.message.lower()
+    assert client.calls[0][0] == "resolve_forall_targets"

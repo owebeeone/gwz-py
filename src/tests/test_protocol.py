@@ -36,9 +36,68 @@ def test_repo_member_lifecycle_protocol_is_pinned() -> None:
     assert generated.PlannedAction.attach_member.value == 16
     assert generated.GwzErrorCode.source_identity_mismatch.value == 36
     assert generated.ActionKind.merge.value == 25
+    # LCM1.0c (2026-09-05): the local clone family allocation.
+    assert generated.ActionKind.log.value == 26
+    assert generated.ActionKind.clone_local_workspace.value == 27
+    assert generated.ActionKind.local_family.value == 28
+    assert generated.LocalCloneMode.verbatim.value == 0
+    assert generated.LocalCloneMode.clean.value == 1
+    assert generated.LocalCloneMode.bare.value == 2
+    assert generated.LocalFamilyOp.list.value == 0
+    assert generated.LocalFamilyOp.dispose.value == 1
+    assert generated.LocalFamilyOp.disband.value == 2
     assert generated.GwzErrorCode.deprecated_operation.value == 37
     assert generated.GwzErrorCode.unsupported_record_version.value == 46
     assert generated.GwzErrorCode.terminal_rollback_mismatch.value == 61
+    # LCM1.0c follow-up 2 (operator rulings 2026-09-05, gwz-dev
+    # dev-docs/GwzLocalCloneDesign.md revision 9 §7, §11 items 11-13): the
+    # `--from` wire name, the `gwz local list` payload enums (mirroring
+    # gwz_family_model::{MemberKind, MemberState, ListState} in declaration
+    # order) and the family-only merge miss.
+    assert "copy_source" in generated.CloneLocalWorkspaceRequest.__dataclass_fields__
+    assert "members" in generated.LocalFamilyResponse.__dataclass_fields__
+    assert generated.LocalMemberKind.checkout.value == 0
+    assert generated.LocalMemberKind.bare.value == 1
+    assert generated.LocalMemberState.creating.value == 0
+    assert generated.LocalMemberState.ready.value == 1
+    assert generated.LocalMemberState.disposing.value == 2
+    assert [state.value for state in generated.LocalObservedState] == [0, 1, 2, 3, 4, 5, 6, 7]
+    assert generated.LocalObservedState.ready.value == 0
+    assert generated.LocalObservedState.incomplete.value == 1
+    assert generated.LocalObservedState.interrupted_disposal.value == 2
+    assert generated.LocalObservedState.missing.value == 3
+    assert generated.LocalObservedState.pointer_removed.value == 4
+    assert generated.LocalObservedState.mismatched.value == 5
+    assert generated.LocalObservedState.malformed.value == 6
+    assert generated.LocalObservedState.unobserved.value == 7
+    assert generated.GwzErrorCode.unknown_local.value == 62
+    # LCM1.1 fix 1 (lane C, 2026-09-06, gwz-dev
+    # dev-docs/GwzLocalClone-LCM1.0c-Checkpoint.md §14): the four
+    # local-create outcomes that were folded into unsupported_operation and
+    # io_error, each distinct from both.
+    assert generated.GwzErrorCode.unsupported_source_layout.value == 63
+    assert generated.GwzErrorCode.copy_failed.value == 64
+    assert generated.GwzErrorCode.source_drift.value == 65
+    assert generated.GwzErrorCode.destination_incomplete.value == 66
+    # LCM1.2 (lane C, 2026-09-06, gwz-dev
+    # dev-docs/GwzLocalClone-LCM1.0c-Checkpoint.md §16): the two family-merge
+    # import outcomes, distinct from the codes they would have folded into.
+    assert generated.GwzErrorCode.pairing_mismatch.value == 67
+    assert generated.GwzErrorCode.import_incomplete.value == 68
+    assert generated.GwzErrorCode.member_not_found.value != 67
+    assert generated.GwzErrorCode.git_command_failed.value != 68
+    # LCM2.1/LCM2.2 (lane C, 2026-09-06, gwz-dev
+    # dev-docs/GwzLocalClone-LCM1.0c-Checkpoint.md §17): the three
+    # ordinary-disposal outcomes, distinct from the codes they would have
+    # folded into.
+    assert generated.GwzErrorCode.unwaived_hazard.value == 69
+    assert generated.GwzErrorCode.unknown_evidence.value == 70
+    assert generated.GwzErrorCode.disposal_incomplete.value == 71
+    assert generated.GwzErrorCode.permission_denied.value != 69
+    assert generated.GwzErrorCode.unsupported_operation.value != 70
+    assert generated.GwzErrorCode.io_error.value != 71
+    assert generated.GwzErrorCode.unsupported_operation.value == 14
+    assert generated.GwzErrorCode.io_error.value == 28
     assert generated.MergeRecordRequiredWave.a1.value == 0
     assert generated.MergeRecordRequiredWave.a4.value == 3
     pinned = (
@@ -67,6 +126,7 @@ def test_repo_member_lifecycle_protocol_is_pinned() -> None:
             policy=None,
             dry_run=None,
             attribution=None,
+            transport=None,
         ),
         source=generated.SourceUrl(
             url="ssh://git.example.test/team/shared.git",
@@ -140,6 +200,7 @@ def test_generated_dataclasses_convert_to_wire_dicts() -> None:
             policy=None,
             dry_run=None,
             attribution=None,
+            transport=None,
         ),
         mode=StatusMode.combined,
         include_file_changes=None,

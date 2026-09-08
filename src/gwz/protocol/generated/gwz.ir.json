@@ -277,7 +277,10 @@
         "detach_repo_member": 23,
         "attach_repo_member": 24,
         "merge": 25,
-        "log": 26
+        "log": 26,
+        "clone_local_workspace": 27,
+        "local_family": 28,
+        "remote_identity": 29
       }
     },
     {
@@ -354,6 +357,50 @@
         "normal": 0,
         "ff_only": 1,
         "no_ff": 2
+      }
+    },
+    {
+      "name": "LocalCloneMode",
+      "members": {
+        "verbatim": 0,
+        "clean": 1,
+        "bare": 2
+      }
+    },
+    {
+      "name": "LocalFamilyOp",
+      "members": {
+        "list": 0,
+        "dispose": 1,
+        "disband": 2
+      }
+    },
+    {
+      "name": "LocalMemberKind",
+      "members": {
+        "checkout": 0,
+        "bare": 1
+      }
+    },
+    {
+      "name": "LocalMemberState",
+      "members": {
+        "creating": 0,
+        "ready": 1,
+        "disposing": 2
+      }
+    },
+    {
+      "name": "LocalObservedState",
+      "members": {
+        "ready": 0,
+        "incomplete": 1,
+        "interrupted_disposal": 2,
+        "missing": 3,
+        "pointer_removed": 4,
+        "mismatched": 5,
+        "malformed": 6,
+        "unobserved": 7
       }
     },
     {
@@ -831,7 +878,17 @@
         "unexpected_publication_evidence": 58,
         "terminal_evidence_mismatch": 59,
         "recovery_evidence_mismatch": 60,
-        "terminal_rollback_mismatch": 61
+        "terminal_rollback_mismatch": 61,
+        "unknown_local": 62,
+        "unsupported_source_layout": 63,
+        "copy_failed": 64,
+        "source_drift": 65,
+        "destination_incomplete": 66,
+        "pairing_mismatch": 67,
+        "import_incomplete": 68,
+        "unwaived_hazard": 69,
+        "unknown_evidence": 70,
+        "disposal_incomplete": 71
       }
     },
     {
@@ -957,6 +1014,41 @@
       "members": {
         "entry": 0,
         "degradation": 1
+      }
+    },
+    {
+      "name": "RemoteIdentityOp",
+      "members": {
+        "get": 0,
+        "set": 1,
+        "unset": 2
+      }
+    },
+    {
+      "name": "TransportCredentialMethod",
+      "members": {
+        "unknown": 0,
+        "file": 1,
+        "agent": 2,
+        "helper": 3
+      }
+    },
+    {
+      "name": "TransportSelectionSource",
+      "members": {
+        "ambient": 0,
+        "invocation_remote": 1,
+        "invocation_default": 2,
+        "local_configuration": 3
+      }
+    },
+    {
+      "name": "TransportOperation",
+      "members": {
+        "clone": 0,
+        "fetch": 1,
+        "push": 2,
+        "read_advertisement": 3
       }
     }
   ],
@@ -1319,6 +1411,400 @@
       ]
     },
     {
+      "name": "RemoteSshIdentity",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "remote",
+          "tag": 1,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "private_key_path",
+          "tag": 2,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "RemoteIdentityRequest",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "meta",
+          "tag": 1,
+          "type": {
+            "k": "msg",
+            "name": "RequestMeta"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "remote",
+          "tag": 2,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "op",
+          "tag": 3,
+          "type": {
+            "k": "enum",
+            "name": "RemoteIdentityOp"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "private_key_path",
+          "tag": 4,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "RemoteIdentityEntry",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "member_id",
+          "tag": 1,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "member_path",
+          "tag": 2,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "remote",
+          "tag": 3,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "private_key_path",
+          "tag": 4,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "RemoteIdentityResponse",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "response",
+          "tag": 1,
+          "type": {
+            "k": "msg",
+            "name": "ResponseEnvelope"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "identities",
+          "tag": 2,
+          "type": {
+            "k": "list",
+            "elem": {
+              "k": "msg",
+              "name": "RemoteIdentityEntry"
+            }
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "TransportRuntimeRequest",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "server_timeout_ms",
+          "tag": 1,
+          "type": {
+            "k": "scalar",
+            "scalar": "int"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "schema_version",
+          "tag": 2,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "TransportRuntimeResponse",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "server_timeout_ms",
+          "tag": 1,
+          "type": {
+            "k": "scalar",
+            "scalar": "int"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "TransportCapabilitiesRequest",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "schema_version",
+          "tag": 1,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "TransportCapabilitiesResponse",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "file_identity",
+          "tag": 1,
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "exact_agent_identity",
+          "tag": 2,
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "TransportObservation",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "repository_path",
+          "tag": 1,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "remote",
+          "tag": 2,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "operation",
+          "tag": 3,
+          "type": {
+            "k": "enum",
+            "name": "TransportOperation"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "credential_method",
+          "tag": 4,
+          "type": {
+            "k": "enum",
+            "name": "TransportCredentialMethod"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "selection_source",
+          "tag": 5,
+          "type": {
+            "k": "enum",
+            "name": "TransportSelectionSource"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "credential_offered",
+          "tag": 6,
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "authenticated",
+          "tag": 7,
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "public_key_fingerprint",
+          "tag": 8,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "TransportOptions",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "default_identity",
+          "tag": 1,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "remote_identities",
+          "tag": 2,
+          "type": {
+            "k": "list",
+            "elem": {
+              "k": "msg",
+              "name": "RemoteSshIdentity"
+            }
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
       "name": "RequestMeta",
       "reserved_tags": [],
       "reserved_names": [],
@@ -1396,6 +1882,17 @@
           "type": {
             "k": "msg",
             "name": "OperationAttribution"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "transport",
+          "tag": 8,
+          "type": {
+            "k": "msg",
+            "name": "TransportOptions"
           },
           "optional": true,
           "transient": false,
@@ -1481,6 +1978,20 @@
           "type": {
             "k": "msg",
             "name": "OperationAttribution"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "transport",
+          "tag": 8,
+          "type": {
+            "k": "list",
+            "elem": {
+              "k": "msg",
+              "name": "TransportObservation"
+            }
           },
           "optional": true,
           "transient": false,
@@ -5612,6 +6123,20 @@
           "optional": true,
           "transient": false,
           "merge": null
+        },
+        {
+          "name": "transport",
+          "tag": 10,
+          "type": {
+            "k": "list",
+            "elem": {
+              "k": "msg",
+              "name": "TransportObservation"
+            }
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
         }
       ]
     },
@@ -6995,6 +7520,157 @@
           "optional": true,
           "transient": false,
           "merge": null
+        },
+        {
+          "name": "local_source_name",
+          "tag": 9,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "CloneLocalWorkspaceRequest",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "meta",
+          "tag": 1,
+          "type": {
+            "k": "msg",
+            "name": "RequestMeta"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "name",
+          "tag": 2,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "dest",
+          "tag": 3,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "mode",
+          "tag": 4,
+          "type": {
+            "k": "enum",
+            "name": "LocalCloneMode"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "branch",
+          "tag": 5,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "copy_source",
+          "tag": 6,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "LocalFamilyRequest",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "meta",
+          "tag": 1,
+          "type": {
+            "k": "msg",
+            "name": "RequestMeta"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "op",
+          "tag": 2,
+          "type": {
+            "k": "enum",
+            "name": "LocalFamilyOp"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "name",
+          "tag": 3,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "keep",
+          "tag": 4,
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "force_hazards",
+          "tag": 5,
+          "type": {
+            "k": "list",
+            "elem": {
+              "k": "scalar",
+              "scalar": "str"
+            }
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
         }
       ]
     },
@@ -7696,6 +8372,143 @@
           "type": {
             "k": "msg",
             "name": "MergeCrashRecovery"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "CloneLocalWorkspaceResponse",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "response",
+          "tag": 1,
+          "type": {
+            "k": "msg",
+            "name": "ResponseEnvelope"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "LocalFamilyMemberEntry",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "name",
+          "tag": 1,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "kind",
+          "tag": 2,
+          "type": {
+            "k": "enum",
+            "name": "LocalMemberKind"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "recorded_state",
+          "tag": 3,
+          "type": {
+            "k": "enum",
+            "name": "LocalMemberState"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "observed_state",
+          "tag": 4,
+          "type": {
+            "k": "enum",
+            "name": "LocalObservedState"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "path",
+          "tag": 5,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "last_error",
+          "tag": 6,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "LocalFamilyResponse",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "response",
+          "tag": 1,
+          "type": {
+            "k": "msg",
+            "name": "ResponseEnvelope"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "members",
+          "tag": 2,
+          "type": {
+            "k": "list",
+            "elem": {
+              "k": "msg",
+              "name": "LocalFamilyMemberEntry"
+            }
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "root_path",
+          "tag": 3,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
           },
           "optional": true,
           "transient": false,
@@ -9428,6 +10241,75 @@
       "name": "GwzCore",
       "methods": [
         {
+          "name": "configure_transport_runtime",
+          "role": "in",
+          "shape": "unary",
+          "params": [
+            {
+              "name": "request",
+              "type": {
+                "k": "msg",
+                "name": "TransportRuntimeRequest"
+              }
+            }
+          ],
+          "out": [
+            {
+              "slot": "value",
+              "type": {
+                "k": "msg",
+                "name": "TransportRuntimeResponse"
+              }
+            }
+          ]
+        },
+        {
+          "name": "remote_identity",
+          "role": "in",
+          "shape": "unary",
+          "params": [
+            {
+              "name": "request",
+              "type": {
+                "k": "msg",
+                "name": "RemoteIdentityRequest"
+              }
+            }
+          ],
+          "out": [
+            {
+              "slot": "value",
+              "type": {
+                "k": "msg",
+                "name": "RemoteIdentityResponse"
+              }
+            }
+          ]
+        },
+        {
+          "name": "transport_capabilities",
+          "role": "in",
+          "shape": "unary",
+          "params": [
+            {
+              "name": "request",
+              "type": {
+                "k": "msg",
+                "name": "TransportCapabilitiesRequest"
+              }
+            }
+          ],
+          "out": [
+            {
+              "slot": "value",
+              "type": {
+                "k": "msg",
+                "name": "TransportCapabilitiesResponse"
+              }
+            }
+          ]
+        },
+        {
           "name": "create_workspace",
           "role": "in",
           "shape": "unary",
@@ -9682,6 +10564,29 @@
         },
         {
           "name": "ls",
+          "role": "in",
+          "shape": "unary",
+          "params": [
+            {
+              "name": "request",
+              "type": {
+                "k": "msg",
+                "name": "LsRequest"
+              }
+            }
+          ],
+          "out": [
+            {
+              "slot": "value",
+              "type": {
+                "k": "msg",
+                "name": "LsResponse"
+              }
+            }
+          ]
+        },
+        {
+          "name": "resolve_forall_targets",
           "role": "in",
           "shape": "unary",
           "params": [
@@ -9975,6 +10880,52 @@
               "type": {
                 "k": "msg",
                 "name": "MergeResponse"
+              }
+            }
+          ]
+        },
+        {
+          "name": "clone_local_workspace",
+          "role": "in",
+          "shape": "unary",
+          "params": [
+            {
+              "name": "request",
+              "type": {
+                "k": "msg",
+                "name": "CloneLocalWorkspaceRequest"
+              }
+            }
+          ],
+          "out": [
+            {
+              "slot": "value",
+              "type": {
+                "k": "msg",
+                "name": "CloneLocalWorkspaceResponse"
+              }
+            }
+          ]
+        },
+        {
+          "name": "local_family",
+          "role": "in",
+          "shape": "unary",
+          "params": [
+            {
+              "name": "request",
+              "type": {
+                "k": "msg",
+                "name": "LocalFamilyRequest"
+              }
+            }
+          ],
+          "out": [
+            {
+              "slot": "value",
+              "type": {
+                "k": "msg",
+                "name": "LocalFamilyResponse"
               }
             }
           ]

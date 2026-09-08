@@ -74,6 +74,7 @@ def _request_meta() -> generated.RequestMeta:
         policy=None,
         dry_run=None,
         attribution=None,
+        transport=None,
     )
 
 
