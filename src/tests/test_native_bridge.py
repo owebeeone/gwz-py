@@ -56,7 +56,7 @@ def test_native_module_reports_compiled_core_provenance() -> None:
     assert "build=cargo" in provenance
     binary = os.environ.get("GWZ_RUST_BIN")
     if binary:
-        version = subprocess.check_output([binary, "--version"], text=True)
+        version = subprocess.check_output([binary, "--build-info"], text=True)
         assert f"core {native.version()}: {provenance}" in version
 
 

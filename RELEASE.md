@@ -158,3 +158,9 @@ and refreshes it with `cargo check` after the release dependency pin is restored
   `--keep-worktree` when you need to inspect the failure.
 - First-line wheels do not bundle or dispatch to the Rust `gwz` binary. The
   installed command is `gwz-py`, backed by the native `gwz-core` extension.
+
+## Slow architecture tests
+
+The source-mutation/compiler suites live in gwz-core and are manual-only:
+`python ../gwz-core/scripts/run_compiler_tests.py`. They are not part of Python
+release checks or automatic CI. See gwz-core's release documentation.

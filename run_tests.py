@@ -65,11 +65,18 @@ def provision_rust_cli(
         cwd=cli_root,
         env=env,
     )
-    target = Path(env.get("CARGO_TARGET_DIR", "target"))
+    configured_target = env.get("CARGO_TARGET_DIR")
+    target = Path(configured_target or "target")
     if not target.is_absolute():
         target = cli_root / target
     executable = "gwz.exe" if os.name == "nt" else "gwz"
     rust_bin = (target / "debug" / executable).resolve()
+    if configured_target is None and not rust_bin.is_file():
+        # Cargo places members of a parent workspace in the workspace target
+        # directory, even when invoked from the member checkout.
+        workspace_bin = (cli_root.parent / "target" / "debug" / executable).resolve()
+        if workspace_bin.is_file():
+            rust_bin = workspace_bin
     if not rust_bin.is_file() or not os.access(rust_bin, os.X_OK):
         raise RuntimeError(f"cargo build did not produce the gwz CLI at {rust_bin}")
     env["GWZ_RUST_BIN"] = str(rust_bin)
