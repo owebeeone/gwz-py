@@ -13,6 +13,9 @@ from gwz.protocol.generated import (
     EventKind,
     MergeOp,
     OperationEvent,
+    PullHeadRequest,
+    PullHeadResponse,
+    AggregateStatus,
 )
 
 from native_helpers import (
@@ -27,6 +30,36 @@ from native_helpers import (
 
 async def collect(events: AsyncIterator[OperationEvent]) -> list[OperationEvent]:
     return [event async for event in events]
+
+
+def test_native_submit_keeps_serialized_caller_context_after_cwd_changes(
+    tmp_path: Path, monkeypatch
+) -> None:
+    caller = tmp_path / "caller-a"
+    executor = tmp_path / "executor-b"
+    workspace = caller / "workspace"
+    caller.mkdir()
+    executor.mkdir()
+    monkeypatch.chdir(caller)
+    client = native_client(workspace)
+    asyncio.run(client.create_workspace(workspace_id="ws_submit_context"))
+    asyncio.run(client.create_repo("repos/app", member_id="mem_app", source_id="src_app"))
+
+    request = PullHeadRequest(meta=client.meta(paths=["repos/app"]))
+    monkeypatch.chdir(executor)
+    accepted = asyncio.run(
+        client.bridge.submit(
+            "pull_head", "PullHeadRequest", "PullHeadResponse", request
+        )
+    )
+
+    assert isinstance(accepted, PullHeadResponse)
+    operation_id = accepted.response.meta.operation_id
+    assert operation_id is not None
+    result = asyncio.run(client.operation_result(operation_id))
+    assert result.request_id == request.meta.request_id
+    assert result.aggregate_status in (AggregateStatus.ok, AggregateStatus.noop)
+    assert not result.errors
 
 
 def test_native_merge_status_closes_one_event_stream(tmp_path: Path) -> None:

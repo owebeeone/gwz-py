@@ -30,6 +30,7 @@ from gwz.protocol.generated import (
     InitFromSourcesResponse,
     ListSnapshotsRequest,
     ListSnapshotsResponse,
+    LsRequest,
     LsResponse,
     MaterializeRequest,
     MaterializeResponse,
@@ -160,7 +161,10 @@ class FakeBridge:
         )
 
 
-def test_status_builds_taut_request() -> None:
+def test_status_builds_taut_request(monkeypatch, tmp_path: Path) -> None:
+    caller = tmp_path / "caller"
+    caller.mkdir()
+    monkeypatch.chdir(caller)
     bridge = FakeBridge()
     client = Client(root=Path("/tmp/workspace"), bridge=bridge)
 
@@ -176,6 +180,24 @@ def test_status_builds_taut_request() -> None:
     assert request.meta.schema_version == "gwz.protocol/v0"
     assert request.meta.workspace is not None
     assert request.meta.workspace.root == str(Path("/tmp/workspace").resolve())
+    assert request.meta.invocation is not None
+    assert request.meta.invocation.caller_cwd == str(caller.resolve())
+
+
+def test_relative_root_uses_the_captured_caller_directory(monkeypatch, tmp_path: Path) -> None:
+    caller = tmp_path / "caller"
+    caller.mkdir()
+    monkeypatch.chdir(caller)
+    bridge = FakeBridge()
+
+    asyncio.run(Client(root="workspace", bridge=bridge).ls())
+
+    request = bridge.calls[0][3]
+    assert isinstance(request, LsRequest)
+    assert request.meta.invocation is not None
+    assert request.meta.invocation.caller_cwd == str(caller)
+    assert request.meta.workspace is not None
+    assert request.meta.workspace.root == str(caller / "workspace")
 
 
 def test_merge_builds_first_class_start_request() -> None:

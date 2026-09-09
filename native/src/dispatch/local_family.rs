@@ -8,7 +8,6 @@
 
 use pyo3::PyResult;
 
-use super::current_dir;
 use crate::{codec, error, operations, shims};
 
 pub(crate) fn call(
@@ -16,14 +15,23 @@ pub(crate) fn call(
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
+    caller_cwd: &std::path::Path,
 ) -> PyResult<Vec<u8>> {
     match method {
-        "clone_local_workspace" => {
-            call_clone_local_workspace(method, request_message, response_message, request_bytes)
-        }
-        "local_family" => {
-            call_local_family(method, request_message, response_message, request_bytes)
-        }
+        "clone_local_workspace" => call_clone_local_workspace(
+            method,
+            request_message,
+            response_message,
+            request_bytes,
+            caller_cwd,
+        ),
+        "local_family" => call_local_family(
+            method,
+            request_message,
+            response_message,
+            request_bytes,
+            caller_cwd,
+        ),
         other => error::unsupported(other),
     }
 }
@@ -33,6 +41,7 @@ pub(crate) fn submit(
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
+    caller_cwd: &std::path::Path,
 ) -> PyResult<Vec<u8>> {
     match method {
         "clone_local_workspace" => {
@@ -48,6 +57,7 @@ pub(crate) fn submit(
                 request_message,
                 response_message,
                 request_bytes,
+                caller_cwd,
                 &request.meta,
                 gwz_core::ActionKind::CloneLocalWorkspace,
                 |response| gwz_core::CloneLocalWorkspaceResponse { response }.to_cbor(),
@@ -62,6 +72,7 @@ fn call_clone_local_workspace(
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
+    caller_cwd: &std::path::Path,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "CloneLocalWorkspaceRequest")?;
     codec::require_response(method, response_message, "CloneLocalWorkspaceResponse")?;
@@ -71,14 +82,14 @@ fn call_clone_local_workspace(
         gwz_core::CloneLocalWorkspaceRequest::from_cbor,
     )?;
     let request_id = request.meta.request_id.clone();
-    let start = current_dir()?;
+    let start = caller_cwd;
     let (response, recorder): (
         gwz_core::CloneLocalWorkspaceResponse,
         operations::OperationRecorder,
     ) = shims::backend_with_events(&request_id, |backend, operation_id, events| {
         gwz_core::workspace_ops::handle_clone_local_workspace(
             backend,
-            &start,
+            start,
             request,
             operation_id,
             events,
@@ -93,6 +104,7 @@ fn call_local_family(
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
+    caller_cwd: &std::path::Path,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "LocalFamilyRequest")?;
     codec::require_response(method, response_message, "LocalFamilyResponse")?;
@@ -100,12 +112,12 @@ fn call_local_family(
         gwz_core::LocalFamilyRequest::from_cbor(cbor)
     })?;
     let request_id = request.meta.request_id.clone();
-    let start = current_dir()?;
+    let start = caller_cwd;
     let (response, recorder): (gwz_core::LocalFamilyResponse, operations::OperationRecorder) =
         shims::backend_with_events(&request_id, |backend, operation_id, events| {
             gwz_core::workspace_ops::handle_local_family(
                 backend,
-                &start,
+                start,
                 request,
                 operation_id,
                 events,

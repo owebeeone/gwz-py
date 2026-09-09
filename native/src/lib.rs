@@ -1,3 +1,4 @@
+use std::env;
 use std::time::Duration;
 
 use pyo3::prelude::*;
@@ -33,12 +34,22 @@ fn call(
     response_message: &str,
     request_bytes: &[u8],
 ) -> PyResult<Vec<u8>> {
+    let caller_cwd =
+        env::current_dir().map_err(|err| error::runtime(format!("current_dir failed: {err}")))?;
     let method = method.to_owned();
     let request_message = request_message.to_owned();
     let response_message = response_message.to_owned();
     let request_bytes = request_bytes.to_vec();
 
-    py.detach(move || dispatch::call(&method, &request_message, &response_message, &request_bytes))
+    py.detach(move || {
+        dispatch::call(
+            &method,
+            &request_message,
+            &response_message,
+            &request_bytes,
+            caller_cwd,
+        )
+    })
 }
 
 #[pyfunction]
@@ -49,13 +60,23 @@ fn submit(
     response_message: &str,
     request_bytes: &[u8],
 ) -> PyResult<Vec<u8>> {
+    // This compatibility context is captured before the worker exists. Normal
+    // requests carry the same information in RequestMeta.invocation.
+    let caller_cwd =
+        env::current_dir().map_err(|err| error::runtime(format!("current_dir failed: {err}")))?;
     let method = method.to_owned();
     let request_message = request_message.to_owned();
     let response_message = response_message.to_owned();
     let request_bytes = request_bytes.to_vec();
 
     py.detach(move || {
-        dispatch::submit(&method, &request_message, &response_message, &request_bytes)
+        dispatch::submit(
+            &method,
+            &request_message,
+            &response_message,
+            &request_bytes,
+            caller_cwd,
+        )
     })
 }
 

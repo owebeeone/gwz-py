@@ -18,9 +18,16 @@ pub(crate) fn call(
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
+    caller_cwd: &std::path::Path,
 ) -> PyResult<Vec<u8>> {
     match method {
-        "diff" => call_diff(method, request_message, response_message, request_bytes),
+        "diff" => call_diff(
+            method,
+            request_message,
+            response_message,
+            request_bytes,
+            caller_cwd,
+        ),
         other => error::unsupported(other),
     }
 }
@@ -30,6 +37,7 @@ fn call_diff(
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
+    caller_cwd: &std::path::Path,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "DiffRequest")?;
     codec::require_response(method, response_message, "DiffManifestResponse")?;
@@ -38,9 +46,9 @@ fn call_diff(
         gwz_core::DiffRequest::from_cbor(cbor)
     })?;
     let request_id = request.meta.request_id.clone();
-    let start = super::current_dir()?;
+    let start = caller_cwd;
     let outcome = shims::no_backend(&request_id, |operation_id| {
-        gwz_core::diff::handle_diff(&start, request, operation_id, diff_logs::registry())
+        gwz_core::diff::handle_diff(start, request, operation_id, diff_logs::registry())
     })?;
     codec::encode_message("encode DiffManifestResponse", || outcome.response.to_cbor())
 }

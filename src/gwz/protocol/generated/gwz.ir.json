@@ -1805,6 +1805,25 @@
       ]
     },
     {
+      "name": "InvocationContext",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "caller_cwd",
+          "tag": 1,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
       "name": "RequestMeta",
       "reserved_tags": [],
       "reserved_names": [],
@@ -1893,6 +1912,17 @@
           "type": {
             "k": "msg",
             "name": "TransportOptions"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "invocation",
+          "tag": 9,
+          "type": {
+            "k": "msg",
+            "name": "InvocationContext"
           },
           "optional": true,
           "transient": false,

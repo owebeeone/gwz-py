@@ -7,7 +7,6 @@ mod materialize;
 mod merge;
 mod read;
 
-use std::env;
 use std::path::PathBuf;
 use std::thread;
 
@@ -15,18 +14,12 @@ use pyo3::PyResult;
 
 use crate::{codec, error, operations, shims};
 
-/// The process cwd, resolved once per dispatch. `handle_*` operations resolve the
-/// workspace root relative to this (and, for `diff`, use it as the logical cwd
-/// base). A failure to read the cwd is a runtime error, not a protocol error.
-pub(crate) fn current_dir() -> PyResult<PathBuf> {
-    env::current_dir().map_err(|err| error::runtime(format!("current_dir failed: {err}")))
-}
-
 pub(crate) fn call(
     method: &str,
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
+    caller_cwd: PathBuf,
 ) -> PyResult<Vec<u8>> {
     match method {
         "configure_transport_runtime"
@@ -41,23 +34,63 @@ pub(crate) fn call(
         | "status"
         | "ls"
         | "resolve_forall_targets"
-        | "list_snapshots" => read::call(method, request_message, response_message, request_bytes),
+        | "list_snapshots" => read::call(
+            method,
+            request_message,
+            response_message,
+            request_bytes,
+            &caller_cwd,
+        ),
         "materialize" | "clone_workspace" | "clone_repo_member" | "attach_repo_member"
-        | "snapshot" | "tag" | "capture" => {
-            materialize::call(method, request_message, response_message, request_bytes)
-        }
-        "commit" | "stage" | "pull_head" | "pull_snapshot" | "push" => {
-            git_mutation::call(method, request_message, response_message, request_bytes)
-        }
-        "branch" | "stash" => {
-            branch_stash::call(method, request_message, response_message, request_bytes)
-        }
-        "merge" => merge::call(method, request_message, response_message, request_bytes),
-        "diff" => diff::call(method, request_message, response_message, request_bytes),
-        "log" => log::call(method, request_message, response_message, request_bytes),
-        "clone_local_workspace" | "local_family" => {
-            local_family::call(method, request_message, response_message, request_bytes)
-        }
+        | "snapshot" | "tag" | "capture" => materialize::call(
+            method,
+            request_message,
+            response_message,
+            request_bytes,
+            &caller_cwd,
+        ),
+        "commit" | "stage" | "pull_head" | "pull_snapshot" | "push" => git_mutation::call(
+            method,
+            request_message,
+            response_message,
+            request_bytes,
+            &caller_cwd,
+        ),
+        "branch" | "stash" => branch_stash::call(
+            method,
+            request_message,
+            response_message,
+            request_bytes,
+            &caller_cwd,
+        ),
+        "merge" => merge::call(
+            method,
+            request_message,
+            response_message,
+            request_bytes,
+            &caller_cwd,
+        ),
+        "diff" => diff::call(
+            method,
+            request_message,
+            response_message,
+            request_bytes,
+            &caller_cwd,
+        ),
+        "log" => log::call(
+            method,
+            request_message,
+            response_message,
+            request_bytes,
+            &caller_cwd,
+        ),
+        "clone_local_workspace" | "local_family" => local_family::call(
+            method,
+            request_message,
+            response_message,
+            request_bytes,
+            &caller_cwd,
+        ),
         other => Err(error::unsupported_method(other)),
     }
 }
@@ -67,29 +100,72 @@ pub(crate) fn submit(
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
+    caller_cwd: PathBuf,
 ) -> PyResult<Vec<u8>> {
     match method {
-        "init_from_sources" => {
-            submit_init_from_sources(method, request_message, response_message, request_bytes)
-        }
-        "materialize" => {
-            submit_materialize(method, request_message, response_message, request_bytes)
-        }
-        "clone_workspace" => {
-            submit_clone_workspace(method, request_message, response_message, request_bytes)
-        }
-        "clone_repo_member" => {
-            submit_clone_repo_member(method, request_message, response_message, request_bytes)
-        }
-        "pull_head" => submit_pull_head(method, request_message, response_message, request_bytes),
-        "pull_snapshot" => {
-            submit_pull_snapshot(method, request_message, response_message, request_bytes)
-        }
-        "push" => submit_push(method, request_message, response_message, request_bytes),
-        "merge" => merge::submit(method, request_message, response_message, request_bytes),
-        "clone_local_workspace" => {
-            local_family::submit(method, request_message, response_message, request_bytes)
-        }
+        "init_from_sources" => submit_init_from_sources(
+            method,
+            request_message,
+            response_message,
+            request_bytes,
+            &caller_cwd,
+        ),
+        "materialize" => submit_materialize(
+            method,
+            request_message,
+            response_message,
+            request_bytes,
+            &caller_cwd,
+        ),
+        "clone_workspace" => submit_clone_workspace(
+            method,
+            request_message,
+            response_message,
+            request_bytes,
+            &caller_cwd,
+        ),
+        "clone_repo_member" => submit_clone_repo_member(
+            method,
+            request_message,
+            response_message,
+            request_bytes,
+            &caller_cwd,
+        ),
+        "pull_head" => submit_pull_head(
+            method,
+            request_message,
+            response_message,
+            request_bytes,
+            &caller_cwd,
+        ),
+        "pull_snapshot" => submit_pull_snapshot(
+            method,
+            request_message,
+            response_message,
+            request_bytes,
+            &caller_cwd,
+        ),
+        "push" => submit_push(
+            method,
+            request_message,
+            response_message,
+            request_bytes,
+            &caller_cwd,
+        ),
+        "merge" => merge::submit(
+            method,
+            request_message,
+            response_message,
+            request_bytes,
+            &caller_cwd,
+        ),
+        "clone_local_workspace" => local_family::submit(
+            method,
+            request_message,
+            response_message,
+            request_bytes,
+            &caller_cwd,
+        ),
         other => Err(error::unsupported_method(other)),
     }
 }
@@ -99,6 +175,7 @@ fn submit_init_from_sources(
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
+    caller_cwd: &std::path::Path,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "InitFromSourcesRequest")?;
     codec::require_response(method, response_message, "InitFromSourcesResponse")?;
@@ -110,6 +187,7 @@ fn submit_init_from_sources(
         request_message,
         response_message,
         request_bytes,
+        caller_cwd,
         &request.meta,
         gwz_core::ActionKind::InitFromSources,
         |response| gwz_core::InitFromSourcesResponse { response }.to_cbor(),
@@ -121,6 +199,7 @@ fn submit_materialize(
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
+    caller_cwd: &std::path::Path,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "MaterializeRequest")?;
     codec::require_response(method, response_message, "MaterializeResponse")?;
@@ -132,6 +211,7 @@ fn submit_materialize(
         request_message,
         response_message,
         request_bytes,
+        caller_cwd,
         &request.meta,
         gwz_core::ActionKind::Materialize,
         |response| gwz_core::MaterializeResponse { response }.to_cbor(),
@@ -143,6 +223,7 @@ fn submit_clone_workspace(
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
+    caller_cwd: &std::path::Path,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "CloneWorkspaceRequest")?;
     codec::require_response(method, response_message, "CloneWorkspaceResponse")?;
@@ -154,6 +235,7 @@ fn submit_clone_workspace(
         request_message,
         response_message,
         request_bytes,
+        caller_cwd,
         &request.meta,
         gwz_core::ActionKind::CloneWorkspace,
         |response| gwz_core::CloneWorkspaceResponse { response }.to_cbor(),
@@ -165,6 +247,7 @@ fn submit_clone_repo_member(
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
+    caller_cwd: &std::path::Path,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "CloneRepoMemberRequest")?;
     codec::require_response(method, response_message, "CloneRepoMemberResponse")?;
@@ -176,6 +259,7 @@ fn submit_clone_repo_member(
         request_message,
         response_message,
         request_bytes,
+        caller_cwd,
         &request.meta,
         gwz_core::ActionKind::CloneRepoMember,
         |response| gwz_core::CloneRepoMemberResponse { response }.to_cbor(),
@@ -187,6 +271,7 @@ fn submit_pull_head(
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
+    caller_cwd: &std::path::Path,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "PullHeadRequest")?;
     codec::require_response(method, response_message, "PullHeadResponse")?;
@@ -198,6 +283,7 @@ fn submit_pull_head(
         request_message,
         response_message,
         request_bytes,
+        caller_cwd,
         &request.meta,
         gwz_core::ActionKind::PullHead,
         |response| gwz_core::PullHeadResponse { response }.to_cbor(),
@@ -209,6 +295,7 @@ fn submit_pull_snapshot(
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
+    caller_cwd: &std::path::Path,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "PullSnapshotRequest")?;
     codec::require_response(method, response_message, "PullSnapshotResponse")?;
@@ -220,6 +307,7 @@ fn submit_pull_snapshot(
         request_message,
         response_message,
         request_bytes,
+        caller_cwd,
         &request.meta,
         gwz_core::ActionKind::PullSnapshot,
         |response| gwz_core::PullSnapshotResponse { response }.to_cbor(),
@@ -231,6 +319,7 @@ fn submit_push(
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
+    caller_cwd: &std::path::Path,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "PushRequest")?;
     codec::require_response(method, response_message, "PushResponse")?;
@@ -242,6 +331,7 @@ fn submit_push(
         request_message,
         response_message,
         request_bytes,
+        caller_cwd,
         &request.meta,
         gwz_core::ActionKind::Push,
         |response| gwz_core::PushResponse { response }.to_cbor(),
@@ -253,6 +343,7 @@ fn submit_accepted(
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
+    caller_cwd: &std::path::Path,
     meta: &gwz_core::RequestMeta,
     action: gwz_core::ActionKind,
     encode_response: impl FnOnce(gwz_core::ResponseEnvelope) -> gwz_core::Cbor,
@@ -282,6 +373,7 @@ fn submit_accepted(
         meta.request_id.clone(),
         meta.schema_version.clone(),
         action,
+        caller_cwd.to_path_buf(),
     );
     codec::encode_message("encode accepted response", || encode_response(envelope))
 }
@@ -296,13 +388,20 @@ fn spawn_call(
     request_id: String,
     schema_version: String,
     action: gwz_core::ActionKind,
+    caller_cwd: PathBuf,
 ) {
     let method = method.to_owned();
     let request_message = request_message.to_owned();
     let response_message = response_message.to_owned();
     let request_bytes = request_bytes.to_vec();
     thread::spawn(move || {
-        if let Err(err) = call(&method, &request_message, &response_message, &request_bytes) {
+        if let Err(err) = call(
+            &method,
+            &request_message,
+            &response_message,
+            &request_bytes,
+            caller_cwd,
+        ) {
             let _ = recorder.finish_error(request_id, schema_version, action, err.to_string());
         }
     });
