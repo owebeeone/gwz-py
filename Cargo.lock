@@ -294,12 +294,12 @@ dependencies = [
 [[package]]
 name = "gwz-copy-contract"
 version = "0.1.0"
-source = "git+https://github.com/owebeeone/gwz-core?tag=v1.0.5#e3b6d8ba5c4c975a9210d2d3957b5dc7e7c9cb88"
+source = "git+https://github.com/owebeeone/gwz-core?tag=v1.0.8#ec6d1a5749c379fbd78d510c160b372f79bdda83"
 
 [[package]]
 name = "gwz-core"
-version = "1.0.5"
-source = "git+https://github.com/owebeeone/gwz-core?tag=v1.0.5#e3b6d8ba5c4c975a9210d2d3957b5dc7e7c9cb88"
+version = "1.0.8"
+source = "git+https://github.com/owebeeone/gwz-core?tag=v1.0.8#ec6d1a5749c379fbd78d510c160b372f79bdda83"
 dependencies = [
  "cap-fs-ext",
  "cap-std",
@@ -337,12 +337,12 @@ dependencies = [
 [[package]]
 name = "gwz-family-model"
 version = "0.1.0"
-source = "git+https://github.com/owebeeone/gwz-core?tag=v1.0.5#e3b6d8ba5c4c975a9210d2d3957b5dc7e7c9cb88"
+source = "git+https://github.com/owebeeone/gwz-core?tag=v1.0.8#ec6d1a5749c379fbd78d510c160b372f79bdda83"
 
 [[package]]
 name = "gwz-family-store"
 version = "0.1.0"
-source = "git+https://github.com/owebeeone/gwz-core?tag=v1.0.5#e3b6d8ba5c4c975a9210d2d3957b5dc7e7c9cb88"
+source = "git+https://github.com/owebeeone/gwz-core?tag=v1.0.8#ec6d1a5749c379fbd78d510c160b372f79bdda83"
 dependencies = [
  "gwz-family-model",
  "gwz-family-store-contract",
@@ -353,7 +353,7 @@ dependencies = [
 [[package]]
 name = "gwz-family-store-contract"
 version = "0.1.0"
-source = "git+https://github.com/owebeeone/gwz-core?tag=v1.0.5#e3b6d8ba5c4c975a9210d2d3957b5dc7e7c9cb88"
+source = "git+https://github.com/owebeeone/gwz-core?tag=v1.0.8#ec6d1a5749c379fbd78d510c160b372f79bdda83"
 dependencies = [
  "gwz-family-model",
 ]
@@ -361,7 +361,7 @@ dependencies = [
 [[package]]
 name = "gwz-history-check"
 version = "0.1.0"
-source = "git+https://github.com/owebeeone/gwz-core?tag=v1.0.5#e3b6d8ba5c4c975a9210d2d3957b5dc7e7c9cb88"
+source = "git+https://github.com/owebeeone/gwz-core?tag=v1.0.8#ec6d1a5749c379fbd78d510c160b372f79bdda83"
 dependencies = [
  "gwz-repo-contract",
 ]
@@ -369,7 +369,7 @@ dependencies = [
 [[package]]
 name = "gwz-local-disposal"
 version = "0.1.0"
-source = "git+https://github.com/owebeeone/gwz-core?tag=v1.0.5#e3b6d8ba5c4c975a9210d2d3957b5dc7e7c9cb88"
+source = "git+https://github.com/owebeeone/gwz-core?tag=v1.0.8#ec6d1a5749c379fbd78d510c160b372f79bdda83"
 dependencies = [
  "gwz-family-model",
  "gwz-family-store-contract",
@@ -380,7 +380,7 @@ dependencies = [
 [[package]]
 name = "gwz-local-import"
 version = "0.1.0"
-source = "git+https://github.com/owebeeone/gwz-core?tag=v1.0.5#e3b6d8ba5c4c975a9210d2d3957b5dc7e7c9cb88"
+source = "git+https://github.com/owebeeone/gwz-core?tag=v1.0.8#ec6d1a5749c379fbd78d510c160b372f79bdda83"
 dependencies = [
  "gwz-family-model",
  "gwz-repo-contract",
@@ -388,7 +388,7 @@ dependencies = [
 
 [[package]]
 name = "gwz-py"
-version = "1.0.5"
+version = "1.0.8"
 dependencies = [
  "gwz-core",
  "pyo3",
@@ -397,7 +397,7 @@ dependencies = [
 [[package]]
 name = "gwz-refcopy"
 version = "0.1.0"
-source = "git+https://github.com/owebeeone/gwz-core?tag=v1.0.5#e3b6d8ba5c4c975a9210d2d3957b5dc7e7c9cb88"
+source = "git+https://github.com/owebeeone/gwz-core?tag=v1.0.8#ec6d1a5749c379fbd78d510c160b372f79bdda83"
 dependencies = [
  "gwz-copy-contract",
  "libc",
@@ -408,12 +408,12 @@ dependencies = [
 [[package]]
 name = "gwz-repo-contract"
 version = "0.1.0"
-source = "git+https://github.com/owebeeone/gwz-core?tag=v1.0.5#e3b6d8ba5c4c975a9210d2d3957b5dc7e7c9cb88"
+source = "git+https://github.com/owebeeone/gwz-core?tag=v1.0.8#ec6d1a5749c379fbd78d510c160b372f79bdda83"
 
 [[package]]
 name = "gwz-repo-factory"
 version = "0.1.0"
-source = "git+https://github.com/owebeeone/gwz-core?tag=v1.0.5#e3b6d8ba5c4c975a9210d2d3957b5dc7e7c9cb88"
+source = "git+https://github.com/owebeeone/gwz-core?tag=v1.0.8#ec6d1a5749c379fbd78d510c160b372f79bdda83"
 dependencies = [
  "gwz-repo-contract",
 ]
@@ -421,7 +421,7 @@ dependencies = [
 [[package]]
 name = "gwz-repo-inspect"
 version = "0.1.0"
-source = "git+https://github.com/owebeeone/gwz-core?tag=v1.0.5#e3b6d8ba5c4c975a9210d2d3957b5dc7e7c9cb88"
+source = "git+https://github.com/owebeeone/gwz-core?tag=v1.0.8#ec6d1a5749c379fbd78d510c160b372f79bdda83"
 dependencies = [
  "git2",
  "gwz-repo-contract",
@@ -430,7 +430,7 @@ dependencies = [
 [[package]]
 name = "gwz-work-detector"
 version = "0.1.0"
-source = "git+https://github.com/owebeeone/gwz-core?tag=v1.0.5#e3b6d8ba5c4c975a9210d2d3957b5dc7e7c9cb88"
+source = "git+https://github.com/owebeeone/gwz-core?tag=v1.0.8#ec6d1a5749c379fbd78d510c160b372f79bdda83"
 dependencies = [
  "gwz-repo-contract",
 ]
@@ -438,7 +438,7 @@ dependencies = [
 [[package]]
 name = "gwz-workspace-install"
 version = "0.1.0"
-source = "git+https://github.com/owebeeone/gwz-core?tag=v1.0.5#e3b6d8ba5c4c975a9210d2d3957b5dc7e7c9cb88"
+source = "git+https://github.com/owebeeone/gwz-core?tag=v1.0.8#ec6d1a5749c379fbd78d510c160b372f79bdda83"
 dependencies = [
  "gwz-copy-contract",
  "gwz-family-model",
