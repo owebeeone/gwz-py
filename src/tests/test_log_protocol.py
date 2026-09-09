@@ -241,5 +241,16 @@ def test_log_addition_preserves_every_pre_existing_wire_shape_and_slot() -> None
     assert actions.pop("log") == 26
     service = next(s for s in projected["services"] if s["name"] == "GwzCore")
     service["methods"] = [m for m in service["methods"] if m["name"] not in {"log", "log.output"}]
+    # 2026-09-10 private-member policy adds exactly these optional booleans.
+    # Removing them must reproduce the unchanged historical projection hash.
+    for name, tag in (("MemberSpec", 8), ("RepoSyncRequest", 2)):
+        message = next(m for m in projected["messages"] if m["name"] == name)
+        added = [f for f in message["fields"] if f["name"] == "private"]
+        expected = {"name": "private", "tag": tag,
+                    "type": {"k": "scalar", "scalar": "bool"},
+                    "optional": True, "transient": False, "merge": None}
+        if added != [expected]:
+            raise ValueError(f"{name}.private must be the optional boolean at tag {tag}")
+        message["fields"].remove(added[0])
     encoded = json.dumps(projected, sort_keys=True, separators=(",", ":")).encode()
     assert hashlib.sha256(encoded).hexdigest() == PRE_LOG_WIRE_SHA256

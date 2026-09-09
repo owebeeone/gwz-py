@@ -763,6 +763,7 @@ class MemberSpec:
     active: bool
     desired: DesiredRef | None
     remotes: list[RemoteSpec]
+    private: bool | None
 
 @dataclass(slots=True)
 class MaterializeTarget:
@@ -1241,6 +1242,7 @@ class CreateRepoRequest:
 @dataclass(slots=True)
 class RepoSyncRequest:
     meta: RequestMeta
+    private: bool | None
 
 @dataclass(slots=True)
 class CloneRepoMemberRequest:

@@ -606,7 +606,9 @@ class Client:
         )
         return await self._call("create_repo", request, CreateRepoResponse)
 
-    async def repo_sync(self, member_path: str | None = None, **meta: Any) -> RepoSyncResponse:
+    async def repo_sync(
+        self, member_path: str | None = None, *, private: bool | None = None, **meta: Any
+    ) -> RepoSyncResponse:
         if member_path is not None:
             if any(
                 key in meta
@@ -620,7 +622,7 @@ class Client:
             ):
                 raise ValueError("repo_sync member_path cannot be combined with explicit selection")
             meta["paths"] = [member_path]
-        request = RepoSyncRequest(meta=self.meta(**meta))
+        request = RepoSyncRequest(meta=self.meta(**meta), private=private)
         return await self._call("repo_sync", request, RepoSyncResponse)
 
     async def status(

@@ -2388,6 +2388,17 @@
           "optional": false,
           "transient": false,
           "merge": null
+        },
+        {
+          "name": "private",
+          "tag": 8,
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
         }
       ]
     },
@@ -6428,6 +6439,17 @@
             "name": "RequestMeta"
           },
           "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "private",
+          "tag": 2,
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": true,
           "transient": false,
           "merge": null
         }
