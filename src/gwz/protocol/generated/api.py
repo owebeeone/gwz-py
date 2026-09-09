@@ -373,6 +373,14 @@ class LockMatch(Enum):
     differs = 2
     missing = 3
 
+class LockDifferenceReason(Enum):
+    dirty_worktree = 0
+    commit = 1
+    branch = 2
+    attachment = 3
+    missing_lock_entry = 4
+    unavailable_observations = 5
+
 class GitProgressPhase(Enum):
     enumerating = 0
     counting = 1
@@ -1163,6 +1171,7 @@ class MemberResponse:
     git_status: GitStatus | None
     lock_match: LockMatch | None
     target_kind: TargetKind | None
+    lock_difference_reasons: list[LockDifferenceReason] | None
 
 @dataclass(slots=True)
 class ResponseEnvelope:

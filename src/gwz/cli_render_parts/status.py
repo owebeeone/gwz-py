@@ -36,11 +36,38 @@ def render_status_response(response: Any, workspace_status: Any) -> str:
     changes.extend(member_human_changes(workspace_status))
     append_change_sections(lines, changes)
     append_unmaterialized_notice(lines, response)
+    append_lock_difference_reasons(lines, response)
     append_status_issues(lines, response)
     append_suppressed_dirty_summary(lines, response, workspace_status)
     if not lines:
         lines.append("nothing to commit, working tree clean")
     return "\n".join(lines)
+
+
+def append_lock_difference_reasons(lines: list[str], response: Any) -> None:
+    envelope = getattr(response, "response", None)
+    rows = [
+        (member, reasons)
+        for member in getattr(envelope, "members", [])
+        if (reasons := getattr(member, "lock_difference_reasons", None))
+    ]
+    if not rows:
+        return
+    push_blank(lines)
+    lines.append("Lock comparison:")
+    labels = {
+        "dirty_worktree": "uncommitted work differs from the locked commit",
+        "commit": "commit differs",
+        "branch": "branch differs",
+        "attachment": "attachment differs",
+        "missing_lock_entry": "lock entry is missing",
+        "unavailable_observations": "live state was not observed",
+    }
+    for member, reasons in rows:
+        facts = "; ".join(
+            labels.get(getattr(reason, "name", reason), str(reason)) for reason in reasons
+        )
+        lines.append(f"  {member.member_path}: {facts}")
 
 
 def append_branch_summary(lines: list[str], workspace_status: Any) -> None:

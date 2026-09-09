@@ -268,6 +268,7 @@ def test_cli_render_branch_switch_reports_observed_dirty_state() -> None:
             git_status=None,
             lock_match=LockMatch.matches,
             target_kind=TargetKind.member,
+            lock_difference_reasons=None,
         )
     )
     response = BranchResponse(

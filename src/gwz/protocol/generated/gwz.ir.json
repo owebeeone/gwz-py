@@ -766,6 +766,17 @@
       }
     },
     {
+      "name": "LockDifferenceReason",
+      "members": {
+        "dirty_worktree": 0,
+        "commit": 1,
+        "branch": 2,
+        "attachment": 3,
+        "missing_lock_entry": 4,
+        "unavailable_observations": 5
+      }
+    },
+    {
       "name": "GitProgressPhase",
       "members": {
         "enumerating": 0,
@@ -5775,6 +5786,20 @@
           "type": {
             "k": "enum",
             "name": "TargetKind"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "lock_difference_reasons",
+          "tag": 11,
+          "type": {
+            "k": "list",
+            "elem": {
+              "k": "enum",
+              "name": "LockDifferenceReason"
+            }
           },
           "optional": true,
           "transient": false,
