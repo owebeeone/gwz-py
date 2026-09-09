@@ -119,7 +119,8 @@ def test_rejected_add_reports_same_resolved_path_facts_for_both_drivers(tmp_path
             assert machine.returncode != 0
             assert '"code"' in machine.stdout
             assert supplied in machine.stdout
-            normalized_machine = machine.stdout.replace("\\", "/")
+            decoded = json.loads(machine.stdout)
+            normalized_machine = decoded["errors"][0]["message"].replace("\\", "/")
             normalized_candidate = str((tmp_path / supplied).resolve()).replace("\\", "/")
             assert normalized_candidate in normalized_machine
 
