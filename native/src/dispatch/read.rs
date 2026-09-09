@@ -46,7 +46,7 @@ pub(crate) fn call(
             let request = codec::decode_message(
                 request_bytes,
                 "decode TransportCapabilitiesRequest",
-                |cbor| gwz_core::TransportCapabilitiesRequest::from_cbor(cbor),
+                gwz_core::TransportCapabilitiesRequest::from_cbor,
             )?;
             let response = gwz_core::protocol::transport_capabilities::handle(request)
                 .map_err(error::model)?;

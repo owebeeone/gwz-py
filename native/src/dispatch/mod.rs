@@ -338,6 +338,7 @@ fn submit_push(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn submit_accepted(
     method: &str,
     request_message: &str,
