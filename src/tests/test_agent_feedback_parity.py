@@ -65,7 +65,9 @@ def test_listing_root_forms_match_cli_and_python(
         assert result.returncode == 0, result.stderr
         document = json.loads(result.stdout)
         entries = _listed_entries(document)
-        assert str(workspace / "members/app") in {entry["abspath"] for entry in entries}
+        assert workspace / "members/app" in {
+            Path(entry["abspath"]) for entry in entries
+        }
         assert all(Path(entry["abspath"]).is_absolute() for entry in entries)
 
 
@@ -117,7 +119,9 @@ def test_rejected_add_reports_same_resolved_path_facts_for_both_drivers(tmp_path
             assert machine.returncode != 0
             assert '"code"' in machine.stdout
             assert supplied in machine.stdout
-            assert str((tmp_path / supplied).resolve()) in machine.stdout
+            normalized_machine = machine.stdout.replace("\\", "/")
+            normalized_candidate = str((tmp_path / supplied).resolve()).replace("\\", "/")
+            assert normalized_candidate in normalized_machine
 
     for driver in _drivers():
         result = _run_driver(
