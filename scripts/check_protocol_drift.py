@@ -216,6 +216,56 @@ def pre_log_projection(value: dict[str, Any]) -> dict[str, Any]:
     service["methods"] = [
         method for method in service["methods"] if method["name"] not in {"log", "log.output"}
     ]
+    # Invocation context adds one request field and one message. Keep the
+    # historical projection honest by accepting only that exact allocation.
+    invocation = {
+        "name": "invocation", "tag": 9,
+        "type": {"k": "msg", "name": "InvocationContext"},
+        "optional": True, "transient": False, "merge": None,
+    }
+    request_meta = next(message for message in projected["messages"] if message["name"] == "RequestMeta")
+    added = [field for field in request_meta["fields"] if field["name"] == "invocation"]
+    if added != [invocation]:
+        raise ValueError("RequestMeta.invocation must be the optional InvocationContext at tag 9")
+    request_meta["fields"].remove(added[0])
+    contexts = [message for message in projected["messages"] if message["name"] == "InvocationContext"]
+    expected_context = {
+        "name": "InvocationContext",
+        "fields": [{
+            "name": "caller_cwd", "tag": 1,
+            "type": {"k": "scalar", "scalar": "str"},
+            "optional": False, "transient": False, "merge": None,
+        }],
+        "next_id": None, "reserved_names": [], "reserved_tags": [],
+    }
+    if contexts != [expected_context]:
+        raise ValueError("InvocationContext must contain only caller_cwd at tag 1")
+    projected["messages"].remove(contexts[0])
+
+    # Lock-difference reasons add one response field and one closed enum.
+    reasons = [enum for enum in projected["enums"] if enum["name"] == "LockDifferenceReason"]
+    expected_reasons = {
+        "name": "LockDifferenceReason",
+        "members": {
+            "dirty_worktree": 0, "commit": 1, "branch": 2,
+            "attachment": 3, "missing_lock_entry": 4,
+            "unavailable_observations": 5,
+        },
+    }
+    if reasons != [expected_reasons]:
+        raise ValueError("LockDifferenceReason must retain its six assigned values")
+    projected["enums"].remove(reasons[0])
+    lock_difference_reasons = {
+        "name": "lock_difference_reasons", "tag": 11,
+        "type": {"k": "list", "elem": {"k": "enum", "name": "LockDifferenceReason"}},
+        "optional": True, "transient": False, "merge": None,
+    }
+    member_response = next(message for message in projected["messages"] if message["name"] == "MemberResponse")
+    added = [field for field in member_response["fields"] if field["name"] == "lock_difference_reasons"]
+    if added != [lock_difference_reasons]:
+        raise ValueError("MemberResponse.lock_difference_reasons must be the optional tag-11 enum list")
+    member_response["fields"].remove(added[0])
+
     # 2026-09-10 private-member policy adds exactly these optional booleans.
     # Removing them must reproduce the unchanged historical projection hash.
     for name, tag in (("MemberSpec", 8), ("RepoSyncRequest", 2)):
