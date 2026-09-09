@@ -60,6 +60,7 @@ from .protocol.generated import (
     GwzError as GwzErrorDetail,
     InitFromSourcesRequest,
     InitFromSourcesResponse,
+    InvocationContext,
     ListSnapshotsRequest,
     ListSnapshotsResponse,
     LocalCloneMode,
@@ -153,7 +154,7 @@ class Client:
     """Async Python facade over gwz-core protocol requests."""
 
     def __init__(self, root: str | Path | None = None, bridge: CoreBridge | None = None) -> None:
-        self.root = Path(root).resolve() if root is not None else None
+        self.root = Path(root) if root is not None else None
         self._bridge = bridge
 
     async def __aenter__(self) -> "Client":
@@ -198,6 +199,9 @@ class Client:
         attribution: OperationAttribution | None = None,
         transport: TransportOptions | None = None,
     ) -> RequestMeta:
+        # Capture this exactly once.  All caller-relative request locations use
+        # this base, and the same value crosses the native/worker boundary.
+        caller_cwd = Path.cwd().resolve()
         selected_member_ids = list(member_ids)
         selected_paths = list(paths)
         selected_targets = list(targets)
@@ -245,7 +249,14 @@ class Client:
                 max_connections_per_host=max_connections_per_host,
             )
 
-        effective_root = Path(root).resolve() if root is not None else self.root
+        raw_root = Path(root) if root is not None else self.root
+        effective_root = (
+            raw_root
+            if raw_root is None or raw_root.is_absolute()
+            else caller_cwd / raw_root
+        )
+        if effective_root is not None:
+            effective_root = effective_root.resolve()
         workspace = None
         if effective_root is not None or workspace_id is not None:
             workspace = WorkspaceRef(
@@ -262,6 +273,10 @@ class Client:
             dry_run=dry_run,
             attribution=attribution,
             transport=transport,
+            # Capture at request construction, before a bridge call can detach
+            # or submit work to another thread.  This is transport data, not a
+            # late lookup by the receiving native worker.
+            invocation=InvocationContext(caller_cwd=str(caller_cwd)),
         )
 
     async def _require_transport_capability(self, request: Any) -> None:

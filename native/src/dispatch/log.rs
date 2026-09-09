@@ -9,9 +9,16 @@ pub(crate) fn call(
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
+    caller_cwd: &std::path::Path,
 ) -> PyResult<Vec<u8>> {
     match method {
-        "log" => call_log(method, request_message, response_message, request_bytes),
+        "log" => call_log(
+            method,
+            request_message,
+            response_message,
+            request_bytes,
+            caller_cwd,
+        ),
         other => error::unsupported(other),
     }
 }
@@ -21,6 +28,7 @@ fn call_log(
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
+    caller_cwd: &std::path::Path,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "LogRequest")?;
     codec::require_response(method, response_message, "LogResponse")?;
@@ -28,9 +36,9 @@ fn call_log(
         gwz_core::LogRequest::from_cbor(cbor)
     })?;
     let request_id = request.meta.request_id.clone();
-    let start = super::current_dir()?;
+    let start = caller_cwd;
     let response = shims::no_backend(&request_id, |operation_id| {
-        gwz_core::operation::handle_log(&start, request, operation_id, log_outputs::registry())
+        gwz_core::operation::handle_log(start, request, operation_id, log_outputs::registry())
     })?;
     codec::encode_message("encode LogResponse", || response.to_cbor())
 }

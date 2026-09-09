@@ -702,6 +702,10 @@ class TransportOptions:
     remote_identities: list[RemoteSshIdentity]
 
 @dataclass(slots=True)
+class InvocationContext:
+    caller_cwd: str
+
+@dataclass(slots=True)
 class RequestMeta:
     request_id: str
     schema_version: str
@@ -711,6 +715,7 @@ class RequestMeta:
     dry_run: bool | None
     attribution: OperationAttribution | None
     transport: TransportOptions | None
+    invocation: InvocationContext | None
 
 @dataclass(slots=True)
 class ResponseMeta:

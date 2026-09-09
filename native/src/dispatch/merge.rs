@@ -5,19 +5,18 @@ use pyo3::PyResult;
 
 use crate::{codec, error, operations, shims};
 
-use super::current_dir;
-
 pub(crate) fn call(
     method: &str,
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
+    caller_cwd: &std::path::Path,
 ) -> PyResult<Vec<u8>> {
     let request = decode_request(method, request_message, response_message, request_bytes)?;
-    let start = current_dir()?;
+    let start = caller_cwd;
     let operation_id = shims::operation_id(&request.meta.request_id);
     let recorder = operations::begin_exclusive(&operation_id)?;
-    let response = run(request, &start, &operation_id, &recorder)?;
+    let response = run(request, start, &operation_id, &recorder)?;
     codec::encode_message("encode MergeResponse", || response.to_cbor())
 }
 
@@ -26,15 +25,17 @@ pub(crate) fn submit(
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
+    caller_cwd: &std::path::Path,
 ) -> PyResult<Vec<u8>> {
     let request = decode_request(method, request_message, response_message, request_bytes)?;
-    let start = current_dir()?;
+    let start = caller_cwd;
     let operation_id = shims::operation_id(&request.meta.request_id);
     let recorder = operations::begin_exclusive(&operation_id)?;
     let accepted = accepted_response(&request.meta, &operation_id);
     let accepted_bytes =
         codec::encode_message("encode accepted MergeResponse", || accepted.to_cbor())?;
 
+    let start = start.to_path_buf();
     let thread_operation_id = operation_id.clone();
     thread::spawn(move || {
         let _ = run(request, &start, &thread_operation_id, &recorder);
