@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from collections.abc import AsyncIterator
 from pathlib import Path
 
@@ -45,7 +46,11 @@ def test_native_submit_keeps_serialized_caller_context_after_cwd_changes(
     asyncio.run(client.create_workspace(workspace_id="ws_submit_context"))
     asyncio.run(client.create_repo("repos/app", member_id="mem_app", source_id="src_app"))
 
-    request = PullHeadRequest(meta=client.meta(paths=["repos/app"]))
+    # Omit an explicit root so success depends on the serialized caller,
+    # rather than accidentally succeeding through an already absolute root.
+    monkeypatch.chdir(workspace)
+    meta = replace(client.meta(paths=["repos/app"]), workspace=None)
+    request = PullHeadRequest(meta=meta)
     monkeypatch.chdir(executor)
     accepted = asyncio.run(
         client.bridge.submit(
