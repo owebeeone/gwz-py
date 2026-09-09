@@ -119,6 +119,13 @@ def test_rejected_add_reports_same_resolved_path_facts_for_both_drivers(tmp_path
             assert supplied in machine.stdout
             assert str((tmp_path / supplied).resolve()) in machine.stdout
 
+    for driver in _drivers():
+        result = _run_driver(
+            driver, tmp_path, "--root", str(tmp_path / "@root"), "add", "README.md"
+        )
+        assert result.returncode != 0
+        assert "--target @root" in result.stderr
+
 
 def test_add_and_diff_route_member_operands_from_explicit_root(tmp_path: Path) -> None:
     for index, driver in enumerate(_drivers()):
