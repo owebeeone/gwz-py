@@ -1,6 +1,5 @@
 use pyo3::PyResult;
 
-use super::current_dir;
 use crate::{codec, error, shims};
 
 pub(crate) fn call(
@@ -8,6 +7,7 @@ pub(crate) fn call(
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
+    caller_cwd: &std::path::Path,
 ) -> PyResult<Vec<u8>> {
     match method {
         "configure_transport_runtime" => {
@@ -29,11 +29,11 @@ pub(crate) fn call(
                     gwz_core::RemoteIdentityRequest::from_cbor(cbor)
                 })?;
             let request_id = request.meta.request_id.clone();
-            let start = current_dir()?;
+            let start = caller_cwd;
             let response = shims::no_backend(&request_id, |operation_id| {
                 gwz_core::workspace_ops::handle_remote_identity(
                     &gwz_core::git::Git2Backend::new(),
-                    &start,
+                    start,
                     request,
                     operation_id,
                 )
@@ -46,7 +46,7 @@ pub(crate) fn call(
             let request = codec::decode_message(
                 request_bytes,
                 "decode TransportCapabilitiesRequest",
-                |cbor| gwz_core::TransportCapabilitiesRequest::from_cbor(cbor),
+                gwz_core::TransportCapabilitiesRequest::from_cbor,
             )?;
             let response = gwz_core::protocol::transport_capabilities::handle(request)
                 .map_err(error::model)?;
@@ -57,29 +57,65 @@ pub(crate) fn call(
         "create_workspace" => {
             call_create_workspace(method, request_message, response_message, request_bytes)
         }
-        "init_from_sources" => {
-            call_init_from_sources(method, request_message, response_message, request_bytes)
-        }
-        "add_existing_repo" => {
-            call_add_existing_repo(method, request_message, response_message, request_bytes)
-        }
-        "create_repo" => call_create_repo(method, request_message, response_message, request_bytes),
-        "repo_sync" => call_repo_sync(method, request_message, response_message, request_bytes),
-        "detach_repo_member" => {
-            call_detach_repo_member(method, request_message, response_message, request_bytes)
-        }
-        "status" => call_status(method, request_message, response_message, request_bytes),
-        "ls" | "resolve_forall_targets" => {
-            call_ls(method, request_message, response_message, request_bytes)
-        }
-        "list_snapshots" => {
-            call_list_snapshots(method, request_message, response_message, request_bytes)
-        }
+        "init_from_sources" => call_init_from_sources(
+            method,
+            request_message,
+            response_message,
+            request_bytes,
+            caller_cwd,
+        ),
+        "add_existing_repo" => call_add_existing_repo(
+            method,
+            request_message,
+            response_message,
+            request_bytes,
+            caller_cwd,
+        ),
+        "create_repo" => call_create_repo(
+            method,
+            request_message,
+            response_message,
+            request_bytes,
+            caller_cwd,
+        ),
+        "repo_sync" => call_repo_sync(
+            method,
+            request_message,
+            response_message,
+            request_bytes,
+            caller_cwd,
+        ),
+        "detach_repo_member" => call_detach_repo_member(
+            method,
+            request_message,
+            response_message,
+            request_bytes,
+            caller_cwd,
+        ),
+        "status" => call_status(
+            method,
+            request_message,
+            response_message,
+            request_bytes,
+            caller_cwd,
+        ),
+        "ls" | "resolve_forall_targets" => call_ls(
+            method,
+            request_message,
+            response_message,
+            request_bytes,
+            caller_cwd,
+        ),
+        "list_snapshots" => call_list_snapshots(
+            method,
+            request_message,
+            response_message,
+            request_bytes,
+            caller_cwd,
+        ),
         other => error::unsupported(other),
     }
 }
-
-// `current_dir` now lives in the parent dispatch module (shared with `diff`).
 
 fn call_create_workspace(
     method: &str,
@@ -105,6 +141,7 @@ fn call_init_from_sources(
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
+    caller_cwd: &std::path::Path,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "InitFromSourcesRequest")?;
     codec::require_response(method, response_message, "InitFromSourcesResponse")?;
@@ -113,12 +150,12 @@ fn call_init_from_sources(
         gwz_core::InitFromSourcesRequest::from_cbor(cbor)
     })?;
     let request_id = request.meta.request_id.clone();
-    let start = current_dir()?;
+    let start = caller_cwd;
     let (response, recorder) =
         shims::backend_with_events(&request_id, |backend, operation_id, events| {
             gwz_core::workspace_ops::handle_init_from_sources(
                 backend,
-                &start,
+                start,
                 request,
                 operation_id,
                 events,
@@ -133,6 +170,7 @@ fn call_add_existing_repo(
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
+    caller_cwd: &std::path::Path,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "AddExistingRepoRequest")?;
     codec::require_response(method, response_message, "AddExistingRepoResponse")?;
@@ -141,9 +179,9 @@ fn call_add_existing_repo(
         gwz_core::AddExistingRepoRequest::from_cbor(cbor)
     })?;
     let request_id = request.meta.request_id.clone();
-    let start = current_dir()?;
+    let start = caller_cwd;
     let response = shims::backend(&request_id, |backend, operation_id| {
-        gwz_core::workspace_ops::handle_add_existing_repo(backend, &start, request, operation_id)
+        gwz_core::workspace_ops::handle_add_existing_repo(backend, start, request, operation_id)
     })?;
     codec::encode_message("encode AddExistingRepoResponse", || response.to_cbor())
 }
@@ -153,6 +191,7 @@ fn call_create_repo(
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
+    caller_cwd: &std::path::Path,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "CreateRepoRequest")?;
     codec::require_response(method, response_message, "CreateRepoResponse")?;
@@ -161,9 +200,9 @@ fn call_create_repo(
         gwz_core::CreateRepoRequest::from_cbor(cbor)
     })?;
     let request_id = request.meta.request_id.clone();
-    let start = current_dir()?;
+    let start = caller_cwd;
     let response = shims::backend(&request_id, |backend, operation_id| {
-        gwz_core::workspace_ops::handle_create_repo(backend, &start, request, operation_id)
+        gwz_core::workspace_ops::handle_create_repo(backend, start, request, operation_id)
     })?;
     codec::encode_message("encode CreateRepoResponse", || response.to_cbor())
 }
@@ -173,6 +212,7 @@ fn call_repo_sync(
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
+    caller_cwd: &std::path::Path,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "RepoSyncRequest")?;
     codec::require_response(method, response_message, "RepoSyncResponse")?;
@@ -181,9 +221,9 @@ fn call_repo_sync(
         gwz_core::RepoSyncRequest::from_cbor(cbor)
     })?;
     let request_id = request.meta.request_id.clone();
-    let start = current_dir()?;
+    let start = caller_cwd;
     let response = shims::backend(&request_id, |backend, operation_id| {
-        gwz_core::workspace_ops::handle_repo_sync(backend, &start, request, operation_id)
+        gwz_core::workspace_ops::handle_repo_sync(backend, start, request, operation_id)
     })?;
     codec::encode_message("encode RepoSyncResponse", || response.to_cbor())
 }
@@ -193,6 +233,7 @@ fn call_detach_repo_member(
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
+    caller_cwd: &std::path::Path,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "DetachRepoMemberRequest")?;
     codec::require_response(method, response_message, "DetachRepoMemberResponse")?;
@@ -201,9 +242,9 @@ fn call_detach_repo_member(
         gwz_core::DetachRepoMemberRequest::from_cbor(cbor)
     })?;
     let request_id = request.meta.request_id.clone();
-    let start = current_dir()?;
+    let start = caller_cwd;
     let response = shims::backend(&request_id, |backend, operation_id| {
-        gwz_core::workspace_ops::handle_detach_repo_member(backend, &start, request, operation_id)
+        gwz_core::workspace_ops::handle_detach_repo_member(backend, start, request, operation_id)
     })?;
     codec::encode_message("encode DetachRepoMemberResponse", || response.to_cbor())
 }
@@ -213,6 +254,7 @@ fn call_status(
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
+    caller_cwd: &std::path::Path,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "StatusRequest")?;
     codec::require_response(method, response_message, "StatusResponse")?;
@@ -221,9 +263,9 @@ fn call_status(
         gwz_core::StatusRequest::from_cbor(cbor)
     })?;
     let request_id = request.meta.request_id.clone();
-    let start = current_dir()?;
+    let start = caller_cwd;
     let response = shims::backend(&request_id, |backend, operation_id| {
-        gwz_core::status::handle_status(backend, &start, request, operation_id)
+        gwz_core::status::handle_status(backend, start, request, operation_id)
     })?;
     codec::encode_message("encode StatusResponse", || response.to_cbor())
 }
@@ -233,6 +275,7 @@ fn call_ls(
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
+    caller_cwd: &std::path::Path,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "LsRequest")?;
     codec::require_response(method, response_message, "LsResponse")?;
@@ -241,12 +284,12 @@ fn call_ls(
         gwz_core::LsRequest::from_cbor(cbor)
     })?;
     let request_id = request.meta.request_id.clone();
-    let start = current_dir()?;
+    let start = caller_cwd;
     let response = shims::no_backend(&request_id, |operation_id| {
         if method == "resolve_forall_targets" {
-            gwz_core::workspace_ops::resolve_forall_targets(&start, request, operation_id)
+            gwz_core::workspace_ops::resolve_forall_targets(start, request, operation_id)
         } else {
-            gwz_core::workspace_ops::handle_ls(&start, request, operation_id)
+            gwz_core::workspace_ops::handle_ls(start, request, operation_id)
         }
     })?;
     codec::encode_message("encode LsResponse", || response.to_cbor())
@@ -257,6 +300,7 @@ fn call_list_snapshots(
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
+    caller_cwd: &std::path::Path,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "ListSnapshotsRequest")?;
     codec::require_response(method, response_message, "ListSnapshotsResponse")?;
@@ -265,9 +309,9 @@ fn call_list_snapshots(
         gwz_core::ListSnapshotsRequest::from_cbor(cbor)
     })?;
     let request_id = request.meta.request_id.clone();
-    let start = current_dir()?;
+    let start = caller_cwd;
     let response = shims::no_backend(&request_id, |operation_id| {
-        gwz_core::workspace_ops::handle_list_snapshots(&start, request, operation_id)
+        gwz_core::workspace_ops::handle_list_snapshots(start, request, operation_id)
     })?;
     codec::encode_message("encode ListSnapshotsResponse", || response.to_cbor())
 }

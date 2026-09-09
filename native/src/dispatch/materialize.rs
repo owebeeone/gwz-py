@@ -1,5 +1,3 @@
-use std::env;
-
 use pyo3::PyResult;
 
 use crate::codec;
@@ -10,21 +8,58 @@ pub(crate) fn call(
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
+    caller_cwd: &std::path::Path,
 ) -> PyResult<Vec<u8>> {
     match method {
-        "materialize" => call_materialize(method, request_message, response_message, request_bytes),
-        "clone_workspace" => {
-            call_clone_workspace(method, request_message, response_message, request_bytes)
-        }
-        "clone_repo_member" => {
-            call_clone_repo_member(method, request_message, response_message, request_bytes)
-        }
-        "attach_repo_member" => {
-            call_attach_repo_member(method, request_message, response_message, request_bytes)
-        }
-        "snapshot" => call_snapshot(method, request_message, response_message, request_bytes),
-        "tag" => call_tag(method, request_message, response_message, request_bytes),
-        "capture" => call_capture(method, request_message, response_message, request_bytes),
+        "materialize" => call_materialize(
+            method,
+            request_message,
+            response_message,
+            request_bytes,
+            caller_cwd,
+        ),
+        "clone_workspace" => call_clone_workspace(
+            method,
+            request_message,
+            response_message,
+            request_bytes,
+            caller_cwd,
+        ),
+        "clone_repo_member" => call_clone_repo_member(
+            method,
+            request_message,
+            response_message,
+            request_bytes,
+            caller_cwd,
+        ),
+        "attach_repo_member" => call_attach_repo_member(
+            method,
+            request_message,
+            response_message,
+            request_bytes,
+            caller_cwd,
+        ),
+        "snapshot" => call_snapshot(
+            method,
+            request_message,
+            response_message,
+            request_bytes,
+            caller_cwd,
+        ),
+        "tag" => call_tag(
+            method,
+            request_message,
+            response_message,
+            request_bytes,
+            caller_cwd,
+        ),
+        "capture" => call_capture(
+            method,
+            request_message,
+            response_message,
+            request_bytes,
+            caller_cwd,
+        ),
         other => error::unsupported(other),
     }
 }
@@ -34,6 +69,7 @@ fn call_materialize(
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
+    caller_cwd: &std::path::Path,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "MaterializeRequest")?;
     codec::require_response(method, response_message, "MaterializeResponse")?;
@@ -42,12 +78,12 @@ fn call_materialize(
         gwz_core::MaterializeRequest::from_cbor(cbor)
     })?;
     let request_id = request.meta.request_id.clone();
-    let start = current_dir()?;
+    let start = caller_cwd;
     let (response, recorder) =
         shims::backend_with_events(&request_id, |backend, operation_id, events| {
             gwz_core::workspace_ops::handle_materialize(
                 backend,
-                &start,
+                start,
                 request,
                 operation_id,
                 events,
@@ -62,6 +98,7 @@ fn call_clone_workspace(
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
+    caller_cwd: &std::path::Path,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "CloneWorkspaceRequest")?;
     codec::require_response(method, response_message, "CloneWorkspaceResponse")?;
@@ -74,6 +111,7 @@ fn call_clone_workspace(
         shims::backend_with_events(&request_id, |backend, operation_id, events| {
             gwz_core::workspace_ops::handle_clone_workspace_request(
                 backend,
+                caller_cwd,
                 request,
                 operation_id,
                 events,
@@ -88,6 +126,7 @@ fn call_clone_repo_member(
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
+    caller_cwd: &std::path::Path,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "CloneRepoMemberRequest")?;
     codec::require_response(method, response_message, "CloneRepoMemberResponse")?;
@@ -96,12 +135,12 @@ fn call_clone_repo_member(
         gwz_core::CloneRepoMemberRequest::from_cbor(cbor)
     })?;
     let request_id = request.meta.request_id.clone();
-    let start = current_dir()?;
+    let start = caller_cwd;
     let (response, recorder) =
         shims::backend_with_events(&request_id, |backend, operation_id, events| {
             gwz_core::workspace_ops::handle_clone_repo_member(
                 backend,
-                &start,
+                start,
                 request,
                 operation_id,
                 events,
@@ -116,6 +155,7 @@ fn call_attach_repo_member(
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
+    caller_cwd: &std::path::Path,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "AttachRepoMemberRequest")?;
     codec::require_response(method, response_message, "AttachRepoMemberResponse")?;
@@ -124,12 +164,12 @@ fn call_attach_repo_member(
         gwz_core::AttachRepoMemberRequest::from_cbor(cbor)
     })?;
     let request_id = request.meta.request_id.clone();
-    let start = current_dir()?;
+    let start = caller_cwd;
     let (response, recorder) =
         shims::backend_with_events(&request_id, |backend, operation_id, events| {
             gwz_core::workspace_ops::handle_attach_repo_member(
                 backend,
-                &start,
+                start,
                 request,
                 operation_id,
                 events,
@@ -144,6 +184,7 @@ fn call_snapshot(
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
+    caller_cwd: &std::path::Path,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "SnapshotRequest")?;
     codec::require_response(method, response_message, "SnapshotResponse")?;
@@ -152,9 +193,9 @@ fn call_snapshot(
         gwz_core::SnapshotRequest::from_cbor(cbor)
     })?;
     let request_id = request.meta.request_id.clone();
-    let start = current_dir()?;
+    let start = caller_cwd;
     let response = shims::backend(&request_id, |backend, operation_id| {
-        gwz_core::workspace_ops::handle_snapshot(backend, &start, request, operation_id)
+        gwz_core::workspace_ops::handle_snapshot(backend, start, request, operation_id)
     })?;
     codec::encode_message("encode SnapshotResponse", || response.to_cbor())
 }
@@ -164,6 +205,7 @@ fn call_tag(
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
+    caller_cwd: &std::path::Path,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "TagRequest")?;
     codec::require_response(method, response_message, "TagResponse")?;
@@ -172,13 +214,13 @@ fn call_tag(
         gwz_core::TagRequest::from_cbor(cbor)
     })?;
     let request_id = request.meta.request_id.clone();
-    let start = current_dir()?;
+    let start = caller_cwd;
     let response = shims::backend(&request_id, |backend, operation_id| {
         let services = backend.operation_services();
         gwz_core::workspace_ops::handle_tag_with_services(
             &services,
             backend,
-            &start,
+            start,
             request,
             operation_id,
         )
@@ -191,6 +233,7 @@ fn call_capture(
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
+    caller_cwd: &std::path::Path,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "CaptureRequest")?;
     codec::require_response(method, response_message, "CaptureResponse")?;
@@ -199,13 +242,9 @@ fn call_capture(
         gwz_core::CaptureRequest::from_cbor(cbor)
     })?;
     let request_id = request.meta.request_id.clone();
-    let start = current_dir()?;
+    let start = caller_cwd;
     let response = shims::backend(&request_id, |backend, operation_id| {
-        gwz_core::workspace_ops::handle_capture(backend, &start, request, operation_id)
+        gwz_core::workspace_ops::handle_capture(backend, start, request, operation_id)
     })?;
     codec::encode_message("encode CaptureResponse", || response.to_cbor())
-}
-
-fn current_dir() -> PyResult<std::path::PathBuf> {
-    env::current_dir().map_err(|err| error::runtime(format!("current_dir failed: {err}")))
 }

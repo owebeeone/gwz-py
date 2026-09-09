@@ -373,6 +373,14 @@ class LockMatch(Enum):
     differs = 2
     missing = 3
 
+class LockDifferenceReason(Enum):
+    dirty_worktree = 0
+    commit = 1
+    branch = 2
+    attachment = 3
+    missing_lock_entry = 4
+    unavailable_observations = 5
+
 class GitProgressPhase(Enum):
     enumerating = 0
     counting = 1
@@ -694,6 +702,10 @@ class TransportOptions:
     remote_identities: list[RemoteSshIdentity]
 
 @dataclass(slots=True)
+class InvocationContext:
+    caller_cwd: str
+
+@dataclass(slots=True)
 class RequestMeta:
     request_id: str
     schema_version: str
@@ -703,6 +715,7 @@ class RequestMeta:
     dry_run: bool | None
     attribution: OperationAttribution | None
     transport: TransportOptions | None
+    invocation: InvocationContext | None
 
 @dataclass(slots=True)
 class ResponseMeta:
@@ -763,6 +776,7 @@ class MemberSpec:
     active: bool
     desired: DesiredRef | None
     remotes: list[RemoteSpec]
+    private: bool | None
 
 @dataclass(slots=True)
 class MaterializeTarget:
@@ -1162,6 +1176,7 @@ class MemberResponse:
     git_status: GitStatus | None
     lock_match: LockMatch | None
     target_kind: TargetKind | None
+    lock_difference_reasons: list[LockDifferenceReason] | None
 
 @dataclass(slots=True)
 class ResponseEnvelope:
@@ -1241,6 +1256,7 @@ class CreateRepoRequest:
 @dataclass(slots=True)
 class RepoSyncRequest:
     meta: RequestMeta
+    private: bool | None
 
 @dataclass(slots=True)
 class CloneRepoMemberRequest:

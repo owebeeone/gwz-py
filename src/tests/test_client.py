@@ -30,6 +30,7 @@ from gwz.protocol.generated import (
     InitFromSourcesResponse,
     ListSnapshotsRequest,
     ListSnapshotsResponse,
+    LsRequest,
     LsResponse,
     MaterializeRequest,
     MaterializeResponse,
@@ -160,7 +161,10 @@ class FakeBridge:
         )
 
 
-def test_status_builds_taut_request() -> None:
+def test_status_builds_taut_request(monkeypatch, tmp_path: Path) -> None:
+    caller = tmp_path / "caller"
+    caller.mkdir()
+    monkeypatch.chdir(caller)
     bridge = FakeBridge()
     client = Client(root=Path("/tmp/workspace"), bridge=bridge)
 
@@ -176,6 +180,24 @@ def test_status_builds_taut_request() -> None:
     assert request.meta.schema_version == "gwz.protocol/v0"
     assert request.meta.workspace is not None
     assert request.meta.workspace.root == str(Path("/tmp/workspace").resolve())
+    assert request.meta.invocation is not None
+    assert request.meta.invocation.caller_cwd == str(caller.resolve())
+
+
+def test_relative_root_uses_the_captured_caller_directory(monkeypatch, tmp_path: Path) -> None:
+    caller = tmp_path / "caller"
+    caller.mkdir()
+    monkeypatch.chdir(caller)
+    bridge = FakeBridge()
+
+    asyncio.run(Client(root="workspace", bridge=bridge).ls())
+
+    request = bridge.calls[0][3]
+    assert isinstance(request, LsRequest)
+    assert request.meta.invocation is not None
+    assert request.meta.invocation.caller_cwd == str(caller)
+    assert request.meta.workspace is not None
+    assert request.meta.workspace.root == str(caller / "workspace")
 
 
 def test_merge_builds_first_class_start_request() -> None:
@@ -673,3 +695,14 @@ def test_timeout_configuration_is_a_typed_startup_call() -> None:
     response = asyncio.run(client.configure_transport_timeout(2))
     assert bridge.calls[0][:3] == ("configure_transport_runtime", "TransportRuntimeRequest", "TransportRuntimeResponse")
     assert response.server_timeout_ms == 2000
+
+
+def test_repo_sync_private_policy_is_explicit_and_can_be_cleared() -> None:
+    for private in (True, False, None):
+        bridge = FakeBridge()
+        client = Client(root=Path("/tmp/workspace"), bridge=bridge)
+        asyncio.run(client.repo_sync("packages/app", private=private))
+        method, _, _, request = bridge.calls[0]
+        assert method == "repo_sync"
+        assert request.private is private
+        assert request.meta.selection.paths == ["packages/app"]

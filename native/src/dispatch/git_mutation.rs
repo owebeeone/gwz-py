@@ -1,5 +1,3 @@
-use std::env;
-
 use pyo3::PyResult;
 
 use crate::{codec, error, shims};
@@ -9,15 +7,44 @@ pub(crate) fn call(
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
+    caller_cwd: &std::path::Path,
 ) -> PyResult<Vec<u8>> {
     match method {
-        "commit" => call_commit(method, request_message, response_message, request_bytes),
-        "stage" => call_stage(method, request_message, response_message, request_bytes),
-        "pull_head" => call_pull_head(method, request_message, response_message, request_bytes),
-        "pull_snapshot" => {
-            call_pull_snapshot(method, request_message, response_message, request_bytes)
-        }
-        "push" => call_push(method, request_message, response_message, request_bytes),
+        "commit" => call_commit(
+            method,
+            request_message,
+            response_message,
+            request_bytes,
+            caller_cwd,
+        ),
+        "stage" => call_stage(
+            method,
+            request_message,
+            response_message,
+            request_bytes,
+            caller_cwd,
+        ),
+        "pull_head" => call_pull_head(
+            method,
+            request_message,
+            response_message,
+            request_bytes,
+            caller_cwd,
+        ),
+        "pull_snapshot" => call_pull_snapshot(
+            method,
+            request_message,
+            response_message,
+            request_bytes,
+            caller_cwd,
+        ),
+        "push" => call_push(
+            method,
+            request_message,
+            response_message,
+            request_bytes,
+            caller_cwd,
+        ),
         other => error::unsupported(other),
     }
 }
@@ -27,6 +54,7 @@ fn call_commit(
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
+    caller_cwd: &std::path::Path,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "CommitRequest")?;
     codec::require_response(method, response_message, "CommitResponse")?;
@@ -35,9 +63,9 @@ fn call_commit(
         gwz_core::CommitRequest::from_cbor(cbor)
     })?;
     let request_id = request.meta.request_id.clone();
-    let start = current_dir()?;
+    let start = caller_cwd;
     let response = shims::backend(&request_id, |backend, operation_id| {
-        gwz_core::workspace_ops::handle_commit(backend, &start, request, operation_id)
+        gwz_core::workspace_ops::handle_commit(backend, start, request, operation_id)
     })?;
     codec::encode_message("encode CommitResponse", || response.to_cbor())
 }
@@ -47,6 +75,7 @@ fn call_stage(
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
+    caller_cwd: &std::path::Path,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "StageRequest")?;
     codec::require_response(method, response_message, "StageResponse")?;
@@ -55,9 +84,9 @@ fn call_stage(
         gwz_core::StageRequest::from_cbor(cbor)
     })?;
     let request_id = request.meta.request_id.clone();
-    let start = current_dir()?;
+    let start = caller_cwd;
     let response = shims::backend(&request_id, |backend, operation_id| {
-        gwz_core::workspace_ops::handle_stage(backend, &start, request, operation_id)
+        gwz_core::workspace_ops::handle_stage(backend, start, request, operation_id)
     })?;
     codec::encode_message("encode StageResponse", || response.to_cbor())
 }
@@ -67,6 +96,7 @@ fn call_pull_head(
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
+    caller_cwd: &std::path::Path,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "PullHeadRequest")?;
     codec::require_response(method, response_message, "PullHeadResponse")?;
@@ -75,12 +105,12 @@ fn call_pull_head(
         gwz_core::PullHeadRequest::from_cbor(cbor)
     })?;
     let request_id = request.meta.request_id.clone();
-    let start = current_dir()?;
+    let start = caller_cwd;
     let (response, recorder) =
         shims::backend_with_events(&request_id, |backend, operation_id, events| {
             gwz_core::workspace_ops::handle_pull_head_with_events(
                 backend,
-                &start,
+                start,
                 request,
                 operation_id,
                 events,
@@ -95,6 +125,7 @@ fn call_pull_snapshot(
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
+    caller_cwd: &std::path::Path,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "PullSnapshotRequest")?;
     codec::require_response(method, response_message, "PullSnapshotResponse")?;
@@ -103,12 +134,12 @@ fn call_pull_snapshot(
         gwz_core::PullSnapshotRequest::from_cbor(cbor)
     })?;
     let request_id = request.meta.request_id.clone();
-    let start = current_dir()?;
+    let start = caller_cwd;
     let (response, recorder) =
         shims::backend_with_events(&request_id, |backend, operation_id, events| {
             gwz_core::workspace_ops::handle_pull_snapshot(
                 backend,
-                &start,
+                start,
                 request,
                 operation_id,
                 events,
@@ -123,6 +154,7 @@ fn call_push(
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
+    caller_cwd: &std::path::Path,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "PushRequest")?;
     codec::require_response(method, response_message, "PushResponse")?;
@@ -131,12 +163,12 @@ fn call_push(
         gwz_core::PushRequest::from_cbor(cbor)
     })?;
     let request_id = request.meta.request_id.clone();
-    let start = current_dir()?;
+    let start = caller_cwd;
     let (response, recorder) =
         shims::backend_with_events(&request_id, |backend, operation_id, events| {
             gwz_core::workspace_ops::handle_push_with_events(
                 backend,
-                &start,
+                start,
                 request,
                 operation_id,
                 events,
@@ -144,8 +176,4 @@ fn call_push(
         })?;
     recorder.finish(&response.response)?;
     codec::encode_message("encode PushResponse", || response.to_cbor())
-}
-
-fn current_dir() -> PyResult<std::path::PathBuf> {
-    env::current_dir().map_err(|err| error::runtime(format!("current_dir failed: {err}")))
 }

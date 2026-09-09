@@ -92,6 +92,8 @@ def render_merge_response(response: Any) -> str:
             }[enum_name(repo.predicted)]
             outcome += f" ({prediction})"
         lines.append(outcome)
+        if state == "up-to-date":
+            lines.append("    no changes transferred")
         lines.append(f"    source: {repo.source_ref} @ {repo.source_commit}")
         lines.append(
             f"    recorded: branch {repo.target_branch}; "

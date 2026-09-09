@@ -180,3 +180,15 @@ def test_repo_clone_human_output_uses_stream_route() -> None:
         "clone_repo_member_stream",
         "operation_result",
     ]
+
+
+@pytest.mark.parametrize("flag,expected", [("--private", True), ("--public", False)])
+def test_repo_sync_private_policy(flag: str, expected: bool) -> None:
+    client = FakeClient()
+    run_handler(["repo", "sync", "repos/app", flag], client)
+    assert client.calls[0] == ("repo_sync", ("repos/app",), {"private": expected})
+
+
+def test_repo_sync_visibility_flags_conflict() -> None:
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(["repo", "sync", "repos/app", "--private", "--public"])

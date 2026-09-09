@@ -190,6 +190,11 @@ def configure_repo(parser: argparse.ArgumentParser) -> None:
     sync.add_argument(
         "member_path", nargs="?", help="Workspace-relative member path to sync"
     )
+    visibility = sync.add_mutually_exclusive_group()
+    visibility.add_argument("--private", dest="private", action="store_const", const=True, default=None,
+                            help="Quietly skip this member's clone access refusals")
+    visibility.add_argument("--public", dest="private", action="store_const", const=False,
+                            help="Report this member's clone access failures normally")
 
 
 def _add_identity_options(parser: argparse.ArgumentParser) -> None:
@@ -234,6 +239,7 @@ async def handle_repo(context: CommandContext) -> Any:
             raise CliUsageError("repo sync member path cannot be combined with global selection")
         return await context.client.repo_sync(
             context.args.member_path,
+            private=context.args.private,
             **context.meta,
         )
     raise AssertionError(context.args.repo_command)

@@ -766,6 +766,17 @@
       }
     },
     {
+      "name": "LockDifferenceReason",
+      "members": {
+        "dirty_worktree": 0,
+        "commit": 1,
+        "branch": 2,
+        "attachment": 3,
+        "missing_lock_entry": 4,
+        "unavailable_observations": 5
+      }
+    },
+    {
       "name": "GitProgressPhase",
       "members": {
         "enumerating": 0,
@@ -1805,6 +1816,25 @@
       ]
     },
     {
+      "name": "InvocationContext",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "caller_cwd",
+          "tag": 1,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
       "name": "RequestMeta",
       "reserved_tags": [],
       "reserved_names": [],
@@ -1893,6 +1923,17 @@
           "type": {
             "k": "msg",
             "name": "TransportOptions"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "invocation",
+          "tag": 9,
+          "type": {
+            "k": "msg",
+            "name": "InvocationContext"
           },
           "optional": true,
           "transient": false,
@@ -2386,6 +2427,17 @@
             }
           },
           "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "private",
+          "tag": 8,
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": true,
           "transient": false,
           "merge": null
         }
@@ -5768,6 +5820,20 @@
           "optional": true,
           "transient": false,
           "merge": null
+        },
+        {
+          "name": "lock_difference_reasons",
+          "tag": 11,
+          "type": {
+            "k": "list",
+            "elem": {
+              "k": "enum",
+              "name": "LockDifferenceReason"
+            }
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
         }
       ]
     },
@@ -6428,6 +6494,17 @@
             "name": "RequestMeta"
           },
           "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "private",
+          "tag": 2,
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": true,
           "transient": false,
           "merge": null
         }

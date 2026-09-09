@@ -42,6 +42,7 @@ def status_request() -> StatusRequest:
             dry_run=None,
             attribution=None,
             transport=None,
+            invocation=None,
         ),
         mode=StatusMode.summary,
         include_file_changes=None,

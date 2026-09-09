@@ -86,6 +86,7 @@ def test_native_bridge_routes_unsupported_methods_explicitly() -> None:
             dry_run=None,
             attribution=None,
             transport=None,
+            invocation=None,
         ),
         include_unmaterialized=True,
     )

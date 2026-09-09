@@ -104,6 +104,7 @@ class FakeClient:
             dry_run=kwargs.get("dry_run"),
             attribution=None,
             transport=None,
+            invocation=None,
         )
 
 

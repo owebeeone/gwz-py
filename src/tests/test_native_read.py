@@ -3,9 +3,71 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from gwz.protocol.generated import AggregateStatus, MemberStatus, PlannedAction
+from gwz.protocol.generated import (
+    AddExistingRepoRequest,
+    AddExistingRepoResponse,
+    AggregateStatus,
+    LsRequest,
+    LsResponse,
+    MemberStatus,
+    PlannedAction,
+)
 
 from native_helpers import commit_file, create_git_repo, git, native_client
+
+
+def test_native_serialized_caller_context_survives_executor_cwd(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Actual bridge calls must keep caller A after dispatch runs from B."""
+    caller = tmp_path / "caller-a"
+    executor = tmp_path / "executor-b"
+    workspace = caller / "workspace"
+    caller.mkdir()
+    executor.mkdir()
+    client = native_client(workspace)
+
+    monkeypatch.chdir(caller)
+    asyncio.run(client.create_workspace(workspace_id="ws_context"))
+    repo = workspace / "outside-repo"
+    caller_commit = create_git_repo(repo)
+    misleading = executor / "workspace" / "outside-repo"
+    create_git_repo(misleading)
+
+    # Construct each request while caller A is current, then dispatch it from a
+    # deliberately misleading B.  The request bytes, rather than B, define the
+    # root and relative repository operand bases.
+    ls_request = LsRequest(
+        meta=client.meta(targets=["@root"]), include_unmaterialized=True
+    )
+    add_request = AddExistingRepoRequest(
+        meta=client.meta(),
+        repository_path="workspace/outside-repo",
+        member_path=None,
+        member_id=None,
+        source_id=None,
+    )
+    monkeypatch.chdir(executor)
+
+    listed = asyncio.run(
+        client.bridge.call("ls", "LsRequest", "LsResponse", ls_request)
+    )
+    added = asyncio.run(
+        client.bridge.call(
+            "add_existing_repo",
+            "AddExistingRepoRequest",
+            "AddExistingRepoResponse",
+            add_request,
+        )
+    )
+
+    assert isinstance(listed, LsResponse)
+    assert listed.members is not None
+    assert listed.members[0].abspath == str(workspace)
+    assert isinstance(added, AddExistingRepoResponse)
+    assert added.response.members[0].member_path == "outside-repo"
+    assert added.response.members[0].state is not None
+    assert added.response.members[0].state.commit == caller_commit
 
 
 def test_native_create_workspace_and_empty_status(tmp_path: Path) -> None:
