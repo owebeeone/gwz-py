@@ -247,7 +247,7 @@ def test_native_transport_failure_retains_typed_observations(tmp_path: Path) -> 
     key = tmp_path / "key"
     key.write_text("fixture file; no server is contacted successfully")
     with pytest.raises(GwzBridgeError) as caught:
-        asyncio.run(client.tag(op="list", remote="origin", targets=["@root"], transport=TransportOptions(default_identity=str(key), remote_identities=[])))
+        asyncio.run(client.tag(op="list", remote="origin", targets=["@root"], transport=TransportOptions(default_identity=str(key), remote_identities=[], url_scheme=None)))
     meta = getattr(caught.value, "response_meta", None)
     assert meta is not None and meta.transport
     assert meta.transport[0].credential_offered is False

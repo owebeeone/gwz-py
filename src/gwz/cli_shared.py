@@ -448,7 +448,7 @@ def meta_kwargs(args: argparse.Namespace) -> dict[str, Any]:
     identity = getattr(args, "identity", None)
     remote_identities = getattr(args, "remote_identities", None) or []
     if identity is not None or remote_identities:
-        meta["transport"] = TransportOptions(default_identity=identity, remote_identities=remote_identities)
+        meta["transport"] = TransportOptions(default_identity=identity, remote_identities=remote_identities, url_scheme=None)
     if args.all_members:
         meta["all_members"] = True
     if args.targets:

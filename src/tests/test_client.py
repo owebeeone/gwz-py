@@ -630,7 +630,7 @@ def test_explicit_transport_refuses_legacy_core_before_dispatch(stream: bool) ->
 
     bridge = LegacyBridge()
     client = Client(root=Path("/tmp/workspace"), bridge=bridge)
-    transport = TransportOptions(default_identity="/tmp/key", remote_identities=[])
+    transport = TransportOptions(default_identity="/tmp/key", remote_identities=[], url_scheme=None)
 
     async def run():
         if stream:
@@ -664,7 +664,7 @@ def test_transport_capability_controls_operation_submission(supported: bool, str
 
     bridge = CapabilityBridge()
     client = Client(root=Path("/tmp/workspace"), bridge=bridge)
-    transport = TransportOptions(default_identity="/tmp/key", remote_identities=[])
+    transport = TransportOptions(default_identity="/tmp/key", remote_identities=[], url_scheme=None)
 
     async def run():
         if stream:

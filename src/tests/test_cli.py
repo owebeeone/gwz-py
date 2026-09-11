@@ -269,6 +269,7 @@ def test_cli_render_branch_switch_reports_observed_dirty_state() -> None:
             lock_match=LockMatch.matches,
             target_kind=TargetKind.member,
             lock_difference_reasons=None,
+            url_resolution=None,
         )
     )
     response = BranchResponse(

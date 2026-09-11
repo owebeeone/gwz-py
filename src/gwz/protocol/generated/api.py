@@ -488,6 +488,7 @@ class GwzErrorCode(Enum):
     unwaived_hazard = 69
     unknown_evidence = 70
     disposal_incomplete = 71
+    url_scheme_unavailable = 72
 
 class MergeRecordRequiredWave(Enum):
     a1 = 0
@@ -598,6 +599,16 @@ class TransportOperation(Enum):
     push = 2
     read_advertisement = 3
 
+class UrlScheme(Enum):
+    manifest = 0
+    ssh = 1
+    https = 2
+
+class UrlSchemeSource(Enum):
+    default = 0
+    request = 1
+    workspace = 2
+
 @dataclass(slots=True)
 class WorkspaceRef:
     root: str | None
@@ -697,9 +708,19 @@ class TransportObservation:
     public_key_fingerprint: str | None
 
 @dataclass(slots=True)
+class MemberUrlResolution:
+    manifest_url: str
+    effective_url: str
+    scheme: UrlScheme
+    source: UrlSchemeSource
+    derived: bool
+    host_known: bool
+
+@dataclass(slots=True)
 class TransportOptions:
     default_identity: str | None
     remote_identities: list[RemoteSshIdentity]
+    url_scheme: UrlScheme | None
 
 @dataclass(slots=True)
 class InvocationContext:
@@ -1177,6 +1198,7 @@ class MemberResponse:
     lock_match: LockMatch | None
     target_kind: TargetKind | None
     lock_difference_reasons: list[LockDifferenceReason] | None
+    url_resolution: MemberUrlResolution | None
 
 @dataclass(slots=True)
 class ResponseEnvelope:
