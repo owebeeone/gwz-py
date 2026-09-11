@@ -10,7 +10,7 @@ from typing import Any
 
 from .client import Client
 from .client_helpers import SUCCESS_AGGREGATE_STATUS_NAMES
-from .protocol.generated import SyncBehavior, RemoteSshIdentity, TransportOptions
+from .protocol.generated import SyncBehavior, RemoteSshIdentity, TransportOptions, UrlScheme
 
 CommandHandler = Callable[["CommandContext"], Awaitable[Any]]
 ConfigureParser = Callable[[argparse.ArgumentParser], None]
@@ -80,6 +80,15 @@ GLOBAL_SINGLETON_OPTIONS = {
     "--verbose",
     "--ssh-timeout",
 }
+
+# `--url-scheme` is a `clone`/`materialize` option, never a global one, and
+# `GWZ_URL_SCHEME` is its environment fallback; the flag wins when both are set.
+URL_SCHEME_ENV = "GWZ_URL_SCHEME"
+URL_SCHEME_CHOICES = ("manifest", "ssh", "https")
+URL_SCHEME_HELP = (
+    "URL form for known-host repositories this run clones: "
+    "manifest (as written, default), ssh, or https"
+)
 
 
 def _silence_broken_stdout(stream: object) -> None:
@@ -443,12 +452,53 @@ def validate_args(args: argparse.Namespace) -> None:
         raise CliUsageError("repo sync member path cannot be combined with global selection")
 
 
+def add_url_scheme_option(parser: argparse.ArgumentParser) -> None:
+    """Attach `--url-scheme` to one sub-command (`clone`, `materialize`)."""
+    parser.add_argument(
+        "--url-scheme",
+        dest="url_scheme",
+        choices=URL_SCHEME_CHOICES,
+        default=None,
+        help=URL_SCHEME_HELP,
+    )
+
+
+def url_scheme_from_text(value: str) -> UrlScheme | None:
+    """The scheme `value` names, trimmed and case-insensitive; None if it names none."""
+    name = value.strip().lower()
+    if name not in URL_SCHEME_CHOICES:
+        return None
+    return UrlScheme[name]
+
+
+def requested_url_scheme(args: argparse.Namespace) -> UrlScheme | None:
+    """The scheme this invocation asks core for: the flag, else `GWZ_URL_SCHEME`,
+    else nothing, in which case core applies the workspace's recorded preference
+    and then the manifest. Only the commands that carry the flag read the
+    variable, which is what the Rust CLI does."""
+    if not hasattr(args, "url_scheme"):
+        return None
+    flag = args.url_scheme
+    if flag is not None:
+        return UrlScheme[flag]
+    value = os.environ.get(URL_SCHEME_ENV)
+    if value is None or not value.strip():
+        return None
+    scheme = url_scheme_from_text(value)
+    if scheme is None:
+        raise CliUsageError(
+            f'{URL_SCHEME_ENV} must be manifest, ssh or https, not "{value.strip()}"'
+        )
+    return scheme
+
+
 def meta_kwargs(args: argparse.Namespace) -> dict[str, Any]:
     meta: dict[str, Any] = {}
     identity = getattr(args, "identity", None)
     remote_identities = getattr(args, "remote_identities", None) or []
-    if identity is not None or remote_identities:
-        meta["transport"] = TransportOptions(default_identity=identity, remote_identities=remote_identities, url_scheme=None)
+    url_scheme = requested_url_scheme(args)
+    if identity is not None or remote_identities or url_scheme is not None:
+        meta["transport"] = TransportOptions(default_identity=identity, remote_identities=remote_identities, url_scheme=url_scheme)
     if args.all_members:
         meta["all_members"] = True
     if args.targets:
