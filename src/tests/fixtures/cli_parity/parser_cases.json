@@ -49,7 +49,9 @@
     ["forall", "repos/app", "--", "echo", "{@}"],
     ["forall", "--command-string", "echo hi"],
     ["forall", "--all", "--no-target", "@root", "--", "echo", "{@}"],
-    ["clone", "https://example.invalid/workspace.git"]
+    ["clone", "https://example.invalid/workspace.git"],
+    ["clone", "--url-scheme", "https", "https://example.invalid/workspace.git"],
+    ["materialize", "--lock", "--url-scheme", "manifest"]
   ],
   "parse_reject": [
     ["repo"],
@@ -58,7 +60,9 @@
     ["repo", "attach"],
     ["commit"],
     ["stash", "drop"],
-    ["stage", "-A", "src/file.py"]
+    ["stage", "-A", "src/file.py"],
+    ["clone", "--url-scheme", "auto", "https://example.invalid/workspace.git"],
+    ["materialize", "--url-scheme"]
   ],
   "semantic_reject": [
     ["--json", "--jsonl", "status"],
@@ -78,7 +82,9 @@
     ["repo", "clone", "https://example.invalid/shared.git", "libs/shared", "--member-id", "mem_shared", "--source-id", "src_shared"],
     ["repo", "detach", "libs/shared"],
     ["repo", "attach", "mem_shared"],
-    ["merge", "feature/refactor", "--dry-run"]
+    ["merge", "feature/refactor", "--dry-run"],
+    ["clone", "--url-scheme", "ssh", "https://example.invalid/workspace.git"],
+    ["materialize", "--lock", "--url-scheme", "https"]
   ],
   "rust_version": [
     ["-V"],

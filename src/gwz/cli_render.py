@@ -29,6 +29,7 @@ from .cli_render_parts.machine import (
 )
 from .cli_render_parts.merge import render_merge_response
 from .cli_render_parts.status import render_status_porcelain, render_status_response
+from .cli_render_parts.url_scheme import url_resolution_human_lines, url_scheme_summary
 
 __all__ = [
     "json_default",
@@ -49,7 +50,10 @@ def render_response(
     rendered = _render_response(response, json_mode=json_mode, local_paths=local_paths, porcelain=porcelain)
     if json_mode or porcelain or not show_transport:
         return rendered
-    meta = getattr(getattr(response, "response", None), "meta", None)
+    envelope = getattr(response, "response", None)
+    for line in url_resolution_human_lines(getattr(envelope, "members", None) or []):
+        rendered += "\n" + line
+    meta = getattr(envelope, "meta", None)
     for line in transport_human_lines(getattr(meta, "transport", None) or []):
         rendered += "\n" + line
     return rendered
@@ -118,6 +122,7 @@ def _render_response(
         "aggregate_status",
         response,
     )
-    if isinstance(value, Enum):
-        return value.name
-    return str(value)
+    text = value.name if isinstance(value, Enum) else str(value)
+    # After the status or message line, as the Rust CLI places it.
+    summary = url_scheme_summary(getattr(envelope, "members", None) or [])
+    return f"{text}\n{summary}" if summary else text

@@ -899,7 +899,8 @@
         "import_incomplete": 68,
         "unwaived_hazard": 69,
         "unknown_evidence": 70,
-        "disposal_incomplete": 71
+        "disposal_incomplete": 71,
+        "url_scheme_unavailable": 72
       }
     },
     {
@@ -1060,6 +1061,22 @@
         "fetch": 1,
         "push": 2,
         "read_advertisement": 3
+      }
+    },
+    {
+      "name": "UrlScheme",
+      "members": {
+        "manifest": 0,
+        "ssh": 1,
+        "https": 2
+      }
+    },
+    {
+      "name": "UrlSchemeSource",
+      "members": {
+        "default": 0,
+        "request": 1,
+        "workspace": 2
       }
     }
   ],
@@ -1783,6 +1800,80 @@
       ]
     },
     {
+      "name": "MemberUrlResolution",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "manifest_url",
+          "tag": 1,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "effective_url",
+          "tag": 2,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "scheme",
+          "tag": 3,
+          "type": {
+            "k": "enum",
+            "name": "UrlScheme"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "source",
+          "tag": 4,
+          "type": {
+            "k": "enum",
+            "name": "UrlSchemeSource"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "derived",
+          "tag": 5,
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "host_known",
+          "tag": 6,
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
       "name": "TransportOptions",
       "reserved_tags": [],
       "reserved_names": [],
@@ -1810,6 +1901,17 @@
             }
           },
           "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "url_scheme",
+          "tag": 3,
+          "type": {
+            "k": "enum",
+            "name": "UrlScheme"
+          },
+          "optional": true,
           "transient": false,
           "merge": null
         }
@@ -5830,6 +5932,17 @@
               "k": "enum",
               "name": "LockDifferenceReason"
             }
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "url_resolution",
+          "tag": 12,
+          "type": {
+            "k": "msg",
+            "name": "MemberUrlResolution"
           },
           "optional": true,
           "transient": false,

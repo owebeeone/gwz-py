@@ -618,12 +618,13 @@ def test_clean_merge_jsonl_reports_verified_publication_artifacts_in_order(
                 in {"gwz.conf/gwz.lock.yml", ".git/info/exclude"}
             )
         ]
-        assert len(artifact_paths) == 4
+        assert len(artifact_paths) == 5
         assert artifact_paths[0].startswith("git:@root/")
         assert artifact_paths[1].startswith("gwz.conf/markers/")
         assert artifact_paths[2:] == [
             "gwz.conf/gwz.lock.yml",
             ".git/info/exclude",
+            "gwz.conf/markers/conf-integrity.yml",
         ]
 
 

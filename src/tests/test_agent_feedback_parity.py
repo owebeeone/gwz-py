@@ -12,7 +12,7 @@ import pytest
 
 from gwz.errors import GwzOperationError
 from gwz.protocol.generated import AggregateStatus, LockDifferenceReason, LockMatch
-from native_helpers import create_git_repo, git, native_client
+from native_helpers import commit_file, create_git_repo, git, init_bare_repo, native_client
 
 
 def _drivers() -> tuple[list[str], list[str]]:
@@ -26,6 +26,15 @@ def _run_driver(driver: list[str], cwd: Path, *args: str) -> subprocess.Complete
     return subprocess.run(
         [*driver, *args], cwd=cwd, check=False, capture_output=True, text=True
     )
+
+
+def _response_members(document: dict[str, object]) -> list[dict[str, object]]:
+    # The Rust CLI projects the envelope at the top level; Python's decoded
+    # response keeps the wrapper the protocol gives it.
+    members = document.get("members")
+    if members is None:
+        members = document["response"]["members"]  # type: ignore[index]
+    return members  # type: ignore[return-value]
 
 
 def _listed_entries(document: dict[str, object]) -> list[dict[str, object]]:
@@ -213,3 +222,55 @@ def test_dirty_registration_status_sync_and_no_commit_agree_across_drivers(tmp_p
         assert row["lock_difference_reasons"] == ["DirtyWorktree"]
     assert git(repo, "rev-parse", "HEAD") == before
     assert (repo / "README.md").read_text(encoding="utf-8") == "uncommitted work to preserve\n"
+
+
+def _url_scheme_origin(tmp_path: Path) -> Path:
+    """A clonable workspace whose one member has a local origin: an unknown
+    host, so a requested scheme is reported and recorded but rewrites nothing."""
+    origin = tmp_path / "origin"
+    client = native_client(origin)
+    asyncio.run(client.create_workspace(workspace_id="ws_url_scheme"))
+    asyncio.run(client.create_repo("repos/app", member_id="mem_app", source_id="src_app"))
+    member = origin / "repos" / "app"
+    commit_file(member, "README.md", "one\n", "initial")
+    remote = tmp_path / "member.git"
+    init_bare_repo(remote)
+    git(member, "remote", "add", "origin", str(remote))
+    git(member, "push", "origin", "HEAD:refs/heads/main")
+    asyncio.run(client.repo_sync("repos/app"))
+    asyncio.run(client.capture(paths=["repos/app"]))
+    git(origin, "config", "user.name", "GWZ Test")
+    git(origin, "config", "user.email", "gwz@example.invalid")
+    git(origin, "add", "-A")
+    git(origin, "commit", "-m", "workspace")
+    return origin
+
+
+def test_clone_url_scheme_reports_the_same_resolution_from_both_drivers(tmp_path: Path) -> None:
+    origin = _url_scheme_origin(tmp_path)
+    resolutions: list[dict[str, object]] = []
+
+    for index, driver in enumerate(_drivers()):
+        target = tmp_path / f"target-{index}"
+        clone = _run_driver(
+            driver, tmp_path, "--json", "clone", "--url-scheme", "https",
+            str(origin), str(target),
+        )
+        assert clone.returncode == 0, clone.stderr
+        resolution = _response_members(json.loads(clone.stdout))[0]["url_resolution"]
+        assert resolution["scheme"] == "https", resolution
+        assert resolution["source"] == "request", resolution
+        assert resolution["derived"] is False, resolution
+        assert resolution["host_known"] is False, resolution
+        assert resolution["manifest_url"] == resolution["effective_url"], resolution
+        assert (target / "repos" / "app" / "README.md").is_file()
+        recorded = (target / ".gwz" / "url-scheme.yml").read_text(encoding="utf-8")
+        assert "scheme: https" in recorded, recorded
+        resolutions.append(resolution)
+
+        # A member already checked out is not cloned and carries no resolution.
+        again = _run_driver(driver, target, "--json", "materialize", "--lock")
+        assert again.returncode == 0, again.stderr
+        assert _response_members(json.loads(again.stdout))[0]["url_resolution"] is None
+
+    assert resolutions[0] == resolutions[1]

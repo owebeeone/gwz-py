@@ -7,7 +7,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from .cli_shared import CliUsageError, CommandContext, CommandRegistry
+from .cli_shared import (
+    CliUsageError,
+    CommandContext,
+    CommandRegistry,
+    add_url_scheme_option,
+)
 from .errors import GwzBridgeError
 from .protocol.generated import (
     ActionKind,
@@ -99,6 +104,7 @@ async def handle_forall(context: CommandContext) -> ExecResponse:
 def configure_clone(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("url", help="Git URL of the workspace root repository")
     parser.add_argument("directory", nargs="?", help="Target directory for the cloned workspace")
+    add_url_scheme_option(parser)
 
 
 async def handle_clone(context: CommandContext) -> Any:

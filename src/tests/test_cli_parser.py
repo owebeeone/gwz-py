@@ -13,7 +13,7 @@ from gwz.cli_shared import (
     meta_kwargs,
     validate_args,
 )
-from gwz.protocol.generated import SyncBehavior
+from gwz.protocol.generated import SyncBehavior, TransportOptions, UrlScheme
 
 def test_ssh_identity_flags_preserve_remote_overrides_and_equals_in_paths() -> None:
     args = build_parser().parse_args(["--identity", "default=key", "push", "--remote-identity", "origin=work=key", "--remote-identity", "upstream=other-key"])
@@ -231,3 +231,100 @@ def test_local_identity_configuration_parser() -> None:
     assert meta_kwargs(args)["targets"] == ["@root"]
     with pytest.raises(SystemExit):
         build_parser().parse_args(["auth", "identity", "origin", "--set", "key", "--unset"])
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["clone", "--url-scheme", "ssh", "https://example.invalid/ws.git"],
+        ["materialize", "--url-scheme", "ssh", "--lock"],
+    ],
+)
+def test_url_scheme_flag_carries_the_scheme_on_clone_and_materialize(
+    argv: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("GWZ_URL_SCHEME", raising=False)
+    args = build_parser().parse_args(argv)
+
+    validate_args(args)
+    assert args.url_scheme == "ssh"
+    assert meta_kwargs(args) == {
+        "transport": TransportOptions(
+            default_identity=None, remote_identities=[], url_scheme=UrlScheme.ssh
+        )
+    }
+
+
+def test_url_scheme_rides_the_transport_options_an_identity_already_built(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("GWZ_URL_SCHEME", raising=False)
+    args = build_parser().parse_args(
+        [
+            "--identity",
+            "key",
+            "clone",
+            "--remote-identity",
+            "origin=other-key",
+            "--url-scheme",
+            "https",
+            "https://example.invalid/ws.git",
+        ]
+    )
+
+    validate_args(args)
+    transport = meta_kwargs(args)["transport"]
+    assert transport.default_identity == "key"
+    assert [entry.remote for entry in transport.remote_identities] == ["origin"]
+    assert transport.url_scheme is UrlScheme.https
+
+
+def test_no_url_scheme_request_leaves_the_request_meta_untouched(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("GWZ_URL_SCHEME", raising=False)
+    clone = build_parser().parse_args(["clone", "https://example.invalid/ws.git"])
+    identity = build_parser().parse_args(
+        ["--identity", "key", "clone", "https://example.invalid/ws.git"]
+    )
+
+    assert clone.url_scheme is None
+    assert meta_kwargs(clone) == {}
+    assert meta_kwargs(identity)["transport"] == TransportOptions(
+        default_identity="key", remote_identities=[], url_scheme=None
+    )
+
+
+def test_url_scheme_environment_fallback_is_trimmed_and_case_insensitive(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GWZ_URL_SCHEME", "  HTTPS  ")
+    args = build_parser().parse_args(["materialize", "--lock"])
+
+    assert meta_kwargs(args)["transport"].url_scheme is UrlScheme.https
+
+    monkeypatch.setenv("GWZ_URL_SCHEME", "   ")
+    assert meta_kwargs(build_parser().parse_args(["materialize", "--lock"])) == {}
+
+
+def test_url_scheme_flag_wins_over_the_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GWZ_URL_SCHEME", "ssh")
+    args = build_parser().parse_args(["materialize", "--lock", "--url-scheme", "manifest"])
+
+    assert meta_kwargs(args)["transport"].url_scheme is UrlScheme.manifest
+
+
+def test_url_scheme_environment_is_refused_before_any_workspace_access(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GWZ_URL_SCHEME", "auto")
+    args = build_parser().parse_args(["clone", "https://example.invalid/ws.git"])
+
+    with pytest.raises(CliUsageError) as caught:
+        meta_kwargs(args)
+
+    assert str(caught.value) == 'GWZ_URL_SCHEME must be manifest, ssh or https, not "auto"'
+    # A command without the option never reads the variable, as in the Rust CLI.
+    assert meta_kwargs(build_parser().parse_args(["status"])) == {}

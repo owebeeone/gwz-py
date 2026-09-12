@@ -4,7 +4,12 @@ import argparse
 from pathlib import Path
 from typing import Any
 
-from .cli_shared import CliUsageError, CommandContext, CommandRegistry
+from .cli_shared import (
+    CliUsageError,
+    CommandContext,
+    CommandRegistry,
+    add_url_scheme_option,
+)
 from .protocol.generated import SnapshotSource, SnapshotSourceKind, TagOp
 
 
@@ -56,6 +61,7 @@ def configure_materialize(parser: argparse.ArgumentParser) -> None:
     target.add_argument("--snapshot", help="Materialize a workspace snapshot")
     target.add_argument("--tag", help="Materialize a workspace tag")
     target.add_argument("--switch", metavar="branch", help="Switch workspace members to a branch")
+    add_url_scheme_option(parser)
 
 
 async def handle_materialize(context: CommandContext) -> Any:

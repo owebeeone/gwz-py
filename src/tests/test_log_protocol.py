@@ -112,7 +112,19 @@ from gwz.protocol.codec import decode_message, encode_message, from_wire, schema
 #   was: ba55594fa54123b865e06eb4bedfbf1eba4c9f52467a468831f9b699df0763a2
 # Debt recovery adds only GwzCore.resolve_forall_targets using existing messages.
 # Removing that method reproduces the prior e99ce51a85b439fb03bb43df5beb3a33156048b8212d3f2fc609ba2db163db32 pin exactly.
-PRE_LOG_WIRE_SHA256 = "8aa25038218daf2d085b62bb37fb4438afd06bb77628746dac80efe53a56e76c"
+# Moved deliberately on 2026-09-12 by the URL-scheme feature (gwz-dev
+# dev-docs/GwzUrlSchemePlan.md §2.7, step 1.2), which adds exactly: enum
+# UrlScheme (manifest=0, ssh=1, https=2), enum UrlSchemeSource (default=0,
+# request=1, workspace=2), message MemberUrlResolution (tags 1-6), optional
+# TransportOptions.url_scheme (tag 3), optional MemberResponse.url_resolution
+# (tag 12) and GwzErrorCode.url_scheme_unavailable (72). The projection strips
+# only `Log*` items, so all of these are inside it and the pin moves with them.
+# MEASURED additive, not assumed: gwz-core's protocol/check_log_additive.py
+# rendered the projection on both trees and diffed them -- 113 added lines,
+# 0 removed lines; the previous pin reproduced exactly on the pre-change tree
+# (gwz-core 200be4e).
+#   was: 8aa25038218daf2d085b62bb37fb4438afd06bb77628746dac80efe53a56e76c
+PRE_LOG_WIRE_SHA256 = "111103e545198a90e1348460713653f8bcfa59122aba54ef3f7437a1174a6ba5"
 
 
 def _round_trip(message_name: str, value: object) -> None:
