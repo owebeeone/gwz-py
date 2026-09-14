@@ -21,6 +21,13 @@ source:
   to the matching published gwz-core release, so wheel builds are reproducible.
   **Release tags are cut off `release`.**
 
+gwz-py builds its core from the gwz-core git tag, while the gwz-cli it tests
+against builds its core from crates.io and so reports `revision=unavailable`
+(gwz-core `dev-docs/GwzCratesIoPlan.md` D7). In that case
+`test_native_module_reports_compiled_core_provenance` compares the gwz-core
+version and build kind instead of the whole core provenance, which it still
+requires when both sides report a git revision, as development builds do.
+
 ## One-Time Release Branch Bootstrap
 
 For the first gwz-py release, bootstrap the `release` branch through the release
