@@ -93,6 +93,7 @@ from .protocol.generated import (
     PullSnapshotResponse,
     PushRequest,
     PushResponse,
+    RemoteCheck,
     RepoSyncRequest,
     RepoSyncResponse,
     RequestMeta,
@@ -798,9 +799,10 @@ class Client:
         *,
         remote: str | None = None,
         refspec: str | None = None,
+        remote_check: RemoteCheck | None = None,
         **meta: Any,
     ) -> PushResponse:
-        request = PushRequest(meta=self.meta(**meta), remote=remote, refspec=refspec, remote_check=None)
+        request = PushRequest(meta=self.meta(**meta), remote=remote, refspec=refspec, remote_check=remote_check)
         return await self._call("push", request, PushResponse)
 
     def push_stream(
@@ -808,9 +810,10 @@ class Client:
         *,
         remote: str | None = None,
         refspec: str | None = None,
+        remote_check: RemoteCheck | None = None,
         **meta: Any,
     ) -> AsyncIterator[OperationEvent]:
-        request = PushRequest(meta=self.meta(**meta), remote=remote, refspec=refspec, remote_check=None)
+        request = PushRequest(meta=self.meta(**meta), remote=remote, refspec=refspec, remote_check=remote_check)
         return self._stream_call("push", request, PushResponse)
 
     async def stash(

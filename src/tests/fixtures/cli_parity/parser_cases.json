@@ -42,6 +42,7 @@
     ["pull", "--snapshot", "snap_1"],
     ["push"],
     ["push", "--target", "@root"],
+    ["push", "--check-remotes"],
     ["branch", "--create", "feature", "--from", "main", "--switch"],
     ["merge", "feature/refactor", "--dry-run"],
     ["stash", "push", "-u", "-m", "work"],
@@ -62,7 +63,8 @@
     ["stash", "drop"],
     ["stage", "-A", "src/file.py"],
     ["clone", "--url-scheme", "auto", "https://example.invalid/workspace.git"],
-    ["materialize", "--url-scheme"]
+    ["materialize", "--url-scheme"],
+    ["pull", "--check-remotes"]
   ],
   "semantic_reject": [
     ["--json", "--jsonl", "status"],
