@@ -800,7 +800,7 @@ class Client:
         refspec: str | None = None,
         **meta: Any,
     ) -> PushResponse:
-        request = PushRequest(meta=self.meta(**meta), remote=remote, refspec=refspec)
+        request = PushRequest(meta=self.meta(**meta), remote=remote, refspec=refspec, remote_check=None)
         return await self._call("push", request, PushResponse)
 
     def push_stream(
@@ -810,7 +810,7 @@ class Client:
         refspec: str | None = None,
         **meta: Any,
     ) -> AsyncIterator[OperationEvent]:
-        request = PushRequest(meta=self.meta(**meta), remote=remote, refspec=refspec)
+        request = PushRequest(meta=self.meta(**meta), remote=remote, refspec=refspec, remote_check=None)
         return self._stream_call("push", request, PushResponse)
 
     async def stash(

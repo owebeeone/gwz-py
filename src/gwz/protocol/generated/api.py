@@ -609,6 +609,10 @@ class UrlSchemeSource(Enum):
     request = 1
     workspace = 2
 
+class RemoteCheck(Enum):
+    changed = 0
+    always = 1
+
 @dataclass(slots=True)
 class WorkspaceRef:
     root: str | None
@@ -1399,6 +1403,7 @@ class PushRequest:
     meta: RequestMeta
     remote: str | None
     refspec: str | None
+    remote_check: RemoteCheck | None
 
 @dataclass(slots=True)
 class StashRequest:
