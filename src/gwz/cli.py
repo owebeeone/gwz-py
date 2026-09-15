@@ -32,7 +32,7 @@ from .cli_shared import (
 )
 from .client import Client
 from .errors import GwzError, GwzOperationError
-from .protocol.generated import MergeResponse
+from .protocol.generated import MergeResponse, PushResponse
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -113,6 +113,10 @@ async def run(args: argparse.Namespace) -> int:
 def _renderable_operation_response(args: argparse.Namespace, exc: GwzOperationError) -> object | None:
     response = exc.response
     if isinstance(response, MergeResponse):
+        return response
+    # A failed or refused push says why on its rows (push plan §3.6), which only
+    # the rendered response shows.
+    if isinstance(response, PushResponse):
         return response
     if (
         getattr(args, "command", None) == "status"

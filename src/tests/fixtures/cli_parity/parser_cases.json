@@ -42,7 +42,6 @@
     ["pull", "--snapshot", "snap_1"],
     ["push"],
     ["push", "--target", "@root"],
-    ["push", "--check-remotes"],
     ["branch", "--create", "feature", "--from", "main", "--switch"],
     ["merge", "feature/refactor", "--dry-run"],
     ["stash", "push", "-u", "-m", "work"],
@@ -86,7 +85,8 @@
     ["repo", "attach", "mem_shared"],
     ["merge", "feature/refactor", "--dry-run"],
     ["clone", "--url-scheme", "ssh", "https://example.invalid/workspace.git"],
-    ["materialize", "--lock", "--url-scheme", "https"]
+    ["materialize", "--lock", "--url-scheme", "https"],
+    ["push", "--check-remotes"]
   ],
   "rust_version": [
     ["-V"],

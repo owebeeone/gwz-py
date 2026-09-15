@@ -1,12 +1,13 @@
 """Human rendering of push `noop` reasons, which core carries in `planned.message`
-(D11), and of the summary line for repositories a push did not check."""
+(D11), of the summary line for repositories a push did not check, and of the
+errors on rows a push failed or refused."""
 
 from __future__ import annotations
 
 from typing import Any
 
 from ..protocol.generated import PlannedAction
-from .common import is_response
+from .common import enum_label, is_response
 
 
 def is_unchecked_reason(reason: str | None) -> bool:
@@ -30,6 +31,20 @@ def unchecked_summary(response: Any) -> str | None:
 def noop_reason_human_lines(response: Any) -> list[str]:
     """One line per push row that pushed nothing, with its reason, for `--verbose`."""
     return [f"{path}: {reason}" for path, reason in _noop_reasons(response)]
+
+
+def error_human_lines(response: Any) -> list[str]:
+    """One line per push row that failed or was refused, with core's message. A root
+    refused for a missing dependency names the member, the commit and the remedies
+    (push plan §3.6)."""
+    if not is_response(response, "PushResponse", "push"):
+        return []
+    lines = []
+    for member in getattr(getattr(response, "response", None), "members", None) or []:
+        error = getattr(member, "error", None)
+        if error is not None:
+            lines.append(f"{member.member_path}: {enum_label(error.code)}: {error.message}")
+    return lines
 
 
 def _noop_reasons(response: Any) -> list[tuple[str, str]]:

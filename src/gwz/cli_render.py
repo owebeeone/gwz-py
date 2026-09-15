@@ -28,7 +28,7 @@ from .cli_render_parts.machine import (
     operation_event_json,
 )
 from .cli_render_parts.merge import render_merge_response
-from .cli_render_parts.push import noop_reason_human_lines, unchecked_summary
+from .cli_render_parts.push import error_human_lines, noop_reason_human_lines, unchecked_summary
 from .cli_render_parts.status import render_status_porcelain, render_status_response
 from .cli_render_parts.url_scheme import url_resolution_human_lines, url_scheme_summary
 
@@ -126,7 +126,8 @@ def _render_response(
         response,
     )
     text = value.name if isinstance(value, Enum) else str(value)
-    # After the status or message line, where the Rust CLI places the url scheme summary.
+    # After the status or message line: the error of each failed or refused push row,
+    # then the summaries, where the Rust CLI places the url scheme summary.
     members = getattr(envelope, "members", None) or []
     summaries = (url_scheme_summary(members), unchecked_summary(response))
-    return "\n".join([text, *(summary for summary in summaries if summary)])
+    return "\n".join([text, *error_human_lines(response), *(summary for summary in summaries if summary)])
