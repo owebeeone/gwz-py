@@ -9,7 +9,6 @@ import sys
 from typing import Any
 
 from .client import Client
-from .client_helpers import SUCCESS_AGGREGATE_STATUS_NAMES
 from .protocol.generated import SyncBehavior, RemoteSshIdentity, TransportOptions, UrlScheme
 
 CommandHandler = Callable[["CommandContext"], Awaitable[Any]]
@@ -530,6 +529,24 @@ def exit_code_for_error(error: BaseException) -> int:
     return 2 if isinstance(error, CliUsageError) else 1
 
 
+# The Rust CLI's table (`gwz-cli/src/globalargs/render_exit.rs`, documented in
+# `gwz-cli/docs/MachineOutput.md`, "Exit Codes"): a refusal exits 2 so a script
+# can tell a policy refusal from an operation failure, and a dirty workspace is
+# the normal resting state, like `git status`, so it exits 0. This is the CLI's
+# own mapping; `client_helpers.SUCCESS_AGGREGATE_STATUS_NAMES` drives the Python
+# API's `raise_for_response`, which still raises on `dirty`.
+CLI_EXIT_CODES = {
+    "accepted": 0,
+    "ok": 0,
+    "noop": 0,
+    "dirty": 0,
+    "partial": 1,
+    "failed": 1,
+    "conflicted": 1,
+    "rejected": 2,
+}
+
+
 def exit_code_for_response(response: Any) -> int:
     envelope = getattr(response, "response", None)
     meta = getattr(envelope, "meta", None)
@@ -537,7 +554,8 @@ def exit_code_for_response(response: Any) -> int:
     if aggregate is None:
         return 0
     name = getattr(aggregate, "name", str(aggregate))
-    return 0 if name in SUCCESS_AGGREGATE_STATUS_NAMES else 1
+    # A status the table does not list is an operation failure.
+    return CLI_EXIT_CODES.get(name, 1)
 
 
 def positive_int(value: str) -> int:

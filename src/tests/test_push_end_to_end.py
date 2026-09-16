@@ -319,9 +319,9 @@ def test_python_cli_presents_a_root_refused_for_a_missing_dependency(tmp_path: P
     human = run_cli(PYTHON_CLI, workspace.root, "push")
     machine = run_cli(PYTHON_CLI, workspace.root, "--json", "push")
 
-    # gwz-py exits 1 for a rejected aggregate; the Rust CLI exits 2.
-    assert (human.returncode, human.stderr) == (1, ""), human.stdout
-    assert (machine.returncode, machine.stderr) == (1, ""), machine.stdout
+    # A refused aggregate exits 2 in both CLIs (`gwz-cli/docs/MachineOutput.md`).
+    assert (human.returncode, human.stderr) == (2, ""), human.stdout
+    assert (machine.returncode, machine.stderr) == (2, ""), machine.stdout
     response = json.loads(machine.stdout)["response"]
     assert response["meta"]["aggregate_status"] == "rejected"
     assert push_rows(response)[:2] == [workspace.noop_row(APP, UP_TO_DATE), workspace.noop_row(LIB, UP_TO_DATE)]
@@ -349,6 +349,25 @@ def rust_cli() -> list[str]:
     if not rust_bin:
         pytest.skip("run_tests.py provides the matching Rust CLI")
     return [rust_bin]
+
+
+def test_both_clis_exit_two_when_the_root_publication_is_refused(tmp_path: Path) -> None:
+    """A refusal exits 2 in both CLIs, so a script can tell a policy refusal from
+    an operation failure (`gwz-cli/docs/MachineOutput.md`, "Exit Codes")."""
+    workspace = PublishedWorkspace(tmp_path)
+    # Rewind `app`'s remote below the commit the root lock names, as above.
+    earlier = git(workspace.root / APP[1], "rev-parse", "HEAD~1")
+    git(workspace.remote("app"), "update-ref", "refs/heads/main", earlier)
+    commit_file(workspace.root, "NOTES.md", "notes\n", "notes")
+
+    for name, driver in (("rust", rust_cli()), ("python", PYTHON_CLI)):
+        result = run_cli(driver, workspace.root, "--json", "push")
+
+        assert result.returncode == 2, (name, result.stdout, result.stderr)
+        document = json.loads(result.stdout)
+        # The Rust CLI's document is the envelope; gwz-py nests it under `response`.
+        envelope = document.get("response", document)
+        assert label(envelope["meta"]["aggregate_status"]) == "rejected", name
 
 
 def label(value: str) -> str:
