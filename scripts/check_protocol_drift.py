@@ -145,7 +145,17 @@ PRE_LOG_WIRE_FINGERPRINT = (
     # diffed them -- 113 added lines, 0 removed lines; the previous pin
     # reproduced exactly on the pre-change tree (gwz-core 200be4e).
     #   was: sha256:8aa25038218daf2d085b62bb37fb4438afd06bb77628746dac80efe53a56e76c
-    "sha256:111103e545198a90e1348460713653f8bcfa59122aba54ef3f7437a1174a6ba5"
+    #
+    # Moved deliberately again on 2026-09-14 by the push plan (gwz-dev
+    # dev-docs/GwzUrlSchemePushPlan.md D7, step 3.2), which adds exactly: enum
+    # RemoteCheck (changed=0, always=1) and optional PushRequest.remote_check
+    # (tag 4). `pre_log_projection` strips only `Log*` items, so both are inside
+    # the projection and the pin moves with them. MEASURED additive, not assumed:
+    # gwz-core's protocol/check_log_additive.py rendered the projection on both
+    # trees and diffed them -- 18 added lines, 0 removed lines; the previous pin
+    # reproduced exactly on the pre-change tree (gwz-core c9c7a98).
+    #   was: sha256:111103e545198a90e1348460713653f8bcfa59122aba54ef3f7437a1174a6ba5
+    "sha256:6262b4b4d06c07b9ea7fa2d432c3921899f901bebaeeab006b6c4cd9e023c1f5"
 )
 
 

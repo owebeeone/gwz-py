@@ -3,13 +3,20 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
 from gwz import cli
 from gwz.cli import build_parser
-from gwz.cli_shared import CliUsageError, CommandContext, meta_kwargs, validate_args
+from gwz.cli_shared import (
+    CliUsageError,
+    CommandContext,
+    exit_code_for_response,
+    meta_kwargs,
+    validate_args,
+)
 from gwz.protocol.generated import (
     ActionKind,
     AggregateStatus,
@@ -227,6 +234,41 @@ def test_cli_parity_renders_high_priority_human_output(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     assert _run_cli(argv, monkeypatch, capsys) == expected
+
+
+def aggregate_response(aggregate: Any) -> Any:
+    """A response envelope carrying just the aggregate status the CLI exits on."""
+    return SimpleNamespace(response=SimpleNamespace(meta=SimpleNamespace(aggregate_status=aggregate)))
+
+
+# The Rust CLI's table (`gwz-cli/docs/MachineOutput.md`, "Exit Codes", and
+# `gwz-cli/src/globalargs/render_exit.rs`). A refused push exits 2 so a script
+# can tell a policy refusal from an operation failure; a dirty workspace is the
+# normal resting state, like `git status`, and exits 0.
+@pytest.mark.parametrize(
+    "status,expected",
+    [
+        (AggregateStatus.accepted, 0),
+        (AggregateStatus.ok, 0),
+        (AggregateStatus.noop, 0),
+        (AggregateStatus.dirty, 0),
+        (AggregateStatus.partial, 1),
+        (AggregateStatus.failed, 1),
+        (AggregateStatus.conflicted, 1),
+        (AggregateStatus.rejected, 2),
+    ],
+)
+def test_cli_parity_exit_code_matches_the_rust_cli_table(status: Any, expected: int) -> None:
+    assert exit_code_for_response(aggregate_response(status)) == expected
+
+
+def test_cli_parity_exit_code_without_an_aggregate_status_is_success() -> None:
+    assert exit_code_for_response(aggregate_response(None)) == 0
+    assert exit_code_for_response(object()) == 0
+
+
+def test_cli_parity_exit_code_of_a_status_outside_the_table_is_failure() -> None:
+    assert exit_code_for_response(aggregate_response(SimpleNamespace(name="invented"))) == 1
 
 
 def test_cli_parity_snapshot_without_name_lists_snapshots() -> None:

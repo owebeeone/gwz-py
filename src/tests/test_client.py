@@ -43,7 +43,9 @@ from gwz.protocol.generated import (
     OperationResult,
     PullHeadResponse,
     PullSnapshotResponse,
+    PushRequest,
     PushResponse,
+    RemoteCheck,
     RepoSyncRequest,
     RepoSyncResponse,
     ResponseEnvelope,
@@ -680,6 +682,26 @@ def test_transport_capability_controls_operation_submission(supported: bool, str
         with pytest.raises(GwzBridgeError, match="identity"):
             asyncio.run(run())
         assert [call[0] for call in bridge.calls] == ["transport_capabilities"]
+
+
+@pytest.mark.parametrize("stream", [False, True])
+def test_push_sends_the_requested_remote_check(stream: bool) -> None:
+    bridge = FakeBridge()
+    client = Client(root=Path("/tmp/workspace"), bridge=bridge)
+
+    async def push(**kwargs: Any) -> None:
+        if stream:
+            async for _event in client.push_stream(**kwargs):
+                pass
+        else:
+            await client.push(**kwargs)
+
+    asyncio.run(push())
+    asyncio.run(push(remote_check=RemoteCheck.always))
+
+    requests = [call[3] for call in bridge.calls if call[0] == "push"]
+    assert all(isinstance(request, PushRequest) for request in requests)
+    assert [request.remote_check for request in requests] == [None, RemoteCheck.always]
 
 
 def test_timeout_configuration_is_a_typed_startup_call() -> None:

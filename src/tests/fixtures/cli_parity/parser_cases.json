@@ -62,7 +62,8 @@
     ["stash", "drop"],
     ["stage", "-A", "src/file.py"],
     ["clone", "--url-scheme", "auto", "https://example.invalid/workspace.git"],
-    ["materialize", "--url-scheme"]
+    ["materialize", "--url-scheme"],
+    ["pull", "--check-remotes"]
   ],
   "semantic_reject": [
     ["--json", "--jsonl", "status"],
@@ -84,7 +85,8 @@
     ["repo", "attach", "mem_shared"],
     ["merge", "feature/refactor", "--dry-run"],
     ["clone", "--url-scheme", "ssh", "https://example.invalid/workspace.git"],
-    ["materialize", "--lock", "--url-scheme", "https"]
+    ["materialize", "--lock", "--url-scheme", "https"],
+    ["push", "--check-remotes"]
   ],
   "rust_version": [
     ["-V"],

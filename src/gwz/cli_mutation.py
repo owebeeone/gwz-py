@@ -10,7 +10,7 @@ from .cli_shared import (
     CommandRegistry,
     add_url_scheme_option,
 )
-from .protocol.generated import SnapshotSource, SnapshotSourceKind, TagOp
+from .protocol.generated import RemoteCheck, SnapshotSource, SnapshotSourceKind, TagOp
 
 
 def register_commands(registry: CommandRegistry) -> None:
@@ -51,7 +51,12 @@ def register_commands(registry: CommandRegistry) -> None:
         configure=configure_pull,
         handler=handle_pull,
     )
-    registry.register("push", help="Push workspace member refs", handler=handle_push)
+    registry.register(
+        "push",
+        help="Push workspace member refs",
+        configure=configure_push,
+        handler=handle_push,
+    )
 
 
 def configure_materialize(parser: argparse.ArgumentParser) -> None:
@@ -209,9 +214,21 @@ async def handle_pull(context: CommandContext) -> Any:
     return await context.client.pull_head(**context.meta)
 
 
+def configure_push(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--check-remotes",
+        action="store_true",
+        help=(
+            "Read every selected remote and every root dependency instead of skipping "
+            "repositories that are unchanged since the last fetch or push"
+        ),
+    )
+
+
 async def handle_push(context: CommandContext) -> Any:
     return await context.client.push(
         remote=context.meta.get("remote"),
+        remote_check=RemoteCheck.always if context.args.check_remotes else None,
         **_meta_without(context.meta, "remote"),
     )
 

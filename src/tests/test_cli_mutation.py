@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import asyncio
 from typing import Any
 
@@ -7,7 +8,7 @@ import pytest
 
 from gwz.cli import build_parser
 from gwz.cli_shared import CommandContext, meta_kwargs, validate_args
-from gwz.protocol.generated import SnapshotSourceKind, TagOp
+from gwz.protocol.generated import RemoteCheck, SnapshotSourceKind, TagOp
 
 
 class FakeClient:
@@ -140,3 +141,36 @@ def test_snapshot_list_calls_client(argv: list[str]) -> None:
 
     assert run_handler(argv, client) == "list_snapshots"
     assert client.calls[0][0] == "list_snapshots"
+
+
+def test_push_check_remotes_asks_core_to_read_every_remote() -> None:
+    client = FakeClient()
+
+    run_handler(["push"], client)
+    run_handler(["push", "--check-remotes"], client)
+    run_handler(["push", "--force", "--check-remotes"], client)
+
+    assert [call[2]["remote_check"] for call in client.calls] == [
+        None,
+        RemoteCheck.always,
+        RemoteCheck.always,
+    ]
+    # `--force` stays the destructive policy; it never becomes a forced refspec.
+    assert client.calls[2][2]["destructive"] is True
+    assert "refspec" not in client.calls[2][2]
+
+
+def test_push_check_remotes_help_uses_the_shared_text() -> None:
+    subparsers = next(
+        action for action in build_parser()._actions if isinstance(action, argparse._SubParsersAction)
+    )
+    option = next(
+        action
+        for action in subparsers.choices["push"]._actions
+        if "--check-remotes" in action.option_strings
+    )
+
+    assert option.help == (
+        "Read every selected remote and every root dependency instead of skipping "
+        "repositories that are unchanged since the last fetch or push"
+    )

@@ -1078,6 +1078,13 @@
         "request": 1,
         "workspace": 2
       }
+    },
+    {
+      "name": "RemoteCheck",
+      "members": {
+        "changed": 0,
+        "always": 1
+      }
     }
   ],
   "messages": [
@@ -7451,6 +7458,17 @@
           "type": {
             "k": "scalar",
             "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "remote_check",
+          "tag": 4,
+          "type": {
+            "k": "enum",
+            "name": "RemoteCheck"
           },
           "optional": true,
           "transient": false,
