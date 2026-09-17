@@ -1010,6 +1010,9 @@ def test_local_list_renders_the_design_table(
     # Design §8.1: the absolute paths in the sample listing are literal, not
     # the driver's guess. Every `path` below is root-relative, exactly as the
     # wire carries it, and the column is the join with `root_path`.
+    #
+    # No row records an R20 owner, so the owner column is absent and §8.1's
+    # four columns render exactly.
     monkeypatch.setattr(cli, "Client", listing_client_factory(DESIGN_FAMILY))
 
     exit_code = cli.main(["local", "list"])
@@ -1022,6 +1025,34 @@ def test_local_list_renders_the_design_table(
         f"C     checkout  ready  {Path('/Users/limbo/gwz-dev-C')}\n"
         f"D     checkout  ready  {Path('/Users/limbo/gwz-dev-D')}\n"
         f"hub   bare      ready  {Path('/Users/limbo/gwz-dev-hub')}\n"
+    )
+
+
+#: The same family, with one lane created by a tool. R20's owner column is
+#: reported for every row the moment any row records a token.
+OWNED_FAMILY = [
+    member_entry("root", path="."),
+    member_entry("A", owner="claude-code:session_7"),
+    member_entry("B"),
+]
+
+
+def test_local_list_renders_the_owner_column_when_a_row_records_one(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # GwzLaneCleanFixes R20, as the Rust driver renders it
+    # (`local_list_render.rs`, `gwz-cli/docs/LocalClones.md`): the column sits
+    # between state and path, appears only because some row has a token, and
+    # spells a row without one `-`. The token is printed verbatim.
+    monkeypatch.setattr(cli, "Client", listing_client_factory(OWNED_FAMILY))
+
+    exit_code = cli.main(["local", "list"])
+
+    assert exit_code == 0
+    assert capsys.readouterr().out == (
+        f"root  checkout  ready  -                      {Path('/Users/limbo/gwz-dev')}\n"
+        f"A     checkout  ready  claude-code:session_7  {Path('/Users/limbo/gwz-dev-A')}\n"
+        f"B     checkout  ready  -                      {Path('/Users/limbo/gwz-dev-B')}\n"
     )
 
 
