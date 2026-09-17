@@ -1444,6 +1444,8 @@ class CloneLocalWorkspaceRequest:
     mode: LocalCloneMode
     branch: str | None
     copy_source: str | None
+    owner: str | None
+    wait_seconds: int | None
 
 @dataclass(slots=True)
 class LocalFamilyRequest:
@@ -1452,6 +1454,7 @@ class LocalFamilyRequest:
     name: str | None
     keep: bool | None
     force_hazards: list[str]
+    wait_seconds: int | None
 
 @dataclass(slots=True)
 class CreateWorkspaceResponse:
@@ -1584,6 +1587,7 @@ class LocalFamilyMemberEntry:
     observed_state: LocalObservedState
     path: str
     last_error: str | None
+    owner: str | None
 
 @dataclass(slots=True)
 class LocalFamilyResponse:

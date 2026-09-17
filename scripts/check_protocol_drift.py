@@ -155,7 +155,20 @@ PRE_LOG_WIRE_FINGERPRINT = (
     # trees and diffed them -- 18 added lines, 0 removed lines; the previous pin
     # reproduced exactly on the pre-change tree (gwz-core c9c7a98).
     #   was: sha256:111103e545198a90e1348460713653f8bcfa59122aba54ef3f7437a1174a6ba5
-    "sha256:6262b4b4d06c07b9ea7fa2d432c3921899f901bebaeeab006b6c4cd9e023c1f5"
+    #
+    # Moved deliberately again on 2026-09-17 by GwzLaneCleanFixes R20/R21
+    # (gwz-core dev-docs/GwzLaneCleanFixes.md §3.6), which adds exactly four
+    # optional fields: CloneLocalWorkspaceRequest.owner (tag 8) and
+    # .wait_seconds (tag 9), LocalFamilyRequest.wait_seconds (tag 6), and
+    # LocalFamilyMemberEntry.owner (tag 7). `pre_log_projection` strips only
+    # `Log*` items, so all four are inside the projection and the pin moves
+    # with them. The reserved CloneLocalWorkspaceRequest tag 7 stays reserved.
+    # MEASURED additive, not assumed, and measured here rather than taken on
+    # gwz-core's word: removing exactly those four field objects from this
+    # driver's own packaged IR, through this driver's own projection,
+    # reproduced the previous pin below exactly.
+    #   was: sha256:6262b4b4d06c07b9ea7fa2d432c3921899f901bebaeeab006b6c4cd9e023c1f5
+    "sha256:02eccee9bf22debd925446bc21732c8d36178eb3c222377ad83883e62ab2acf7"
 )
 
 

@@ -935,10 +935,16 @@ def member_entry(
     observed: LocalObservedState = LocalObservedState.ready,
     path: str | None = None,
     last_error: str | None = None,
+    owner: str | None = None,
 ) -> LocalFamilyMemberEntry:
     # `path` is root-relative on the wire (design §7, §11 item 19): `.` for the
     # root and a normalised root-escaping path for every clone, which is what
     # `gwz_family_model` records and refuses to spell any other way.
+    #
+    # `owner` is the R20 token (GwzLaneCleanFixes §3.6): absent on every row
+    # this driver builds unless a case says otherwise, which is what a row
+    # created without `--owner`, and every row of a format-1 index, carries.
+    # Runtime-required field only: the generated dataclass has no default.
     return LocalFamilyMemberEntry(
         name=name,
         kind=kind,
@@ -946,6 +952,7 @@ def member_entry(
         observed_state=observed,
         path=path if path is not None else f"../gwz-dev-{name}",
         last_error=last_error,
+        owner=owner,
     )
 
 
@@ -1218,6 +1225,8 @@ def test_local_list_json_carries_every_member_field_and_the_root_path(
     # sent it and each member's `path` still root-relative. The join is a
     # presentation of the human table, never a rewrite of the payload -- a
     # reader that wants absolute paths has both halves and can join them too.
+    # The R20 `owner` travels the same way: verbatim where a row records one,
+    # `null` where it does not, and interpreted by neither driver.
     monkeypatch.setattr(
         cli,
         "Client",
@@ -1230,6 +1239,7 @@ def test_local_list_json_carries_every_member_field_and_the_root_path(
                     recorded=LocalMemberState.disposing,
                     observed=LocalObservedState.interrupted_disposal,
                     last_error="disposal was interrupted after the pointer",
+                    owner="claude-code:session_7",
                 ),
             ]
         ),
@@ -1250,6 +1260,7 @@ def test_local_list_json_carries_every_member_field_and_the_root_path(
             "observed_state": "ready",
             "path": ".",
             "last_error": None,
+            "owner": None,
         },
         {
             "name": "hub",
@@ -1258,6 +1269,7 @@ def test_local_list_json_carries_every_member_field_and_the_root_path(
             "observed_state": "interrupted_disposal",
             "path": "../gwz-dev-hub",
             "last_error": "disposal was interrupted after the pointer",
+            "owner": "claude-code:session_7",
         },
     ]
     assert payload["response"]["meta"]["action"] == "local_family"

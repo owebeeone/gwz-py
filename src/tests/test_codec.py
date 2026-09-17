@@ -233,12 +233,20 @@ def test_merge_reserved_lifecycle_shape_round_trip() -> None:
     )
     # LCM1.0c follow-up 2 (operator rulings 2026-09-05, gwz-dev
     # dev-docs/GwzLocalCloneDesign.md revision 9 §7, §11 item 12): the `gwz
-    # local list` payload row. Six slots, the three enums by the wire values
-    # pinned in test_protocol.py (checkout=0, ready=1, pointer_removed=4),
-    # `last_error` null. Byte-identical to gwz-core's parity pin in
-    # tests/protocol.rs (`local_clone_follow_up_2_allocations_are_pinned`).
-    # The MergeRequest pin above is UNMOVED by follow-up 2: no MergeRequest
-    # slot changed.
+    # local list` payload row. Seven slots since R20, the three enums by the
+    # wire values pinned in test_protocol.py (checkout=0, ready=1,
+    # pointer_removed=4), `last_error` and `owner` null. Byte-identical to
+    # gwz-core's parity pin in tests/protocol.rs
+    # (`local_clone_follow_up_2_allocations_are_pinned`). The MergeRequest pin
+    # above is UNMOVED by follow-up 2: no MergeRequest slot changed.
+    #
+    # Moved on 2026-09-17 by GwzLaneCleanFixes R20 (gwz-core
+    # dev-docs/GwzLaneCleanFixes.md §3.6), which adds the optional `owner` at
+    # tag 7. MEASURED additive, and measured on this driver's own encoder: the
+    # map header grows a6 -> a7 and the encoding gains exactly the trailing
+    # `07 f6`, leaving every earlier slot byte-identical. The MergeRequest pin
+    # above is UNMOVED by R20: no MergeRequest slot changed.
+    #   was: "a601614102000301040405672e2e2f77732d4106f6"
     entry = generated.LocalFamilyMemberEntry(
         name="A",
         kind=generated.LocalMemberKind.checkout,
@@ -246,9 +254,10 @@ def test_merge_reserved_lifecycle_shape_round_trip() -> None:
         observed_state=generated.LocalObservedState.pointer_removed,
         path="../ws-A",
         last_error=None,
+        owner=None,
     )
     assert encode_message("LocalFamilyMemberEntry", entry).hex() == (
-        "a601614102000301040405672e2e2f77732d4106f6"
+        "a701614102000301040405672e2e2f77732d4106f607f6"
     )
     _assert_cbor_round_trip("LocalFamilyMemberEntry", entry)
 
