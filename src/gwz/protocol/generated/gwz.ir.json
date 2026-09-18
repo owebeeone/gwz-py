@@ -280,7 +280,8 @@
         "log": 26,
         "clone_local_workspace": 27,
         "local_family": 28,
-        "remote_identity": 29
+        "remote_identity": 29,
+        "fetch": 30
       }
     },
     {
@@ -1077,6 +1078,16 @@
         "default": 0,
         "request": 1,
         "workspace": 2
+      }
+    },
+    {
+      "name": "FetchResult",
+      "members": {
+        "updated": 0,
+        "unchanged": 1,
+        "no_upstream": 2,
+        "failed": 3,
+        "planned": 4
       }
     },
     {
@@ -4163,6 +4174,135 @@
             }
           },
           "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "FetchRepoSummary",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "member_id",
+          "tag": 1,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "member_path",
+          "tag": 2,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "source_kind",
+          "tag": 3,
+          "type": {
+            "k": "enum",
+            "name": "SourceKind"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "result",
+          "tag": 4,
+          "type": {
+            "k": "enum",
+            "name": "FetchResult"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "remote",
+          "tag": 5,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "branch",
+          "tag": 6,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "before",
+          "tag": 7,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "after",
+          "tag": 8,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "upstream",
+          "tag": 9,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "ahead",
+          "tag": 10,
+          "type": {
+            "k": "scalar",
+            "scalar": "int"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "behind",
+          "tag": 11,
+          "type": {
+            "k": "scalar",
+            "scalar": "int"
+          },
+          "optional": true,
           "transient": false,
           "merge": null
         }
@@ -7488,6 +7628,25 @@
       ]
     },
     {
+      "name": "FetchRequest",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "meta",
+          "tag": 1,
+          "type": {
+            "k": "msg",
+            "name": "RequestMeta"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
       "name": "StashRequest",
       "reserved_tags": [],
       "reserved_names": [],
@@ -8433,6 +8592,39 @@
             "name": "ResponseEnvelope"
           },
           "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "FetchResponse",
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "response",
+          "tag": 1,
+          "type": {
+            "k": "msg",
+            "name": "ResponseEnvelope"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "repos",
+          "tag": 2,
+          "type": {
+            "k": "list",
+            "elem": {
+              "k": "msg",
+              "name": "FetchRepoSummary"
+            }
+          },
+          "optional": true,
           "transient": false,
           "merge": null
         }
@@ -11085,6 +11277,29 @@
               "type": {
                 "k": "msg",
                 "name": "PushResponse"
+              }
+            }
+          ]
+        },
+        {
+          "name": "fetch",
+          "role": "in",
+          "shape": "unary",
+          "params": [
+            {
+              "name": "request",
+              "type": {
+                "k": "msg",
+                "name": "FetchRequest"
+              }
+            }
+          ],
+          "out": [
+            {
+              "slot": "value",
+              "type": {
+                "k": "msg",
+                "name": "FetchResponse"
               }
             }
           ]

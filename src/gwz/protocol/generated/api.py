@@ -34,6 +34,7 @@ class ActionKind(Enum):
     clone_local_workspace = 27
     local_family = 28
     remote_identity = 29
+    fetch = 30
 
 class TagOp(Enum):
     create = 0
@@ -609,6 +610,13 @@ class UrlSchemeSource(Enum):
     request = 1
     workspace = 2
 
+class FetchResult(Enum):
+    updated = 0
+    unchanged = 1
+    no_upstream = 2
+    failed = 3
+    planned = 4
+
 class RemoteCheck(Enum):
     changed = 0
     always = 1
@@ -988,6 +996,20 @@ class BranchRepoSummary:
     target_branch: str | None
     resulting_commit: str | None
     conflict_paths: list[str]
+
+@dataclass(slots=True)
+class FetchRepoSummary:
+    member_id: str
+    member_path: str
+    source_kind: SourceKind
+    result: FetchResult
+    remote: str | None
+    branch: str | None
+    before: str | None
+    after: str | None
+    upstream: str | None
+    ahead: int | None
+    behind: int | None
 
 @dataclass(slots=True)
 class MergeParticipantCounts:
@@ -1407,6 +1429,10 @@ class PushRequest:
     remote_check: RemoteCheck | None
 
 @dataclass(slots=True)
+class FetchRequest:
+    meta: RequestMeta
+
+@dataclass(slots=True)
 class StashRequest:
     meta: RequestMeta
     op: StashOp
@@ -1552,6 +1578,11 @@ class PullSnapshotResponse:
 @dataclass(slots=True)
 class PushResponse:
     response: ResponseEnvelope
+
+@dataclass(slots=True)
+class FetchResponse:
+    response: ResponseEnvelope
+    repos: list[FetchRepoSummary] | None
 
 @dataclass(slots=True)
 class StashResponse:

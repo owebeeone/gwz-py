@@ -8,6 +8,7 @@ from typing import Any
 
 from .cli_render_parts.common import is_response
 from .cli_render_parts.errors import render_error
+from .cli_render_parts.fetch import render_fetch_response
 from .cli_render_parts.listings import (
     render_branch_response,
     render_member_listing,
@@ -112,6 +113,10 @@ def _render_response(
 
     repos = getattr(response, "repos", None)
     if repos is not None:
+        # Branch and fetch both carry `repos`, so the response decides which
+        # renderer sees them rather than the field's presence.
+        if is_response(response, "FetchResponse", "fetch"):
+            return render_fetch_response(response, repos)
         return render_branch_response(response, repos)
 
     bundles = getattr(response, "bundles", None)
