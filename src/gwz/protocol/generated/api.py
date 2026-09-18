@@ -1324,6 +1324,7 @@ class MemberEntry:
     abspath: str
     materialized: bool
     target_kind: TargetKind | None
+    note: str | None
 
 @dataclass(slots=True)
 class LsResponse:
@@ -1435,6 +1436,7 @@ class MergeRequest:
     preserve: bool | None
     filesystem_strict: bool | None
     local_source_name: str | None
+    wait_seconds: int | None
 
 @dataclass(slots=True)
 class CloneLocalWorkspaceRequest:
@@ -1444,6 +1446,8 @@ class CloneLocalWorkspaceRequest:
     mode: LocalCloneMode
     branch: str | None
     copy_source: str | None
+    owner: str | None
+    wait_seconds: int | None
 
 @dataclass(slots=True)
 class LocalFamilyRequest:
@@ -1452,6 +1456,7 @@ class LocalFamilyRequest:
     name: str | None
     keep: bool | None
     force_hazards: list[str]
+    wait_seconds: int | None
 
 @dataclass(slots=True)
 class CreateWorkspaceResponse:
@@ -1584,6 +1589,7 @@ class LocalFamilyMemberEntry:
     observed_state: LocalObservedState
     path: str
     last_error: str | None
+    owner: str | None
 
 @dataclass(slots=True)
 class LocalFamilyResponse:

@@ -27,9 +27,20 @@ def render_tag_listing(tags: list[Any]) -> str:
 
 
 def render_member_listing(members: list[Any], *, local_paths: bool) -> str:
-    return "\n".join(
-        member.path if local_paths else member.abspath for member in members
-    )
+    # One bare path per line, for `for i in $(gwz ls)`.
+    #
+    # GwzOpenDecisions D3: a row carrying a `note` is exactly a row whose path
+    # is NOT on disk -- the workspace lock claims the member and the filesystem
+    # does not have it, which is what `gwz clone` leaves behind when it quietly
+    # skips a private member whose access was refused. That path was never
+    # usable, so it is the one row that is annotated rather than printed bare,
+    # and it matches the Rust driver's rendering byte for byte.
+    lines = []
+    for member in members:
+        path = member.path if local_paths else member.abspath
+        note = getattr(member, "note", None)
+        lines.append(f"{path}\t({note})" if note else path)
+    return "\n".join(lines)
 
 
 def render_branch_response(response: Any, repos: list[Any]) -> str:

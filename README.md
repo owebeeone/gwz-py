@@ -101,6 +101,15 @@ python -m pip install -e ".[dev]"
 python run_tests.py
 ```
 
+Cross-driver tests need a `gwz` CLI. `GWZ_RUST_BIN` names one explicitly and is
+always honoured; otherwise the runner builds the sibling `gwz-cli` checkout and
+picks the binary up from where cargo actually put it. A `gwz-cli` that is a
+member of the cargo workspace above it (its parent `Cargo.toml` lists it under
+`[workspace] members`) is built into the *workspace* `target/`, so that one is
+preferred and any leftover `gwz-cli/target/debug/gwz` is ignored; a standalone
+`gwz-cli` checkout uses its own `target/`. The runner prints the binary it chose
+and the reason.
+
 Build the native extension locally:
 
 ```sh

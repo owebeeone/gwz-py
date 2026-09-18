@@ -441,6 +441,8 @@ class Client:
         mode: LocalCloneMode | str = LocalCloneMode.verbatim,
         branch: str | None = None,
         copy_source: str | Path | None = None,
+        owner: str | None = None,
+        wait_seconds: int | None = None,
         **meta: Any,
     ) -> CloneLocalWorkspaceResponse:
         """Create a local clone of this workspace (design §4).
@@ -450,6 +452,13 @@ class Client:
         before the destination becomes ready. `copy_source` is the `--from`
         selector -- a family name or a path -- and an absent one means the cwd
         workspace; core resolves which of the two a given token is.
+
+        `owner` is the R20 token recorded on the new member row by the same
+        index write that reserves it: opaque, at most 128 bytes of
+        `[A-Za-z0-9._:-]`, reported by `local_family` and interpreted by
+        nobody but the caller that wrote it. `wait_seconds` is R21's wait on
+        a busy family lock; absent means a busy lock refuses at once, which
+        is what every earlier gwz did. Core validates both.
         """
         request = CloneLocalWorkspaceRequest(
             meta=self.meta(**meta),
@@ -462,6 +471,11 @@ class Client:
             # Runtime-required field only (LCM1.0c follow-up 2): the generated
             # dataclass has no default.
             copy_source=None if copy_source is None else str(copy_source),
+            # Tags 8 and 9 (GwzLaneCleanFixes R20/R21). Runtime-required
+            # fields only, like `copy_source`: the generated dataclass has no
+            # default, so an absent option travels as an explicit `None`.
+            owner=owner,
+            wait_seconds=wait_seconds,
         )
         return await self._call(
             "clone_local_workspace", request, CloneLocalWorkspaceResponse
@@ -474,12 +488,18 @@ class Client:
         name: str | None = None,
         keep: bool | None = None,
         force_hazards: Iterable[str] = (),
+        wait_seconds: int | None = None,
         **meta: Any,
     ) -> LocalFamilyResponse:
         """List, dispose from, or disband the local clone family (design §5).
 
         An absent or empty `force_hazards` is no force at all; core validates
         the hazard names and refuses `keep` together with a force.
+
+        `wait_seconds` is R21's wait on a busy family lock. Dispose and
+        disband take the lock and honour it; `list` is observation-only,
+        takes no lock, and carries the value without effect, so one caller
+        may pass the same wait to every op.
         """
         request = LocalFamilyRequest(
             meta=self.meta(**meta),
@@ -487,6 +507,8 @@ class Client:
             name=name,
             keep=keep,
             force_hazards=list(force_hazards),
+            # Tag 6 (R21). Runtime-required field only: no default.
+            wait_seconds=wait_seconds,
         )
         return await self._call("local_family", request, LocalFamilyResponse)
 
@@ -872,6 +894,7 @@ class Client:
         preserve: bool | None = None,
         filesystem_strict: bool | None = None,
         local_source_name: str | None = None,
+        wait_seconds: int | None = None,
         dry_run: bool | None = None,
         **meta: Any,
     ) -> MergeResponse:
@@ -884,6 +907,7 @@ class Client:
             preserve=preserve,
             filesystem_strict=filesystem_strict,
             local_source_name=local_source_name,
+            wait_seconds=wait_seconds,
             dry_run=dry_run,
             **meta,
         )
@@ -900,6 +924,7 @@ class Client:
         preserve: bool | None = None,
         filesystem_strict: bool | None = None,
         local_source_name: str | None = None,
+        wait_seconds: int | None = None,
         dry_run: bool | None = None,
         **meta: Any,
     ) -> "MergeOperationHandle":
@@ -913,6 +938,7 @@ class Client:
             preserve=preserve,
             filesystem_strict=filesystem_strict,
             local_source_name=local_source_name,
+            wait_seconds=wait_seconds,
             dry_run=dry_run,
             **meta,
         )
@@ -941,6 +967,7 @@ class Client:
         preserve: bool | None,
         filesystem_strict: bool | None,
         local_source_name: str | None,
+        wait_seconds: int | None,
         dry_run: bool | None,
         **meta: Any,
     ) -> MergeRequest:
@@ -960,6 +987,13 @@ class Client:
             # and start-only: core's engine guard refuses it on every other op.
             # `cli_local_family` is what parses it; a plain merge leaves it None.
             local_source_name=local_source_name,
+            # Tag 10 (GwzOpenDecisions D1): `--wait <secs>` on the family
+            # lock, meaningful only together with `local_source_name` -- the
+            # family merge is the only merge that takes that lock, and core
+            # refuses the field on any other. Runtime-required field only,
+            # like `copy_source`: the generated dataclass has no default, so
+            # an absent option travels as an explicit `None`.
+            wait_seconds=wait_seconds,
         )
 
     async def diff(

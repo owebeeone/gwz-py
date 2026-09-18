@@ -6903,6 +6903,17 @@
           "optional": true,
           "transient": false,
           "merge": null
+        },
+        {
+          "name": "note",
+          "tag": 6,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
         }
       ]
     },
@@ -7739,6 +7750,17 @@
           "optional": true,
           "transient": false,
           "merge": null
+        },
+        {
+          "name": "wait_seconds",
+          "tag": 10,
+          "type": {
+            "k": "scalar",
+            "scalar": "int"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
         }
       ]
     },
@@ -7813,6 +7835,28 @@
           "optional": true,
           "transient": false,
           "merge": null
+        },
+        {
+          "name": "owner",
+          "tag": 8,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "wait_seconds",
+          "tag": 9,
+          "type": {
+            "k": "scalar",
+            "scalar": "int"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
         }
       ]
     },
@@ -7877,6 +7921,17 @@
             }
           },
           "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "wait_seconds",
+          "tag": 6,
+          "type": {
+            "k": "scalar",
+            "scalar": "int"
+          },
+          "optional": true,
           "transient": false,
           "merge": null
         }
@@ -8670,6 +8725,17 @@
         {
           "name": "last_error",
           "tag": 6,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "owner",
+          "tag": 7,
           "type": {
             "k": "scalar",
             "scalar": "str"

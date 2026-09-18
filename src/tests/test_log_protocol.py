@@ -133,7 +133,33 @@ from gwz.protocol.codec import decode_message, encode_message, from_wire, schema
 # diffed them -- 18 added lines, 0 removed lines; the previous pin reproduced
 # exactly on the pre-change tree (gwz-core c9c7a98).
 #   was: 111103e545198a90e1348460713653f8bcfa59122aba54ef3f7437a1174a6ba5
-PRE_LOG_WIRE_SHA256 = "6262b4b4d06c07b9ea7fa2d432c3921899f901bebaeeab006b6c4cd9e023c1f5"
+# Moved deliberately again on 2026-09-17 by GwzLaneCleanFixes R20/R21 (gwz-core
+# dev-docs/GwzLaneCleanFixes.md §3.6), which adds exactly four optional fields:
+# CloneLocalWorkspaceRequest.owner (tag 8) and .wait_seconds (tag 9),
+# LocalFamilyRequest.wait_seconds (tag 6) and LocalFamilyMemberEntry.owner
+# (tag 7). The projection strips only `Log*` items, so all four are inside it
+# and the pin moves with them. The reserved CloneLocalWorkspaceRequest tag 7
+# stays reserved. MEASURED additive, not assumed, and measured on this driver's
+# own packaged IR through its own projection: removing exactly those four field
+# objects reproduced the previous pin below exactly. Kept identical to gwz-core
+# protocol/check_log_additive.py and scripts/check_protocol_drift.py.
+#   was: 6262b4b4d06c07b9ea7fa2d432c3921899f901bebaeeab006b6c4cd9e023c1f5
+# Moved deliberately again on 2026-09-18 by GwzOpenDecisions D1 and D3, which
+# add exactly two optional fields: MergeRequest.wait_seconds (tag 10), which
+# carries GwzLaneCleanFixes R21's `--wait <secs>` to `gwz merge --remote
+# <name>`, and MemberEntry.note (tag 6), which says why a member an `ls`
+# listing reports as unmaterialized is not on disk. The projection strips only
+# `Log*` items, so both are inside it and the pin moves with them.
+# MemberEntry.materialized (tag 4) keeps its tag, type and required-ness; only
+# what core computes for it changed, which the wire cannot see. MEASURED
+# additive, not assumed, and measured on this driver's own packaged IR through
+# its own projection: removing MemberEntry.note alone reproduced
+# d630cf220ef9ef16237c984dfd944bf08b5ad49b119d2bec3b6cbeb07e36e8ea (gwz-core's
+# D1-only pin) and removing both reproduced the previous pin below exactly.
+# Kept identical to gwz-core protocol/check_log_additive.py and
+# scripts/check_protocol_drift.py.
+#   was: 02eccee9bf22debd925446bc21732c8d36178eb3c222377ad83883e62ab2acf7
+PRE_LOG_WIRE_SHA256 = "cb059717cc1f306602f74a571ec7c1964de9df56ce319a7afee734e6a784675a"
 
 
 def _round_trip(message_name: str, value: object) -> None:

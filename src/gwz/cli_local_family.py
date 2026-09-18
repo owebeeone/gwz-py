@@ -333,6 +333,13 @@ def is_family_listing(response: Any) -> bool:
     )
 
 
+#: What the owner column prints for a row that records no token
+#: (GwzLaneCleanFixes R20). The same placeholder the Rust driver prints
+#: (`local_list_render.rs`), so one family renders one table whichever driver
+#: an operator reached for.
+NO_OWNER = "-"
+
+
 def render_family_listing(response: Any) -> str:
     """The design §8.1 table: name, kind, state, path -- one row per member.
 
@@ -345,6 +352,14 @@ def render_family_listing(response: Any) -> str:
 
     The path column is :func:`member_display_path`: the absolute paths in the
     §8.1 sample are the response's own two halves joined, never a guess.
+
+    An `owner` column (R20) sits between state and path, on the Rust driver's
+    own rule: it appears only when *some* row records a token, and then every
+    row has a cell -- :data:`NO_OWNER` for the rows that record none. A family
+    in which nobody recorded an owner therefore renders exactly the four
+    columns of §8.1. The token is printed verbatim and never parsed or
+    abbreviated; its alphabet excludes whitespace, so it can never forge a
+    second column.
     """
 
     root_path = getattr(response, "root_path", None)
@@ -353,6 +368,7 @@ def render_family_listing(response: Any) -> str:
             entry.name,
             _enum_name(entry.kind),
             _state_cell(entry),
+            getattr(entry, "owner", None),
             member_display_path(root_path, entry.path),
             entry.last_error,
         )
@@ -360,13 +376,21 @@ def render_family_listing(response: Any) -> str:
     ]
     if not rows:
         return ""
-    widths = [max(len(row[column]) for row in rows) + 2 for column in range(3)]
+    any_owner = any(row[3] is not None for row in rows)
+    cells = [
+        (name, kind, state, owner or NO_OWNER, path, last_error)
+        for name, kind, state, owner, path, last_error in rows
+    ]
+    columns = 4 if any_owner else 3
+    widths = [max(len(row[column]) for row in cells) + 2 for column in range(columns)]
     lines: list[str] = []
-    for name, kind, state, path, last_error in rows:
-        lines.append(
-            f"{name.ljust(widths[0])}{kind.ljust(widths[1])}"
-            f"{state.ljust(widths[2])}{path}"
+    for name, kind, state, owner, path, last_error in cells:
+        line = (
+            f"{name.ljust(widths[0])}{kind.ljust(widths[1])}{state.ljust(widths[2])}"
         )
+        if any_owner:
+            line += owner.ljust(widths[3])
+        lines.append(f"{line}{path}")
         if last_error:
             lines.append(f"  last error: {last_error}")
     return "\n".join(lines)

@@ -4,6 +4,12 @@
 Run from the repository root with ``python run_tests.py``. Cross-driver tests
 use ``GWZ_RUST_BIN`` when supplied; otherwise the runner builds the adjacent
 ``gwz-cli`` checkout and exports that exact binary for the test process.
+
+Where that binary lands depends on the checkout: a ``gwz-cli`` that is a member
+of the cargo workspace above it is built into the *workspace* ``target/``, and a
+standalone ``gwz-cli`` into its own. The runner looks in that order and prints
+the binary it chose with the reason, so a stale copy in the other directory is
+never picked up silently.
 """
 
 from __future__ import annotations
@@ -37,6 +43,69 @@ def command_environment() -> dict[str, str]:
     return env
 
 
+def is_cargo_workspace_member(cli_root: Path) -> bool:
+    """True when the parent directory's Cargo.toml lists `cli_root` as a member.
+
+    In a GWZ workspace, `gwz-cli` is a member of the root cargo workspace, so
+    `cargo build` run inside `gwz-cli` writes to the *workspace* target
+    directory. Any `gwz-cli/target/debug/gwz` there is a leftover standalone
+    build that nothing refreshes; preferring it silently tests a stale binary
+    (GwzLaneIssues L5). A standalone `gwz-cli` checkout has no such parent
+    manifest and keeps its own `target/`.
+
+    The parent manifest is read as text rather than parsed: the runner takes no
+    dependency, and `[workspace] members` is a flat list of path patterns. A
+    name that appears anywhere in the members list is enough -- this decides
+    which of two directories to look in first, and the answer is checked
+    against the filesystem either way.
+    """
+
+    parent_manifest = cli_root.parent / "Cargo.toml"
+    if not parent_manifest.is_file():
+        return False
+    try:
+        text = parent_manifest.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    if "[workspace]" not in text:
+        return False
+    name = cli_root.name
+    return any(
+        quoted in text
+        for quoted in (f'"{name}"', f"'{name}'", f'"./{name}"', f"'./{name}'")
+    )
+
+
+def candidate_rust_bins(cli_root: Path, env: dict[str, str]) -> list[tuple[Path, str]]:
+    """Where a freshly built `gwz` may be, best first, each with its reason.
+
+    `CARGO_TARGET_DIR` overrides both: cargo honours it from either checkout,
+    so there is nothing to choose between.
+    """
+
+    executable = "gwz.exe" if os.name == "nt" else "gwz"
+    configured_target = env.get("CARGO_TARGET_DIR")
+    if configured_target is not None:
+        target = Path(configured_target)
+        if not target.is_absolute():
+            target = cli_root / target
+        return [((target / "debug" / executable).resolve(), "CARGO_TARGET_DIR is set")]
+
+    standalone = (cli_root / "target" / "debug" / executable).resolve()
+    workspace = (cli_root.parent / "target" / "debug" / executable).resolve()
+    if is_cargo_workspace_member(cli_root):
+        # D6: cargo builds a workspace member into the workspace target, so the
+        # member's own `target/` can only hold a stale standalone build.
+        return [
+            (workspace, f"{cli_root.name} is a member of the cargo workspace above it"),
+            (standalone, "the workspace target holds no gwz"),
+        ]
+    return [
+        (standalone, f"{cli_root.name} is a standalone cargo checkout"),
+        (workspace, "the standalone target holds no gwz"),
+    ]
+
+
 def provision_rust_cli(
     env: dict[str, str],
     *,
@@ -51,6 +120,7 @@ def provision_rust_cli(
                 f"GWZ_RUST_BIN does not name an executable file: {rust_bin}"
             )
         env["GWZ_RUST_BIN"] = str(rust_bin)
+        print(f"+ gwz CLI: {rust_bin} (GWZ_RUST_BIN names it)", flush=True)
         return rust_bin
 
     cli_root = root.parent / "gwz-cli"
@@ -65,21 +135,18 @@ def provision_rust_cli(
         cwd=cli_root,
         env=env,
     )
-    configured_target = env.get("CARGO_TARGET_DIR")
-    target = Path(configured_target or "target")
-    if not target.is_absolute():
-        target = cli_root / target
-    executable = "gwz.exe" if os.name == "nt" else "gwz"
-    rust_bin = (target / "debug" / executable).resolve()
-    if configured_target is None and not rust_bin.is_file():
-        # Cargo places members of a parent workspace in the workspace target
-        # directory, even when invoked from the member checkout.
-        workspace_bin = (cli_root.parent / "target" / "debug" / executable).resolve()
-        if workspace_bin.is_file():
-            rust_bin = workspace_bin
-    if not rust_bin.is_file() or not os.access(rust_bin, os.X_OK):
-        raise RuntimeError(f"cargo build did not produce the gwz CLI at {rust_bin}")
+    candidates = candidate_rust_bins(cli_root, env)
+    chosen: tuple[Path, str] | None = None
+    for candidate, reason in candidates:
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            chosen = (candidate, reason)
+            break
+    if chosen is None:
+        searched = ", ".join(str(candidate) for candidate, _ in candidates)
+        raise RuntimeError(f"cargo build did not produce the gwz CLI at {searched}")
+    rust_bin, reason = chosen
     env["GWZ_RUST_BIN"] = str(rust_bin)
+    print(f"+ gwz CLI: {rust_bin} ({reason})", flush=True)
     return rust_bin
 
 
@@ -90,8 +157,8 @@ def run(cmd: list[str], *, env: dict[str, str]) -> None:
 
 def main() -> None:
     env = command_environment()
-    rust_bin = provision_rust_cli(env)
-    print(f"+ GWZ_RUST_BIN={rust_bin}", flush=True)
+    # `provision_rust_cli` prints the binary it chose and why.
+    provision_rust_cli(env)
     # Never let a stale editable native extension satisfy the Python parity gate.
     run([sys.executable, "-m", "maturin", "develop"], env=env)
     run([sys.executable, "scripts/regen_protocol.py", "--check"], env=env)
