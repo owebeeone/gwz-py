@@ -406,7 +406,7 @@ namespace; if an ergonomic alias is needed, prefer a data-name such as
 
 ## Plan Cross-Reference
 
-`GwzPyPlan.md` breaks these milestones into implementation phases. Phase 0 locks
+`history/GwzPyPlan.md` breaks these milestones into implementation phases. Phase 0 locks
 the scaffold and protocol boundary, Phase 1 owns codec/transport/error-model
 work, Phase 2 commits the native build backend and first bridge call, Phase 3
 expands native service coverage, Phase 4 implements operation-id events/results,
