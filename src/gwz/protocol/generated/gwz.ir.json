@@ -1086,7 +1086,8 @@
         "updated": 0,
         "unchanged": 1,
         "no_upstream": 2,
-        "failed": 3
+        "failed": 3,
+        "planned": 4
       }
     },
     {

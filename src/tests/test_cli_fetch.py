@@ -171,6 +171,32 @@ def test_the_human_report_is_one_line_per_repository() -> None:
     assert lines[3] == lines[3].rstrip(), "no trailing padding"
 
 
+def test_a_dry_run_row_says_it_would_contact_and_never_says_no_change() -> None:
+    """The `--dry-run` row carries a token no live fetch prints, matching the
+    Rust CLI: `would contact <remote>` and `FetchResult.planned`."""
+
+    rendered = render_response(
+        _response(
+            AggregateStatus.noop,
+            [_member("@root", ".", MemberStatus.planned)],
+            [
+                _row(
+                    "@root",
+                    ".",
+                    FetchResult.planned,
+                    upstream=None,
+                    ahead=None,
+                    behind=None,
+                )
+            ],
+        )
+    )
+    lines = rendered.splitlines()
+    assert lines[0] == "status: Noop"
+    assert "would contact origin" in lines[1], rendered
+    assert "no change" not in rendered, rendered
+
+
 def test_a_failed_row_carries_its_reason() -> None:
     error = GwzError(
         code=GwzErrorCode.remote_rejected,

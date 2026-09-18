@@ -615,6 +615,7 @@ class FetchResult(Enum):
     unchanged = 1
     no_upstream = 2
     failed = 3
+    planned = 4
 
 class RemoteCheck(Enum):
     changed = 0

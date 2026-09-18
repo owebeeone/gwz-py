@@ -172,7 +172,18 @@ from gwz.protocol.codec import decode_message, encode_message, from_wire, schema
 # below exactly. Kept identical to gwz-core protocol/check_log_additive.py and
 # scripts/check_protocol_drift.py.
 #   was: cb059717cc1f306602f74a571ec7c1964de9df56ce319a7afee734e6a784675a
-PRE_LOG_WIRE_SHA256 = "4b6cf3fd9fb9d0a9338a7a25aa305435eb01ef9219f4ad80b0dad705d4301ee6"
+# Moved deliberately again on 2026-09-18 by the 1.0.17 documentation review
+# remediation (gwz-cli dev-docs/GwzRelease1017Docs-RemPlan.md, findings S-P2-1
+# and C-P2-3), which gives a `--dry-run` fetch row a token of its own: it adds
+# exactly one enum member, FetchResult.planned, at the next additive slot 4.
+# `gwz fetch` is unreleased, so no shipped consumer has seen this enum. No
+# existing message, field, slot, enum member or method changed. MEASURED
+# additive, not assumed, and measured on this driver's own packaged IR through
+# its own projection: removing exactly that one enum member reproduced the
+# previous pin below exactly. Kept identical to gwz-core
+# protocol/check_log_additive.py and scripts/check_protocol_drift.py.
+#   was: 4b6cf3fd9fb9d0a9338a7a25aa305435eb01ef9219f4ad80b0dad705d4301ee6
+PRE_LOG_WIRE_SHA256 = "4d377a496c8905293b5e9b53392b70867cf6dafccbb623841a623dbd2d555f14"
 
 
 def _round_trip(message_name: str, value: object) -> None:

@@ -35,6 +35,11 @@ def _movement(repo: Any) -> str:
         return "no change"
     if result == "no_upstream":
         return "no upstream"
+    if result == "planned":
+        # `--dry-run` only: the repository was not contacted, so the row says
+        # what would happen rather than what did.
+        remote = getattr(repo, "remote", None)
+        return f"would contact {remote}" if remote else "would contact"
     return "failed"
 
 
