@@ -49,13 +49,15 @@ pub(crate) fn call(
             request_bytes,
             &caller_cwd,
         ),
-        "commit" | "stage" | "pull_head" | "pull_snapshot" | "push" => git_mutation::call(
-            method,
-            request_message,
-            response_message,
-            request_bytes,
-            &caller_cwd,
-        ),
+        "commit" | "stage" | "pull_head" | "pull_snapshot" | "push" | "fetch" => {
+            git_mutation::call(
+                method,
+                request_message,
+                response_message,
+                request_bytes,
+                &caller_cwd,
+            )
+        }
         "branch" | "stash" => branch_stash::call(
             method,
             request_message,
@@ -146,6 +148,13 @@ pub(crate) fn submit(
             &caller_cwd,
         ),
         "push" => submit_push(
+            method,
+            request_message,
+            response_message,
+            request_bytes,
+            &caller_cwd,
+        ),
+        "fetch" => submit_fetch(
             method,
             request_message,
             response_message,
@@ -335,6 +344,39 @@ fn submit_push(
         &request.meta,
         gwz_core::ActionKind::Push,
         |response| gwz_core::PushResponse { response }.to_cbor(),
+    )
+}
+
+/// `gwz fetch` accepted asynchronously. The accepted envelope carries no
+/// `repos` rows: they are the finished operation's answer, read back through
+/// `operation.result`, exactly as push's member rows are.
+fn submit_fetch(
+    method: &str,
+    request_message: &str,
+    response_message: &str,
+    request_bytes: &[u8],
+    caller_cwd: &std::path::Path,
+) -> PyResult<Vec<u8>> {
+    codec::require_request(method, request_message, "FetchRequest")?;
+    codec::require_response(method, response_message, "FetchResponse")?;
+    let request = codec::decode_message(request_bytes, "decode FetchRequest", |cbor| {
+        gwz_core::FetchRequest::from_cbor(cbor)
+    })?;
+    submit_accepted(
+        method,
+        request_message,
+        response_message,
+        request_bytes,
+        caller_cwd,
+        &request.meta,
+        gwz_core::ActionKind::Fetch,
+        |response| {
+            gwz_core::FetchResponse {
+                response,
+                repos: None,
+            }
+            .to_cbor()
+        },
     )
 }
 

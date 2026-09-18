@@ -51,7 +51,13 @@
     ["forall", "--all", "--no-target", "@root", "--", "echo", "{@}"],
     ["clone", "https://example.invalid/workspace.git"],
     ["clone", "--url-scheme", "https", "https://example.invalid/workspace.git"],
-    ["materialize", "--lock", "--url-scheme", "manifest"]
+    ["materialize", "--lock", "--url-scheme", "manifest"],
+    ["fetch"],
+    ["fetch", "--target", "@root"],
+    ["--all", "--no-target", "@root", "fetch"],
+    ["--remote", "upstream", "fetch"],
+    ["--dry-run", "fetch"],
+    ["--json", "fetch"]
   ],
   "parse_reject": [
     ["repo"],
@@ -63,7 +69,9 @@
     ["stage", "-A", "src/file.py"],
     ["clone", "--url-scheme", "auto", "https://example.invalid/workspace.git"],
     ["materialize", "--url-scheme"],
-    ["pull", "--check-remotes"]
+    ["pull", "--check-remotes"],
+    ["fetch", "--check-remotes"],
+    ["fetch", "--prune"]
   ],
   "semantic_reject": [
     ["--json", "--jsonl", "status"],
@@ -86,7 +94,10 @@
     ["merge", "feature/refactor", "--dry-run"],
     ["clone", "--url-scheme", "ssh", "https://example.invalid/workspace.git"],
     ["materialize", "--lock", "--url-scheme", "https"],
-    ["push", "--check-remotes"]
+    ["push", "--check-remotes"],
+    ["fetch"],
+    ["--dry-run", "fetch"],
+    ["--remote", "upstream", "fetch"]
   ],
   "rust_version": [
     ["-V"],
