@@ -120,7 +120,10 @@ def test_ordinary_dispose_deletes_a_preserved_lane_and_refuses_unique_history(
         asyncio.run(client.local_family(LocalFamilyOp.dispose, name="B"))
     message = str(refused.value)
     assert "UnwaivedHazard: local dispose `B`" in message
-    assert "<unpreserved-history>" in message and unique in message
+    # gwz-core reports hazards by category and prints the exact waiver
+    # command (lane clean-up Phase 1, R9 and R10).
+    assert "unique to the lane 1:" in message and unique in message
+    assert "`gwz local dispose B --force unpreserved-history`" in message
     assert "nothing was removed" in message
     assert (dest_b / "repos" / "app" / "feature.txt").is_file(), "nothing was removed"
 
