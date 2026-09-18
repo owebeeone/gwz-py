@@ -168,7 +168,21 @@ PRE_LOG_WIRE_FINGERPRINT = (
     # driver's own packaged IR, through this driver's own projection,
     # reproduced the previous pin below exactly.
     #   was: sha256:6262b4b4d06c07b9ea7fa2d432c3921899f901bebaeeab006b6c4cd9e023c1f5
-    "sha256:02eccee9bf22debd925446bc21732c8d36178eb3c222377ad83883e62ab2acf7"
+    # Moved deliberately again on 2026-09-18 by GwzOpenDecisions D1 and D3,
+    # which add exactly two optional fields: MergeRequest.wait_seconds (tag
+    # 10), R21's `--wait <secs>` carried to `gwz merge --remote <name>`, and
+    # MemberEntry.note (tag 6), why a member an `ls` listing reports as
+    # unmaterialized is not on disk. `pre_log_projection` strips only `Log*`
+    # items, so both are inside the projection and the pin moves with them.
+    # MemberEntry.materialized (tag 4) keeps its tag, type and required-ness.
+    # MEASURED additive, not assumed, and measured here rather than taken on
+    # gwz-core's word: removing MemberEntry.note alone from this driver's own
+    # packaged IR, through this driver's own projection, reproduced
+    # sha256:d630cf220ef9ef16237c984dfd944bf08b5ad49b119d2bec3b6cbeb07e36e8ea
+    # (gwz-core's D1-only pin), and removing both reproduced the previous pin
+    # below exactly.
+    #   was: sha256:02eccee9bf22debd925446bc21732c8d36178eb3c222377ad83883e62ab2acf7
+    "sha256:cb059717cc1f306602f74a571ec7c1964de9df56ce319a7afee734e6a784675a"
 )
 
 

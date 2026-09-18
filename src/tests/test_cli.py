@@ -154,6 +154,7 @@ def test_cli_render_ls_paths() -> None:
                 abspath="/workspace/repos/app",
                 materialized=True,
                 target_kind=None,
+                note=None,
             ),
             MemberEntry(
                 id="mem_lib",
@@ -161,6 +162,7 @@ def test_cli_render_ls_paths() -> None:
                 abspath="/workspace/repos/lib",
                 materialized=True,
                 target_kind=None,
+                note=None,
             ),
         ],
     )

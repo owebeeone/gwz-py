@@ -122,6 +122,7 @@ def _ls_response() -> LsResponse:
                 abspath="/workspace/repos/app",
                 materialized=True,
                 target_kind=TargetKind.member,
+                note=None,
             ),
             MemberEntry(
                 id="mem_lib",
@@ -129,6 +130,7 @@ def _ls_response() -> LsResponse:
                 abspath="/workspace/libs/lib",
                 materialized=True,
                 target_kind=TargetKind.member,
+                note=None,
             ),
         ],
     )

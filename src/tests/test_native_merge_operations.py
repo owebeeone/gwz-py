@@ -55,6 +55,7 @@ def merge_request(root: Path, request_id: str, op: MergeOp) -> MergeRequest:
         preserve=None,
         filesystem_strict=None,
         local_source_name=None,
+        wait_seconds=None,
     )
 
 
