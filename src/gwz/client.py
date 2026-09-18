@@ -91,6 +91,8 @@ from .protocol.generated import (
     PullHeadResponse,
     PullSnapshotRequest,
     PullSnapshotResponse,
+    FetchRequest,
+    FetchResponse,
     PushRequest,
     PushResponse,
     RemoteCheck,
@@ -837,6 +839,22 @@ class Client:
     ) -> AsyncIterator[OperationEvent]:
         request = PushRequest(meta=self.meta(**meta), remote=remote, refspec=refspec, remote_check=remote_check)
         return self._stream_call("push", request, PushResponse)
+
+    async def fetch(self, **meta: Any) -> FetchResponse:
+        """Contact every selected repository's remote and report what moved.
+
+        Integrates nothing and writes no workspace artifact. There is no
+        ``remote_check``: ``FetchRequest`` has no such field, because a fetch
+        that does not connect has answered nothing. A ``remote`` keyword rides
+        in the request meta's policy, as it does for :meth:`pull_head`.
+        """
+
+        request = FetchRequest(meta=self.meta(**meta))
+        return await self._call("fetch", request, FetchResponse)
+
+    def fetch_stream(self, **meta: Any) -> AsyncIterator[OperationEvent]:
+        request = FetchRequest(meta=self.meta(**meta))
+        return self._stream_call("fetch", request, FetchResponse)
 
     async def stash(
         self,

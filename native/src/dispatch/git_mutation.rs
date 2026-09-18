@@ -45,6 +45,13 @@ pub(crate) fn call(
             request_bytes,
             caller_cwd,
         ),
+        "fetch" => call_fetch(
+            method,
+            request_message,
+            response_message,
+            request_bytes,
+            caller_cwd,
+        ),
         other => error::unsupported(other),
     }
 }
@@ -176,4 +183,33 @@ fn call_push(
         })?;
     recorder.finish(&response.response)?;
     codec::encode_message("encode PushResponse", || response.to_cbor())
+}
+
+fn call_fetch(
+    method: &str,
+    request_message: &str,
+    response_message: &str,
+    request_bytes: &[u8],
+    caller_cwd: &std::path::Path,
+) -> PyResult<Vec<u8>> {
+    codec::require_request(method, request_message, "FetchRequest")?;
+    codec::require_response(method, response_message, "FetchResponse")?;
+
+    let request = codec::decode_message(request_bytes, "decode FetchRequest", |cbor| {
+        gwz_core::FetchRequest::from_cbor(cbor)
+    })?;
+    let request_id = request.meta.request_id.clone();
+    let start = caller_cwd;
+    let (response, recorder) =
+        shims::backend_with_events(&request_id, |backend, operation_id, events| {
+            gwz_core::workspace_ops::handle_fetch_with_events(
+                backend,
+                start,
+                request,
+                operation_id,
+                events,
+            )
+        })?;
+    recorder.finish(&response.response)?;
+    codec::encode_message("encode FetchResponse", || response.to_cbor())
 }

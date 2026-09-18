@@ -57,6 +57,11 @@ def register_commands(registry: CommandRegistry) -> None:
         configure=configure_push,
         handler=handle_push,
     )
+    registry.register(
+        "fetch",
+        help="Fetch every selected repository's remote and report what moved (no integration)",
+        handler=handle_fetch,
+    )
 
 
 def configure_materialize(parser: argparse.ArgumentParser) -> None:
@@ -231,6 +236,13 @@ async def handle_push(context: CommandContext) -> Any:
         remote_check=RemoteCheck.always if context.args.check_remotes else None,
         **_meta_without(context.meta, "remote"),
     )
+
+
+async def handle_fetch(context: CommandContext) -> Any:
+    # No options of its own: no --check-remotes (a fetch that does not connect
+    # has answered nothing) and no --prune. --remote rides in the meta policy,
+    # as it does for pull, because FetchRequest has no remote field.
+    return await context.client.fetch(**context.meta)
 
 
 def _meta_without(meta: dict[str, Any], *keys: str) -> dict[str, Any]:
