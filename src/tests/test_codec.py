@@ -140,6 +140,11 @@ def test_nested_dataclass_list_round_trip() -> None:
                 abspath="/workspace/packages/app",
                 materialized=True,
                 target_kind=None,
+                # Tag 6 (GwzOpenDecisions D3). Runtime-required field only:
+                # the generated dataclass has no default, and an ordinary
+                # row -- one the lock records and the filesystem has --
+                # carries no note.
+                note=None,
             )
         ],
     )
@@ -186,6 +191,7 @@ def test_merge_reserved_lifecycle_shape_round_trip() -> None:
         preserve=None,
         filesystem_strict=None,
         local_source_name=None,
+        wait_seconds=None,
     )
     _assert_cbor_round_trip("MergeRequest", request)
 
@@ -209,6 +215,7 @@ def test_merge_reserved_lifecycle_shape_round_trip() -> None:
         preserve=None,
         filesystem_strict=None,
         local_source_name=None,
+        wait_seconds=None,
     )
     # Moved 2026-09-03 by DR-1 ship (1) W1
     # (gwz-dev dev-docs/GwzM5-8DR1-WarnOrRefuse-Charter.md §3.7): MergeRequest
@@ -227,9 +234,20 @@ def test_merge_reserved_lifecycle_shape_round_trip() -> None:
     #        "02000369666561747572652f7804f6050006f607f608f6"
     # InvocationContext occupies RequestMeta tag 9.  The null compatibility
     # value leaves every earlier field byte-identical.
+    #
+    # Moved 2026-09-18 by GwzOpenDecisions D1, which carries
+    # GwzLaneCleanFixes R21's `--wait <secs>` to `gwz merge --remote <name>`
+    # and adds the optional `wait_seconds` at tag 10. MEASURED additive, and
+    # measured on this driver's own encoder: the map header grows a9 -> aa
+    # and the encoding gains exactly the trailing `0a f6` (slot 10 = null);
+    # every earlier slot is byte-identical, and the result is byte-identical
+    # to gwz-core's twin pin in tests/protocol.rs, which is the whole point
+    # of having two.
+    #   was: "a901a901697265715f6d65726765026667777a2e763003f604f605f606f607f6"
+    #        "08f609f602000369666561747572652f7804f6050006f607f608f609f6"
     assert encode_message("MergeRequest", parity_request).hex() == (
-        "a901a901697265715f6d65726765026667777a2e763003f604f605f606f607f608f609f6"
-        "02000369666561747572652f7804f6050006f607f608f609f6"
+        "aa01a901697265715f6d65726765026667777a2e763003f604f605f606f607f608f609f6"
+        "02000369666561747572652f7804f6050006f607f608f609f60af6"
     )
     # LCM1.0c follow-up 2 (operator rulings 2026-09-05, gwz-dev
     # dev-docs/GwzLocalCloneDesign.md revision 9 §7, §11 item 12): the `gwz

@@ -141,6 +141,7 @@ def member(id_: str, path: str, root: Path) -> MemberEntry:
         abspath=str(abspath),
         materialized=True,
         target_kind=None,
+        note=None,
     )
 
 
@@ -151,6 +152,7 @@ def root_member(root: Path) -> MemberEntry:
         abspath=str(root),
         materialized=True,
         target_kind=TargetKind.root,
+        note=None,
     )
 
 

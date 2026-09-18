@@ -1324,6 +1324,7 @@ class MemberEntry:
     abspath: str
     materialized: bool
     target_kind: TargetKind | None
+    note: str | None
 
 @dataclass(slots=True)
 class LsResponse:
@@ -1435,6 +1436,7 @@ class MergeRequest:
     preserve: bool | None
     filesystem_strict: bool | None
     local_source_name: str | None
+    wait_seconds: int | None
 
 @dataclass(slots=True)
 class CloneLocalWorkspaceRequest:

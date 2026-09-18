@@ -894,6 +894,7 @@ class Client:
         preserve: bool | None = None,
         filesystem_strict: bool | None = None,
         local_source_name: str | None = None,
+        wait_seconds: int | None = None,
         dry_run: bool | None = None,
         **meta: Any,
     ) -> MergeResponse:
@@ -906,6 +907,7 @@ class Client:
             preserve=preserve,
             filesystem_strict=filesystem_strict,
             local_source_name=local_source_name,
+            wait_seconds=wait_seconds,
             dry_run=dry_run,
             **meta,
         )
@@ -922,6 +924,7 @@ class Client:
         preserve: bool | None = None,
         filesystem_strict: bool | None = None,
         local_source_name: str | None = None,
+        wait_seconds: int | None = None,
         dry_run: bool | None = None,
         **meta: Any,
     ) -> "MergeOperationHandle":
@@ -935,6 +938,7 @@ class Client:
             preserve=preserve,
             filesystem_strict=filesystem_strict,
             local_source_name=local_source_name,
+            wait_seconds=wait_seconds,
             dry_run=dry_run,
             **meta,
         )
@@ -963,6 +967,7 @@ class Client:
         preserve: bool | None,
         filesystem_strict: bool | None,
         local_source_name: str | None,
+        wait_seconds: int | None,
         dry_run: bool | None,
         **meta: Any,
     ) -> MergeRequest:
@@ -982,6 +987,13 @@ class Client:
             # and start-only: core's engine guard refuses it on every other op.
             # `cli_local_family` is what parses it; a plain merge leaves it None.
             local_source_name=local_source_name,
+            # Tag 10 (GwzOpenDecisions D1): `--wait <secs>` on the family
+            # lock, meaningful only together with `local_source_name` -- the
+            # family merge is the only merge that takes that lock, and core
+            # refuses the field on any other. Runtime-required field only,
+            # like `copy_source`: the generated dataclass has no default, so
+            # an absent option travels as an explicit `None`.
+            wait_seconds=wait_seconds,
         )
 
     async def diff(

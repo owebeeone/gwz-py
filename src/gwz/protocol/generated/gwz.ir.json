@@ -6903,6 +6903,17 @@
           "optional": true,
           "transient": false,
           "merge": null
+        },
+        {
+          "name": "note",
+          "tag": 6,
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
         }
       ]
     },
@@ -7735,6 +7746,17 @@
           "type": {
             "k": "scalar",
             "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "wait_seconds",
+          "tag": 10,
+          "type": {
+            "k": "scalar",
+            "scalar": "int"
           },
           "optional": true,
           "transient": false,
