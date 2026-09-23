@@ -280,6 +280,10 @@ CLI placement before endpoint or credential work. The
 [caller guide](GwzPyConcurrentOperations.md) is a draft surface, not an active
 API. The historical design remains the current implementation contract until
 the correction has review GO and passes a separate implementation gate.
+That correction would also narrow the §2 post-Closing rule: new work and
+operation-record lookups refuse, but repeated `close()` can read its retained
+cleanup report. Before Closing, a completed result remains available for up
+to 15 minutes unless released; callers must inspect it before close.
 
 Review must catch a second host constructed by `shims.rs` for the next
 operation, lost cancellation during a blocking handler, and accidental
