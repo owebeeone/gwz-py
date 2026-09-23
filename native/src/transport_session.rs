@@ -192,11 +192,17 @@ impl TransportSession {
         ))
     }
 
-    fn full() -> PyErr {
-        error::model(gwz_core::model::ModelError::new(
+    fn full_error() -> gwz_core::model::ModelError {
+        gwz_core::model::ModelError::new(
             gwz_core::model::ErrorCode::TransportSessionFull,
             "transport session has eight live operations",
-        ))
+        )
+    }
+
+    fn refuse_full(&self, operation_id: &str) -> PyErr {
+        let refusal = Self::full_error();
+        let _ = self.inner.operations.refuse(operation_id, refusal.clone());
+        error::model(refusal)
     }
 
     fn duplicate_request() -> PyErr {
@@ -365,6 +371,17 @@ impl TransportSession {
     }
 
     fn runtime(&self) -> PyResult<Arc<TransportRuntime>> {
+        self.runtime_with(|| {
+            self.inner
+                .executor
+                .block_on(async { TransportRuntime::from_environment() })
+        })
+    }
+
+    fn runtime_with(
+        &self,
+        build: impl Fn() -> gwz_core::model::ModelResult<TransportRuntime>,
+    ) -> PyResult<Arc<TransportRuntime>> {
         loop {
             let mut state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
             if state.status != Status::Open || state.faulted {
@@ -384,22 +401,32 @@ impl TransportSession {
             }
             state.constructing = true;
             drop(state);
-            let built = catch_unwind(AssertUnwindSafe(|| {
-                self.inner
-                    .executor
-                    .block_on(async { TransportRuntime::from_environment() })
-            }));
+            let built = catch_unwind(AssertUnwindSafe(&build));
             let mut state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
             if built.is_err() {
                 state.constructing = false;
                 state.faulted = true;
                 state.status = Status::Closed;
-                state.close_report = Some(CleanupReport {
+                let report = CleanupReport {
                     pending_local_work: 1,
                     peer_cleanup_confirmed: false,
-                });
+                };
+                state.close_report = Some(report.clone());
+                let refusal = gwz_core::model::ModelError::new(
+                    gwz_core::model::ErrorCode::InternalError,
+                    "transport endpoint construction panicked",
+                );
+                for operation_id in state.request_operations.values() {
+                    let _ = self.inner.operations.refuse(operation_id, refusal.clone());
+                }
+                for (_, mut admission) in std::mem::take(&mut state.admitting) {
+                    if let Some(signal) = admission.signal.take() {
+                        let _ = signal.send(Err(AdmissionFailure::Model(refusal.clone())));
+                    }
+                    admission.done.finish(report.clone());
+                }
                 self.inner.changed.notify_all();
-                return Err(error::runtime("transport endpoint construction panicked"));
+                return Err(error::model(refusal));
             }
             let built = built.expect("checked construction result");
             if state.status != Status::Open || state.faulted {
@@ -544,7 +571,7 @@ impl TransportSession {
             } else {
                 if state.admitting.len() + state.active.len() >= 8 {
                     state.request_operations.retain(|_, id| id != &operation_id);
-                    return Err(Self::full());
+                    return Err(self.refuse_full(&operation_id));
                 }
                 state.admitting.insert(
                     operation_id.clone(),
@@ -636,7 +663,7 @@ impl TransportSession {
             self.inner.changed.notify_all();
         }
         self.inner.operations.defer_terminal(&operation_id);
-        let result = catch_unwind(AssertUnwindSafe(|| {
+        let dispatched = catch_unwind(AssertUnwindSafe(|| {
             operations::with_store(self.inner.operations.clone(), || {
                 shims::with_operation_id(operation_id.clone(), || {
                     shims::with_scoped_backend(request.backend().clone(), || {
@@ -650,20 +677,34 @@ impl TransportSession {
                     })
                 })
             })
-        }))
-        .unwrap_or_else(|_| Err(error::runtime("native operation failed")));
+        }));
+        let panicked = dispatched.is_err();
+        let result = dispatched.unwrap_or_else(|_| Err(error::runtime("native operation failed")));
         if let Err(err) = &result {
             let recorder = operations::with_store(self.inner.operations.clone(), || {
                 operations::begin(&operation_id)
             });
-            let _ = recorder.finish_error(
-                request_id.clone(),
-                schema_version,
-                action_for_method(method),
-                err.to_string(),
-            );
+            if panicked {
+                let _ = recorder.finish_panic_error(
+                    request_id.clone(),
+                    action_for_method(method),
+                    err.to_string(),
+                );
+            } else {
+                let _ = recorder.finish_error(
+                    request_id.clone(),
+                    schema_version,
+                    action_for_method(method),
+                    err.to_string(),
+                );
+            }
         }
-        let report = self.inner.executor.block_on(request.finish());
+        let report = self.finish_after_dispatch(
+            &operation_id,
+            &request_id,
+            action_for_method(method),
+            || self.inner.executor.block_on(request.finish()),
+        )?;
         let publication = self.inner.operations.publish_terminal(&operation_id);
         let mut state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(active) = state.active.remove(&operation_id) {
@@ -675,6 +716,30 @@ impl TransportSession {
         self.inner.changed.notify_all();
         publication?;
         result
+    }
+
+    fn finish_after_dispatch(
+        &self,
+        operation_id: &str,
+        request_id: &str,
+        action: gwz_core::ActionKind,
+        finish: impl FnOnce() -> CleanupReport,
+    ) -> PyResult<CleanupReport> {
+        match catch_unwind(AssertUnwindSafe(finish)) {
+            Ok(report) => Ok(report),
+            Err(_) => {
+                let recorder = operations::with_store(self.inner.operations.clone(), || {
+                    operations::begin(operation_id)
+                });
+                let _ = recorder.finish_panic_error(
+                    request_id.to_owned(),
+                    action,
+                    "transport finish panicked".into(),
+                );
+                self.worker_panicked(operation_id);
+                Err(error::runtime("transport finish panicked"))
+            }
+        }
     }
 
     fn end_admission(
@@ -777,6 +842,7 @@ impl TransportSession {
             );
             admitting.done.finish(report.clone());
         }
+        let _ = self.inner.operations.publish_terminal(operation_id);
         if let Some(active) = state.active.remove(operation_id) {
             active.cancellation.cancel();
             if active.cancel_requested {
@@ -784,9 +850,6 @@ impl TransportSession {
                     .last_cancel
                     .insert(operation_id.to_owned(), report.clone());
             }
-            // The outer worker has already written its failure to the recorder.
-            // Publish it before a cancel/close join can observe completion.
-            let _ = self.inner.operations.publish_terminal(operation_id);
             active.done.finish(report);
         }
         self.inner.changed.notify_all();
@@ -979,6 +1042,137 @@ impl TransportSession {
     }
 }
 
+cfg_if::cfg_if! {
+    if #[cfg(test)] {
+        mod constructor_panic_tests {
+            use super::*;
+            use pyo3::types::PyAnyMethods;
+
+            #[test]
+            fn construction_panic_settles_reserved_and_admitting_ids() {
+                Python::initialize();
+                let session = TransportSession::new().unwrap();
+                let reserved = session.reserve_inner("reserved".into()).unwrap();
+                let admitting = session.reserve_inner("admitting".into()).unwrap();
+                let (signal, wait) = mpsc::channel();
+                session.inner.state.lock().unwrap().admitting.insert(
+                    admitting.clone(),
+                    Admitting {
+                        operation_id: admitting.clone(),
+                        done: Arc::new(Completion::default()),
+                        cancel_requested: false,
+                        started: true,
+                        signal: Some(signal),
+                        failure: None,
+                        failure_report: None,
+                    },
+                );
+                assert!(session.runtime_with(|| panic!("injected construction panic")).is_err());
+                assert!(matches!(wait.recv_timeout(std::time::Duration::from_secs(1)),
+                    Ok(Err(AdmissionFailure::Model(_)))));
+                for operation_id in [&reserved, &admitting] {
+                    let error = session.inner.operations.result(operation_id).unwrap_err();
+                    Python::attach(|py| {
+                        let code: String = error.value(py).getattr("code").unwrap().extract().unwrap();
+                        assert_eq!(code, "InternalError");
+                    });
+                    assert!(session.inner.operations.wait_events(operation_id, 0,
+                        std::time::Duration::ZERO).unwrap().1);
+                }
+                let report = session.close_inner();
+                assert!(!report.peer_cleanup_confirmed);
+                let repeated = session.close_inner();
+                assert_eq!(repeated.pending_local_work, report.pending_local_work);
+                assert_eq!(repeated.peer_cleanup_confirmed, report.peer_cleanup_confirmed);
+                assert!(session.reserve_inner("later".into()).is_err());
+            }
+
+            #[test]
+            fn eight_slot_refusals_settle_both_native_call_forms() {
+                Python::initialize();
+                let session = TransportSession::new().unwrap();
+                {
+                    let mut state = session.inner.state.lock().unwrap();
+                    for index in 0..8 {
+                        let operation_id = format!("held-{index}");
+                        state.admitting.insert(operation_id.clone(), Admitting {
+                            operation_id,
+                            done: Arc::new(Completion::default()),
+                            cancel_requested: false,
+                            started: true,
+                            signal: None,
+                            failure: None,
+                            failure_report: None,
+                        });
+                    }
+                }
+                for index in 0..65 {
+                    let request_id = format!("full-{index}");
+                    let operation_id = session.reserve_inner(request_id.clone()).unwrap();
+                    let meta = gwz_core::RequestMeta {
+                        request_id,
+                        schema_version: "gwz.protocol/v0".into(),
+                        ..Default::default()
+                    };
+                    let request = gwz_core::FetchRequest { meta };
+                    let bytes = gwz_core::encode(&request.to_cbor());
+                    let error = if index % 2 == 0 {
+                        session.call_inner(
+                            "fetch", "FetchRequest", "FetchResponse", &bytes,
+                            std::env::current_dir().unwrap(), false, Some(&operation_id),
+                        ).unwrap_err()
+                    } else {
+                        Python::attach(|py| session.submit(
+                            py, "fetch", "FetchRequest", "FetchResponse", &bytes,
+                            Some(&operation_id),
+                        )).unwrap_err()
+                    };
+                    Python::attach(|py| {
+                        let code: String = error.value(py).getattr("code").unwrap().extract().unwrap();
+                        assert_eq!(code, "TransportSessionFull");
+                    });
+                    let retained = session.inner.operations.result(&operation_id).unwrap_err();
+                    Python::attach(|py| {
+                        let code: String = retained.value(py).getattr("code").unwrap().extract().unwrap();
+                        assert_eq!(code, "TransportSessionFull");
+                    });
+                    assert!(session.inner.operations.wait_events(
+                        &operation_id, 0, std::time::Duration::ZERO,
+                    ).unwrap().1);
+                    session.release_inner(&operation_id).unwrap();
+                }
+                session.inner.state.lock().unwrap().admitting.clear();
+                session.close_inner();
+            }
+
+            #[test]
+            fn finish_panic_cannot_publish_staged_success() {
+                Python::initialize();
+                let session = TransportSession::new().unwrap();
+                let operation_id = session.reserve_inner("request".into()).unwrap();
+                session.inner.operations.defer_terminal(&operation_id);
+                let recorder = operations::with_store(session.inner.operations.clone(), || {
+                    operations::begin(&operation_id)
+                });
+                let mut response = gwz_core::ResponseEnvelope::default();
+                response.meta.operation_id = Some(operation_id.clone());
+                response.meta.request_id = "request".into();
+                response.meta.aggregate_status = gwz_core::AggregateStatus::Ok;
+                recorder.finish(&response).unwrap();
+                assert!(session.finish_after_dispatch(
+                    &operation_id, "request", gwz_core::ActionKind::Fetch,
+                    || panic!("injected finish panic"),
+                ).is_err());
+                let result = session.inner.operations.result(&operation_id).unwrap();
+                assert_eq!(result.aggregate_status, gwz_core::AggregateStatus::Failed);
+                assert!(session.reserve_inner("later".into()).is_err());
+                let report = session.close_inner();
+                assert!(!report.peer_cleanup_confirmed);
+            }
+        }
+    }
+}
+
 #[pymethods]
 impl TransportSession {
     #[new]
@@ -1088,7 +1282,7 @@ impl TransportSession {
                     && !state.admitting.contains_key(operation_id)
                 {
                     state.request_operations.retain(|_, id| id != operation_id);
-                    return Err(Self::full());
+                    return Err(session.refuse_full(operation_id));
                 }
                 if let Some(admitting) = state.admitting.get(operation_id) {
                     if admitting.started {

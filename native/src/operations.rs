@@ -320,6 +320,19 @@ impl OperationRecord {
         action: gwz_core::ActionKind,
         message: String,
     ) -> PyResult<()> {
+        self.complete(
+            self.failure_result(operation_id, request_id, action, message),
+            None,
+        )
+    }
+
+    fn failure_result(
+        &self,
+        operation_id: String,
+        request_id: String,
+        action: gwz_core::ActionKind,
+        message: String,
+    ) -> gwz_core::OperationResult {
         let error = gwz_core::GwzError {
             code: gwz_core::GwzErrorCode::InternalError,
             message,
@@ -329,21 +342,40 @@ impl OperationRecord {
             target_kind: None,
             record_context: None,
         };
-        self.complete(
-            gwz_core::OperationResult {
-                transport: None,
-                operation_id,
-                request_id,
-                action,
-                aggregate_status: gwz_core::AggregateStatus::Failed,
-                started_at_ms: self.started_at_ms,
-                finished_at_ms: now_ms(),
-                members: Vec::new(),
-                errors: vec![error],
-                attribution: None,
-            },
-            None,
-        )
+        gwz_core::OperationResult {
+            transport: None,
+            operation_id,
+            request_id,
+            action,
+            aggregate_status: gwz_core::AggregateStatus::Failed,
+            started_at_ms: self.started_at_ms,
+            finished_at_ms: now_ms(),
+            members: Vec::new(),
+            errors: vec![error],
+            attribution: None,
+        }
+    }
+
+    fn finish_panic_error(
+        &self,
+        operation_id: String,
+        request_id: String,
+        action: gwz_core::ActionKind,
+        message: String,
+    ) -> PyResult<()> {
+        let failure = self.failure_result(operation_id, request_id, action, message);
+        let mut state = self.state.lock().expect("operation state poisoned");
+        if state.result.is_some() {
+            // A published success is possible only after transport finish.
+            return Ok(());
+        }
+        if state.refusal.is_some() {
+            return Ok(());
+        }
+        state.pending_terminal = Some((failure, None));
+        drop(state);
+        self.changed.notify_all();
+        Ok(())
     }
 
     fn finish_model_error(
@@ -480,6 +512,20 @@ pub(crate) struct OperationRecorder {
 }
 
 impl OperationRecorder {
+    pub(crate) fn refuse(&self, reason: gwz_core::model::ModelError) {
+        self.record.refuse(reason);
+    }
+
+    pub(crate) fn finish_panic_error(
+        &self,
+        request_id: String,
+        action: gwz_core::ActionKind,
+        message: String,
+    ) -> PyResult<()> {
+        self.record
+            .finish_panic_error(self.operation_id.clone(), request_id, action, message)
+    }
+
     pub(crate) fn finish(&self, envelope: &gwz_core::ResponseEnvelope) -> PyResult<()> {
         self.record.finish(envelope)
     }
@@ -621,6 +667,28 @@ mod tests {
         assert!(store.try_result("transport-id").unwrap().is_none());
         store.publish_terminal("transport-id").unwrap();
         assert!(store.try_result("transport-id").unwrap().is_some());
+    }
+
+    #[test]
+    fn cleanup_panic_overrides_a_staged_success_before_publication() {
+        let store = OperationStore::default();
+        let recorder = store.begin_exclusive("panic-id").unwrap();
+        store.defer_terminal("panic-id");
+        let mut response = merge_response("request").response;
+        response.meta.operation_id = Some("panic-id".into());
+        recorder.finish(&response).unwrap();
+        assert!(store.try_result("panic-id").unwrap().is_none());
+        recorder
+            .finish_panic_error(
+                "request".into(),
+                gwz_core::ActionKind::Merge,
+                "transport finish panicked".into(),
+            )
+            .unwrap();
+        store.publish_terminal("panic-id").unwrap();
+        let result = store.result("panic-id").unwrap();
+        assert_eq!(result.aggregate_status, gwz_core::AggregateStatus::Failed);
+        assert_eq!(result.errors[0].code, gwz_core::GwzErrorCode::InternalError);
     }
 
     #[test]

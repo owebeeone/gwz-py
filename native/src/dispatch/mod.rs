@@ -464,8 +464,6 @@ fn spawn_call(
     let response_message = response_message.to_owned();
     let request_bytes = request_bytes.to_vec();
     let failure_recorder = recorder.clone();
-    let failure_request_id = request_id.clone();
-    let failure_schema_version = schema_version.clone();
     thread::Builder::new().name("gwz-py-operation".into()).spawn(move || {
         let outcome = catch_unwind(AssertUnwindSafe(|| {
             cfg_if::cfg_if! {
@@ -486,7 +484,11 @@ fn spawn_call(
         let panicked = outcome.is_err();
         let result = outcome.unwrap_or_else(|_| Err(error::runtime("native operation panicked")));
         if let Err(err) = result {
-            let _ = recorder.finish_error(request_id, schema_version, action, err.to_string());
+            if panicked {
+                let _ = recorder.finish_panic_error(request_id, action, err.to_string());
+            } else {
+                let _ = recorder.finish_error(request_id, schema_version, action, err.to_string());
+            }
             cfg_if::cfg_if! {
                 if #[cfg(all(unix, gwz_transport_candidate))] {
                     if let Some(session) = session {
@@ -502,22 +504,15 @@ fn spawn_call(
                 }
             }
         }
-    }).map_err(|err| worker_spawn_failure(
-        failure_recorder, failure_request_id, failure_schema_version, action, err,
-    ))?;
+    }).map_err(|err| worker_spawn_failure(failure_recorder, err))?;
     Ok(())
 }
 
-fn worker_spawn_failure(
-    recorder: operations::OperationRecorder,
-    request_id: String,
-    schema_version: String,
-    action: gwz_core::ActionKind,
-    source: std::io::Error,
-) -> PyErr {
+fn worker_spawn_failure(recorder: operations::OperationRecorder, source: std::io::Error) -> PyErr {
     let message = format!("native worker unavailable: {source}");
-    let _ = recorder.finish_error(request_id, schema_version, action, message.clone());
-    error::runtime(message)
+    let refusal = gwz_core::model::ModelError::new(gwz_core::model::ErrorCode::IoError, message);
+    recorder.refuse(refusal.clone());
+    error::model(refusal)
 }
 
 cfg_if::cfg_if! {
@@ -527,20 +522,26 @@ cfg_if::cfg_if! {
 
             #[test]
             fn spawn_failure_writes_terminal_before_returning() {
+                use pyo3::types::PyAnyMethods;
+                pyo3::Python::initialize();
                 let store = std::sync::Arc::new(operations::OperationStore::default());
                 let operation_id = "spawn-failure-test";
                 store.issue(operation_id).unwrap();
                 let recorder = operations::with_store(store.clone(), || operations::begin(operation_id));
-                let _ = worker_spawn_failure(
+                let error = worker_spawn_failure(
                     recorder,
-                    "request".into(),
-                    "gwz.protocol/v0".into(),
-                    gwz_core::ActionKind::Fetch,
                     std::io::Error::other("injected spawn failure"),
                 );
-                let result = store.result(operation_id).expect("failed launch has a terminal");
-                assert_eq!(result.operation_id, operation_id);
-                assert_eq!(result.aggregate_status, gwz_core::AggregateStatus::Failed);
+                pyo3::Python::attach(|py| {
+                    let code: String = error.value(py).getattr("code").unwrap().extract().unwrap();
+                    assert_eq!(code, "IoError");
+                });
+                let retained = store.result(operation_id).expect_err("failed launch is a refusal");
+                pyo3::Python::attach(|py| {
+                    let code: String = retained.value(py).getattr("code").unwrap().extract().unwrap();
+                    assert_eq!(code, "IoError");
+                });
+                assert!(store.wait_events(operation_id, 0, std::time::Duration::ZERO).unwrap().1);
             }
         }
     }
