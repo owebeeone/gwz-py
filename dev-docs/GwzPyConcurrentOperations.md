@@ -1,6 +1,6 @@
 # Concurrent network operations with one Python Client
 
-Status: **DRAFT caller guide for the Python concurrency design review, 2026-09-24. These methods and concurrent behavior are not active in the current candidate.**
+Status: **REJECTED with the previous concurrency design; these methods and concurrent behavior are not active.** The operator authorized a new [session v2 caller guide](GwzPyConcurrentOperationsV2.md) whose method timing and close semantics replace this historical draft.
 
 One `Client` will be able to run independent fetch, push, pull, clone and other network operations at the same time. The operations share the Client's Rust transport host and SSH/HTTPS connection pools. Each operation has its own result and cancellation; cancelling one does not cancel another. A physical connection still runs only one exchange at a time. The same rules apply when tasks use different Python threads with the same Client.
 
