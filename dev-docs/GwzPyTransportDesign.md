@@ -284,6 +284,12 @@ That correction replaces the §2 post-Closing rule: new Git work refuses, but
 session-owned operation outcomes and event readers remain readable from the
 bounded ledger after physical host shutdown, until expiry or release. A
 repeated `close()` reads its retained cleanup and per-operation summary.
+It also replaces §2's installed-runtime-stable-until-close sentence and §4's
+never-reused-request-ID cancellation rationale. The captured endpoint
+configuration remains stable while runtime generations roll over after 256
+registered IDs. A cancellation handle binds its public operation ID and the
+original core generation; a caller request ID reused after rollover cannot
+redirect an old handle to new work.
 
 Review must catch a second host constructed by `shims.rs` for the next
 operation, lost cancellation during a blocking handler, and accidental
