@@ -1,6 +1,6 @@
 # Python transport session for GWZ 1.1.0
 
-Current release-gate status (2026-09-23): **NO-GO for Phase 6 completion and Phase 7 activation** because the single-active-operation rule prevents overlapping network commands on one Python `Client`. See the [operator-directed finding](../../dev-docs/GwzPyTransportConcurrencyNoGo.md) and [draft remediation/design amendment](../../dev-docs/GwzPyTransportConcurrencyRemPlan.md). The historical design GO below remains the verdict on the earlier review object; it does not close this new finding. The concurrency amendment has not yet received review GO or been implemented.
+Current release-gate status (2026-09-23): **NO-GO for Phase 6 completion and Phase 7 activation** because the single-active-operation rule prevents overlapping network commands on one Python `Client`. See the [operator-directed finding](../../dev-docs/GwzPyTransportConcurrencyNoGo.md) and [merged round-1 remediation](../../dev-docs/GwzPyTransportConcurrency-RemPlan-1.md). The historical design GO below remains the verdict on the earlier review object; it does not close this new finding. The first concurrency amendment received Consistency and Safety NO-GO and has not been implemented.
 
 Status: **S1.1/S1.2 design accepted for implementation, 2026-09-23**.
 Consistency, Safety and Surface report GO at Python
@@ -270,6 +270,16 @@ active operation by its public operation ID and verify the returned cleanup
 snapshot is observable only after finish; repeat on the latest completed ID.
 A wrong, foreign or expired ID must fail without cancelling the active
 operation, and no unbounded completed-cancellation registry may accumulate.
+
+Candidate correction (2026-09-24, pending review): the
+[concurrent-session design](../../dev-docs/GwzPyTransportConcurrencyDesign-1.md)
+would replace the one-active-operation and Python network-lock rules above
+with session-owned operation records, bounded overlapping work, equal-capacity
+admission and independent cancellation. It would also refuse explicit Python
+CLI placement before endpoint or credential work. The
+[caller guide](GwzPyConcurrentOperations.md) is a draft surface, not an active
+API. The historical design remains the current implementation contract until
+the correction has review GO and passes a separate implementation gate.
 
 Review must catch a second host constructed by `shims.rs` for the next
 operation, lost cancellation during a blocking handler, and accidental
