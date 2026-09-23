@@ -490,6 +490,8 @@ class GwzErrorCode(Enum):
     unknown_evidence = 70
     disposal_incomplete = 71
     url_scheme_unavailable = 72
+    cancelled = 73
+    transport_record_limit = 74
 
 class MergeRecordRequiredWave(Enum):
     a1 = 0

@@ -8,6 +8,7 @@ mod merge;
 mod read;
 
 use std::path::PathBuf;
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::thread;
 
 use pyo3::PyResult;
@@ -402,7 +403,7 @@ fn submit_accepted(
                 schema_version: meta.schema_version.clone(),
                 action,
                 aggregate_status: gwz_core::AggregateStatus::Accepted,
-                operation_id: Some(operation_id),
+                operation_id: Some(operation_id.clone()),
                 message: None,
                 attribution: meta.attribution.clone(),
             };
@@ -413,7 +414,7 @@ fn submit_accepted(
                 schema_version: meta.schema_version.clone(),
                 action,
                 aggregate_status: gwz_core::AggregateStatus::Accepted,
-                operation_id: Some(operation_id),
+                operation_id: Some(operation_id.clone()),
                 message: None,
                 attribution: meta.attribution.clone(),
             };
@@ -431,11 +432,12 @@ fn submit_accepted(
         response_message,
         request_bytes,
         recorder,
+        operation_id,
         meta.request_id.clone(),
         meta.schema_version.clone(),
         action,
         caller_cwd.to_path_buf(),
-    );
+    )?;
     Ok(accepted)
 }
 
@@ -446,11 +448,12 @@ fn spawn_call(
     response_message: &str,
     request_bytes: &[u8],
     recorder: operations::OperationRecorder,
+    operation_id: String,
     request_id: String,
     schema_version: String,
     action: gwz_core::ActionKind,
     caller_cwd: PathBuf,
-) {
+) -> PyResult<()> {
     cfg_if::cfg_if! {
         if #[cfg(all(unix, gwz_transport_candidate))] {
             let session = crate::transport_session::current_session();
@@ -460,22 +463,41 @@ fn spawn_call(
     let request_message = request_message.to_owned();
     let response_message = response_message.to_owned();
     let request_bytes = request_bytes.to_vec();
-    thread::spawn(move || {
-        cfg_if::cfg_if! {
-            if #[cfg(all(unix, gwz_transport_candidate))] {
-                let result = if let Some(session) = session {
-                    session.spawned_call(
-                        &method, &request_message, &response_message, &request_bytes, caller_cwd,
-                    )
+    thread::Builder::new().name("gwz-py-operation".into()).spawn(move || {
+        let outcome = catch_unwind(AssertUnwindSafe(|| {
+            cfg_if::cfg_if! {
+                if #[cfg(all(unix, gwz_transport_candidate))] {
+                    if let Some(session) = session.as_ref() {
+                        session.spawned_call(
+                            &method, &request_message, &response_message, &request_bytes, caller_cwd,
+                        )
+                    } else {
+                        call(&method, &request_message, &response_message, &request_bytes, caller_cwd)
+                    }
                 } else {
                     call(&method, &request_message, &response_message, &request_bytes, caller_cwd)
-                };
-            } else {
-                let result = call(&method, &request_message, &response_message, &request_bytes, caller_cwd);
+                }
             }
-        }
+        }));
+        let panicked = outcome.is_err();
+        let result = outcome.unwrap_or_else(|_| Err(error::runtime("native operation panicked")));
         if let Err(err) = result {
             let _ = recorder.finish_error(request_id, schema_version, action, err.to_string());
+            cfg_if::cfg_if! {
+                if #[cfg(all(unix, gwz_transport_candidate))] {
+                    if let Some(session) = session {
+                        if panicked {
+                            session.worker_panicked(&operation_id);
+                        } else {
+                            session.complete_failed_admission(&operation_id);
+                        }
+                    }
+                } else {
+                    let _ = operation_id;
+                    let _ = panicked;
+                }
+            }
         }
-    });
+    }).map_err(|err| error::runtime(format!("native worker unavailable: {err}")))?;
+    Ok(())
 }

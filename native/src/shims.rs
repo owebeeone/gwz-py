@@ -5,6 +5,21 @@ use crate::{error, operations};
 
 thread_local! {
     static SCOPED_BACKEND: RefCell<Option<gwz_core::git::Git2Backend>> = const { RefCell::new(None) };
+    static SCOPED_OPERATION_ID: RefCell<Option<String>> = const { RefCell::new(None) };
+}
+
+pub(crate) fn with_operation_id<T>(operation_id: String, action: impl FnOnce() -> T) -> T {
+    struct Restore(Option<String>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            SCOPED_OPERATION_ID.with(|slot| *slot.borrow_mut() = self.0.take());
+        }
+    }
+    let previous = SCOPED_OPERATION_ID.with(|slot| slot.borrow_mut().replace(operation_id));
+    let restore = Restore(previous);
+    let result = action();
+    drop(restore);
+    result
 }
 
 /// Keep the admitted backend alive only while the matching native dispatch runs.
@@ -40,7 +55,8 @@ fn with_backend<T>(action: impl FnOnce(&gwz_core::git::Git2Backend) -> T) -> T {
 }
 
 pub(crate) fn operation_id(request_id: &str) -> String {
-    format!("op_{request_id}")
+    SCOPED_OPERATION_ID.with(|slot| slot.borrow().clone())
+        .unwrap_or_else(|| format!("op_{request_id}"))
 }
 
 pub(crate) fn no_backend<T>(

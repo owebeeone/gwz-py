@@ -1,14 +1,18 @@
 //! Python's one persistent, lazily constructed core transport host.
 //! This module is candidate-only until the ordinary core graph activates it.
 use std::cell::RefCell;
+use std::collections::HashMap;
+use std::fs::File;
+use std::io::Read;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
+use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Condvar, Mutex};
 
 use gwz_core::transport_host::{CleanupReport, TransportCancellation, TransportRuntime};
 use pyo3::prelude::*;
 
-use crate::{codec, dispatch, error, shims};
+use crate::{codec, dispatch, error, operations, shims};
 
 thread_local! {
     static CURRENT_SESSION: RefCell<Option<TransportSession>> = const { RefCell::new(None) };
@@ -40,7 +44,6 @@ enum Status {
 }
 
 struct Active {
-    operation_id: String,
     cancellation: TransportCancellation,
     done: Arc<Completion>,
     cancel_requested: bool,
@@ -51,17 +54,27 @@ struct Admitting {
     done: Arc<Completion>,
     cancel_requested: bool,
     started: bool,
+    signal: Option<Sender<Result<(), AdmissionFailure>>>,
+    failure: Option<AdmissionFailure>,
+    failure_report: Option<CleanupReport>,
+}
+
+enum AdmissionFailure {
+    Model(gwz_core::model::ModelError),
+    Runtime(String),
 }
 
 struct State {
     status: Status,
     constructing: bool,
-    admitting: Option<Admitting>,
+    admitting: HashMap<String, Admitting>,
     runtime: Option<Arc<TransportRuntime>>,
-    active: Option<Active>,
+    active: HashMap<String, Active>,
     constructor_cleanup: Option<CleanupReport>,
     close_report: Option<CleanupReport>,
-    last_cancel: Option<(String, CleanupReport)>,
+    last_cancel: HashMap<String, CleanupReport>,
+    request_operations: HashMap<String, String>,
+    next_serial: u64,
 }
 
 impl Default for State {
@@ -69,12 +82,14 @@ impl Default for State {
         Self {
             status: Status::Open,
             constructing: false,
-            admitting: None,
+            admitting: HashMap::new(),
             runtime: None,
-            active: None,
+            active: HashMap::new(),
             constructor_cleanup: None,
             close_report: None,
-            last_cancel: None,
+            last_cancel: HashMap::new(),
+            request_operations: HashMap::new(),
+            next_serial: 0,
         }
     }
 }
@@ -106,6 +121,8 @@ struct Inner {
     state: Mutex<State>,
     changed: Condvar,
     executor: tokio::runtime::Runtime,
+    operations: Arc<operations::OperationStore>,
+    nonce: [u8; 16],
 }
 
 #[pyclass(module = "gwz._gwz_core", skip_from_py_object)]
@@ -139,6 +156,10 @@ impl Drop for TransportSession {
 
 impl TransportSession {
     fn new() -> PyResult<Self> {
+        let mut nonce = [0_u8; 16];
+        File::open("/dev/urandom")
+            .and_then(|mut source| source.read_exact(&mut nonce))
+            .map_err(|_| error::runtime("operation identity source unavailable"))?;
         let executor = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(1)
             .enable_all()
@@ -149,6 +170,8 @@ impl TransportSession {
                 state: Mutex::new(State::default()),
                 changed: Condvar::new(),
                 executor,
+                operations: Arc::new(operations::OperationStore::default()),
+                nonce,
             }),
         })
     }
@@ -167,11 +190,56 @@ impl TransportSession {
         ))
     }
 
+    fn full() -> PyErr {
+        error::model(gwz_core::model::ModelError::new(
+            gwz_core::model::ErrorCode::TransportSessionFull,
+            "transport session has eight live operations",
+        ))
+    }
+
+    fn duplicate_request() -> PyErr {
+        error::model(gwz_core::model::ModelError::new(
+            gwz_core::model::ErrorCode::InvalidRequest,
+            "request_id is already issued in this transport generation",
+        ))
+    }
+
     fn wrong_operation() -> PyErr {
         error::model(gwz_core::model::ModelError::new(
             gwz_core::model::ErrorCode::InvalidRequest,
             "operation is not owned by this session",
         ))
+    }
+
+    fn expired_operation() -> PyErr {
+        error::model(gwz_core::model::ModelError::new(
+            gwz_core::model::ErrorCode::OperationExpired,
+            "operation record has expired or been released",
+        ))
+    }
+
+    fn issued_serial(&self, operation_id: &str) -> Option<u64> {
+        let prefix = format!("op_{:032x}_", u128::from_be_bytes(self.inner.nonce));
+        let part = operation_id.strip_prefix(&prefix)?;
+        if part.is_empty() || !part.bytes().all(|byte| byte.is_ascii_digit()) {
+            return None;
+        }
+        let serial = part.parse::<u64>().ok()?;
+        (serial != 0 && serial.to_string() == part).then_some(serial)
+    }
+
+    /// Reject foreign and never-issued IDs before touching this session's
+    /// ledger. The high-water mark replaces a lifetime tombstone table.
+    fn validate_operation_id(&self, operation_id: &str) -> PyResult<()> {
+        let serial = self.issued_serial(operation_id);
+        let state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+        if !serial.is_some_and(|serial| serial <= state.next_serial) {
+            return Err(Self::wrong_operation());
+        }
+        if !self.inner.operations.contains(operation_id) {
+            return Err(Self::expired_operation());
+        }
+        Ok(())
     }
 
     fn ensure_open(&self) -> PyResult<()> {
@@ -188,34 +256,61 @@ impl TransportSession {
         Ok(())
     }
 
-    fn reserve_inner(&self, operation_id: String) -> PyResult<()> {
+    fn reserve_inner(&self, request_id: String) -> PyResult<String> {
+        if request_id.is_empty() || request_id.len() > 128
+            || request_id.chars().any(char::is_control) {
+            return Err(error::model(gwz_core::model::ModelError::new(
+                gwz_core::model::ErrorCode::InvalidRequest,
+                "invalid request_id",
+            )));
+        }
         let mut state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
         if state.status != Status::Open {
             return Err(Self::closed());
         }
-        if state.admitting.is_some() || state.active.is_some() {
-            return Err(Self::busy());
+        if state.request_operations.contains_key(&request_id) {
+            return Err(Self::duplicate_request());
         }
-        state.admitting = Some(Admitting {
-            operation_id,
-            done: Arc::new(Completion::default()),
-            cancel_requested: false,
-            started: false,
-        });
-        Ok(())
+        let serial = state.next_serial.checked_add(1)
+            .ok_or_else(|| error::runtime("operation identity space exhausted"))?;
+        let operation_id = format!("op_{:032x}_{}", u128::from_be_bytes(self.inner.nonce),
+            serial);
+        self.inner.operations.issue(&operation_id)?;
+        state.next_serial = serial;
+        state.request_operations.insert(request_id, operation_id.clone());
+        Ok(operation_id)
+    }
+
+    fn operation_for_request(&self, request_id: &str) -> PyResult<String> {
+        if let Some(operation_id) = self.inner.state.lock().unwrap_or_else(|e| e.into_inner())
+            .request_operations.get(request_id).cloned() {
+            return Ok(operation_id);
+        }
+        self.reserve_inner(request_id.to_owned())
+    }
+
+    fn release_request_mapping(&self, request_id: &str, operation_id: &str) {
+        let mut state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+        if state.request_operations.get(request_id).is_some_and(|id| id == operation_id) {
+            state.request_operations.remove(request_id);
+        }
     }
 
     fn abandon_unstarted(&self, operation_id: Option<&str>) {
         let mut state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
-        let matching = state.admitting.as_ref().is_some_and(|admitting| {
-            !admitting.started
-                && operation_id.is_none_or(|operation_id| operation_id == admitting.operation_id)
-        });
+        let matching = operation_id
+            .and_then(|id| state.admitting.get(id))
+            .is_some_and(|admitting| !admitting.started);
         if matching {
-            let admitting = state.admitting.take().expect("matching admission");
+            let admitting = state.admitting.remove(operation_id.expect("matching id"))
+                .expect("matching admission");
             let report = CleanupReport::default();
             if admitting.cancel_requested {
-                state.last_cancel = Some((admitting.operation_id, report.clone()));
+                state.last_cancel.insert(admitting.operation_id, report.clone());
+            }
+            if let Some(signal) = admitting.signal {
+                let _ = signal.send(Err(AdmissionFailure::Runtime(
+                    "operation cancelled before admission".into())));
             }
             admitting.done.finish(report);
             self.inner.changed.notify_all();
@@ -281,6 +376,7 @@ impl TransportSession {
         response_message: &str,
         request_bytes: &[u8],
         caller_cwd: PathBuf,
+        defer_failure: bool,
     ) -> PyResult<Vec<u8>> {
         if method == "transport_capabilities" {
             self.ensure_open()?;
@@ -314,43 +410,62 @@ impl TransportSession {
                 caller_cwd,
             );
         };
-        let operation_id = shims::operation_id(&meta.request_id);
+        let operation_id = self.operation_for_request(&meta.request_id)?;
+        if let Err(err) = gwz_core::transport_host::validate_request_context(&meta, &operation_id) {
+            self.release_request_mapping(&meta.request_id, &operation_id);
+            self.end_admission(&operation_id, CleanupReport::default(),
+                Some(AdmissionFailure::Model(err.clone())), defer_failure);
+            return Err(error::model(err));
+        }
         {
             let mut state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
             if state.status != Status::Open {
                 drop(state);
-                self.abandon_unstarted(Some(&operation_id));
+                self.end_admission(&operation_id, CleanupReport::default(),
+                    Some(AdmissionFailure::Runtime("client is closed".into())), defer_failure);
                 return Err(Self::closed());
             }
-            if state.active.is_some() {
+            if state.active.contains_key(&operation_id) {
                 return Err(Self::busy());
             }
-            if let Some(admitting) = &mut state.admitting {
-                if admitting.operation_id != operation_id || admitting.started {
+            if let Some(admitting) = state.admitting.get_mut(&operation_id) {
+                if admitting.started {
                     return Err(Self::busy());
                 }
                 admitting.started = true;
                 if admitting.cancel_requested {
                     drop(state);
-                    self.end_admission(CleanupReport::default());
+                    self.end_admission(&operation_id, CleanupReport::default(),
+                        Some(AdmissionFailure::Runtime(
+                            "operation cancelled before admission".into())), defer_failure);
                     return Err(error::runtime("operation cancelled"));
                 }
             } else {
-                state.admitting = Some(Admitting {
+                if state.admitting.len() + state.active.len() >= 8 {
+                    state.request_operations.retain(|_, id| id != &operation_id);
+                    return Err(Self::full());
+                }
+                state.admitting.insert(operation_id.clone(), Admitting {
                     operation_id: operation_id.clone(),
                     done: Arc::new(Completion::default()),
                     cancel_requested: false,
                     started: true,
+                    signal: None,
+                    failure: None,
+                    failure_report: None,
                 });
             }
         }
         let runtime = match self.runtime() {
             Ok(runtime) => runtime,
             Err(err) => {
-                self.end_admission(CleanupReport::default());
+                self.release_request_mapping(&meta.request_id, &operation_id);
+                self.end_admission(&operation_id, CleanupReport::default(),
+                    Some(AdmissionFailure::Runtime(err.to_string())), defer_failure);
                 return Err(err);
             }
         };
+        let request_id = meta.request_id.clone();
         let request = match self
             .inner
             .executor
@@ -358,72 +473,143 @@ impl TransportSession {
         {
             Ok(request) => request,
             Err(err) => {
-                self.end_admission(CleanupReport::default());
+                if matches!(err.code,
+                    gwz_core::model::ErrorCode::TransportCapacityConflict
+                        | gwz_core::model::ErrorCode::InvalidRequest
+                        | gwz_core::model::ErrorCode::UnsupportedOperation) {
+                    self.release_request_mapping(&request_id, &operation_id);
+                }
+                self.end_admission(&operation_id, CleanupReport::default(),
+                    Some(AdmissionFailure::Model(err.clone())), defer_failure);
                 return Err(error::model(err));
             }
         };
         let done;
         {
             let mut state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
-            let admitting = state.admitting.take().expect("reserved admission");
+            let admitting = state.admitting.remove(&operation_id).expect("reserved admission");
             if state.status != Status::Open || admitting.cancel_requested {
-                let cancelled = admitting.cancel_requested;
-                let done = admitting.done.clone();
-                state.admitting = Some(admitting);
+                state.admitting.insert(operation_id.clone(), admitting);
                 drop(state);
                 request.cancel();
                 let report = self.inner.executor.block_on(request.finish());
-                let mut state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
-                state.admitting = None;
-                if cancelled {
-                    state.last_cancel = Some((operation_id, report.clone()));
-                }
-                done.finish(report);
-                self.inner.changed.notify_all();
+                self.end_admission(&operation_id, report,
+                    Some(AdmissionFailure::Runtime(
+                        "operation cancelled before admission".into())), defer_failure);
                 return Err(Self::closed());
             }
             done = admitting.done;
-            state.active = Some(Active {
-                operation_id: operation_id.clone(),
+            if let Some(signal) = admitting.signal {
+                let _ = signal.send(Ok(()));
+            }
+            state.active.insert(operation_id.clone(), Active {
                 cancellation: request.cancellation_handle(),
                 done: done.clone(),
                 cancel_requested: false,
             });
             self.inner.changed.notify_all();
         }
+        self.inner.operations.defer_terminal(&operation_id);
         let result = catch_unwind(AssertUnwindSafe(|| {
-            shims::with_scoped_backend(request.backend().clone(), || {
-                dispatch::call(
-                    method,
-                    request_message,
-                    response_message,
-                    request_bytes,
-                    caller_cwd,
-                )
+            operations::with_store(self.inner.operations.clone(), || {
+                shims::with_operation_id(operation_id.clone(), || {
+                    shims::with_scoped_backend(request.backend().clone(), || {
+                        dispatch::call(
+                            method,
+                            request_message,
+                            response_message,
+                            request_bytes,
+                            caller_cwd,
+                        )
+                    })
+                })
             })
         }))
         .unwrap_or_else(|_| Err(error::runtime("native operation failed")));
         let report = self.inner.executor.block_on(request.finish());
+        let publication = self.inner.operations.publish_terminal(&operation_id);
         let mut state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(active) = state.active.take() {
+        if let Some(active) = state.active.remove(&operation_id) {
             if active.cancel_requested {
-                state.last_cancel = Some((operation_id, report.clone()));
+                state.last_cancel.insert(operation_id, report.clone());
             }
         }
         done.finish(report);
         self.inner.changed.notify_all();
+        publication?;
         result
     }
 
-    fn end_admission(&self, report: CleanupReport) {
+    fn end_admission(&self, operation_id: &str, report: CleanupReport,
+        reason: Option<AdmissionFailure>, defer_failure: bool) {
         let mut state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(admitting) = state.admitting.take() {
+        if defer_failure {
+            if let Some(admitting) = state.admitting.get_mut(operation_id) {
+                admitting.failure = reason;
+                admitting.failure_report = Some(report);
+            }
+            self.inner.changed.notify_all();
+            return;
+        }
+        if let Some(admitting) = state.admitting.remove(operation_id) {
+            if let Some(signal) = admitting.signal {
+                let _ = signal.send(Err(reason.unwrap_or_else(||
+                    AdmissionFailure::Runtime("admission failed".into()))));
+            }
             if admitting.cancel_requested {
-                state.last_cancel = Some((admitting.operation_id, report.clone()));
+                state.last_cancel.insert(admitting.operation_id, report.clone());
             }
             admitting.done.finish(report);
         }
         self.inner.changed.notify_all();
+    }
+
+    pub(crate) fn complete_failed_admission(&self, operation_id: &str) {
+        let mut state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(mut admitting) = state.admitting.remove(operation_id) {
+            let report = admitting.failure_report.take().unwrap_or_default();
+            if admitting.cancel_requested {
+                state.last_cancel.insert(operation_id.to_owned(), report.clone());
+            }
+            if let Some(signal) = admitting.signal.take() {
+                let _ = signal.send(Err(admitting.failure.take().unwrap_or_else(||
+                    AdmissionFailure::Runtime("admission failed".into()))));
+            }
+            admitting.done.finish(report);
+            self.inner.changed.notify_all();
+        }
+    }
+
+    /// The worker's outer unwind boundary must wake every waiter even if the
+    /// unwind happened outside the narrower Git-dispatch catch in call_inner.
+    /// Physical cleanup is conservatively unconfirmed after such an unwind.
+    pub(crate) fn worker_panicked(&self, operation_id: &str) {
+        let report = CleanupReport {
+            pending_local_work: 1,
+            peer_cleanup_confirmed: false,
+        };
+        let mut state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(mut admitting) = state.admitting.remove(operation_id) {
+            if let Some(signal) = admitting.signal.take() {
+                let _ = signal.send(Err(AdmissionFailure::Runtime(
+                    "native operation panicked before acceptance".into(),
+                )));
+            }
+            if admitting.cancel_requested {
+                state.last_cancel.insert(operation_id.to_owned(), report.clone());
+            }
+            admitting.done.finish(report.clone());
+        }
+        if let Some(active) = state.active.remove(operation_id) {
+            active.cancellation.cancel();
+            if active.cancel_requested {
+                state.last_cancel.insert(operation_id.to_owned(), report.clone());
+            }
+            active.done.finish(report);
+        }
+        self.inner.changed.notify_all();
+        drop(state);
+        let _ = self.inner.operations.publish_terminal(operation_id);
     }
 
     pub(crate) fn spawned_call(
@@ -440,6 +626,7 @@ impl TransportSession {
             response_message,
             request_bytes,
             caller_cwd,
+            true,
         )
     }
 
@@ -460,16 +647,29 @@ impl TransportSession {
             Status::Open => state.status = Status::Closing,
         }
         loop {
-            if let Some(admitting) = &mut state.admitting {
+            let unstarted: Vec<String> = state.admitting.iter()
+                .filter_map(|(id, admission)| (!admission.started).then_some(id.clone()))
+                .collect();
+            for id in unstarted {
+                let admission = state.admitting.remove(&id).expect("unstarted admission");
+                let report = CleanupReport::default();
+                state.last_cancel.insert(id, report.clone());
+                if let Some(signal) = admission.signal {
+                    let _ = signal.send(Err(AdmissionFailure::Runtime(
+                        "client is closed".into())));
+                }
+                admission.done.finish(report);
+            }
+            for admitting in state.admitting.values_mut() {
                 admitting.cancel_requested = true;
             }
-            if let Some(active) = &mut state.active {
+            for active in state.active.values_mut() {
                 active.cancellation.cancel();
                 active.cancel_requested = true;
             }
             if !state.constructing
-                && state.admitting.is_none()
-                && state.active.is_none()
+                && state.admitting.is_empty()
+                && state.active.is_empty()
             {
                 break;
             }
@@ -495,40 +695,66 @@ impl TransportSession {
     }
 
     fn cancel_inner(&self, operation_id: &str) -> PyResult<CleanupReport> {
+        self.validate_operation_id(operation_id)?;
         let (cancel, done) = {
             let mut state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
-            if let Some(admitting) = &mut state.admitting {
-                if admitting.operation_id == operation_id {
-                    admitting.cancel_requested = true;
-                    let done = admitting.done.clone();
-                    drop(state);
-                    return Ok(done.wait());
-                }
-                return Err(Self::wrong_operation());
-            }
-            if let Some(active) = &mut state.active {
-                if active.operation_id == operation_id {
-                    active.cancel_requested = true;
-                    (active.cancellation.clone(), active.done.clone())
-                } else {
-                    if let Some((last, report)) = &state.last_cancel {
-                        if last == operation_id {
-                            return Ok(report.clone());
-                        }
+            if let Some(admitting) = state.admitting.get_mut(operation_id) {
+                if !admitting.started {
+                    let admitting = state.admitting.remove(operation_id)
+                        .expect("unstarted admission");
+                    state.request_operations.retain(|_, id| id != operation_id);
+                    let report = CleanupReport::default();
+                    state.last_cancel.insert(operation_id.to_owned(), report.clone());
+                    if let Some(signal) = admitting.signal {
+                        let _ = signal.send(Err(AdmissionFailure::Runtime(
+                            "operation cancelled before admission".into())));
                     }
-                    return Err(Self::wrong_operation());
+                    admitting.done.finish(report.clone());
+                    self.inner.changed.notify_all();
+                    return Ok(report);
                 }
-            } else if let Some((last, report)) = &state.last_cancel {
-                if last == operation_id {
-                    return Ok(report.clone());
-                }
-                return Err(Self::wrong_operation());
+                admitting.cancel_requested = true;
+                let done = admitting.done.clone();
+                drop(state);
+                return Ok(done.wait());
+            }
+            if let Some(active) = state.active.get_mut(operation_id) {
+                active.cancel_requested = true;
+                (active.cancellation.clone(), active.done.clone())
+            } else if let Some(report) = state.last_cancel.get(operation_id) {
+                return Ok(report.clone());
+            } else if self.inner.operations.contains(operation_id)
+                && state.request_operations.values().any(|id| id == operation_id) {
+                state.request_operations.retain(|_, id| id != operation_id);
+                let report = CleanupReport::default();
+                state.last_cancel.insert(operation_id.to_owned(), report.clone());
+                return Ok(report);
             } else {
                 return Err(Self::wrong_operation());
             }
         };
         cancel.cancel();
         Ok(done.wait())
+    }
+
+    fn release_inner(&self, operation_id: &str) -> PyResult<()> {
+        self.validate_operation_id(operation_id)?;
+        let mut state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+        if state.active.contains_key(operation_id)
+            || state.admitting.get(operation_id).is_some_and(|admission| admission.started) {
+            return Err(error::model(gwz_core::model::ModelError::new(
+                gwz_core::model::ErrorCode::OpenOperation,
+                "operation is still active",
+            )));
+        }
+        if let Some(admission) = state.admitting.remove(operation_id) {
+            admission.done.finish(CleanupReport::default());
+            self.inner.changed.notify_all();
+        }
+        self.inner.operations.discard(operation_id)?;
+        state.request_operations.retain(|_, id| id != operation_id);
+        state.last_cancel.remove(operation_id);
+        Ok(())
     }
 }
 
@@ -539,10 +765,16 @@ impl TransportSession {
         py.detach(Self::new)
     }
 
-    fn reserve_operation(&self, py: Python<'_>, operation_id: &str) -> PyResult<()> {
+    fn reserve_operation(&self, py: Python<'_>, request_id: &str) -> PyResult<String> {
         let session = self.clone();
-        let operation_id = operation_id.to_owned();
-        py.detach(move || session.reserve_inner(operation_id))
+        let request_id = request_id.to_owned();
+        py.detach(move || session.reserve_inner(request_id))
+    }
+
+    fn issued_operation(&self, operation_id: &str) -> bool {
+        let serial = self.issued_serial(operation_id);
+        let state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+        serial.is_some_and(|serial| serial <= state.next_serial)
     }
 
     fn call(
@@ -567,6 +799,7 @@ impl TransportSession {
                 &response_message,
                 &request_bytes,
                 caller_cwd,
+                false,
             )
         })
     }
@@ -595,11 +828,15 @@ impl TransportSession {
                 }
             };
             let network = meta.is_some();
+            let operation_id = meta.as_ref()
+                .map(|meta| session.operation_for_request(&meta.request_id))
+                .transpose()?;
+            let mut admission_wait = None;
             if !network {
                 session.ensure_open()?;
             }
             if network {
-                let operation_id = shims::operation_id(&meta.expect("network meta").request_id);
+                let operation_id = operation_id.as_ref().expect("network operation id");
                 let mut state = session
                     .inner
                     .state
@@ -610,45 +847,74 @@ impl TransportSession {
                     session.abandon_unstarted(Some(&operation_id));
                     return Err(Self::closed());
                 }
-                if state.constructing || state.active.is_some() {
-                    return Err(Self::busy());
+                if state.admitting.len() + state.active.len() >= 8
+                    && !state.admitting.contains_key(operation_id)
+                {
+                    state.request_operations.retain(|_, id| id != operation_id);
+                    return Err(Self::full());
                 }
-                if let Some(admitting) = &state.admitting {
-                    if admitting.operation_id != operation_id || admitting.started {
+                if let Some(admitting) = state.admitting.get(operation_id) {
+                    if admitting.started {
                         return Err(Self::busy());
                     }
                 } else {
-                    state.admitting = Some(Admitting {
-                        operation_id,
+                    state.admitting.insert(operation_id.clone(), Admitting {
+                        operation_id: operation_id.clone(),
                         done: Arc::new(Completion::default()),
                         cancel_requested: false,
                         started: false,
+                        signal: None,
+                        failure: None,
+                        failure_report: None,
                     });
                 }
+                let (signal, wait) = mpsc::channel();
+                state.admitting.get_mut(operation_id)
+                    .expect("reserved admission").signal = Some(signal);
+                admission_wait = Some(wait);
             }
-            let result = with_current_session(session.clone(), || {
-                dispatch::submit(
-                    &method,
-                    &request_message,
-                    &response_message,
-                    &request_bytes,
-                    caller_cwd,
-                )
-            });
+            let result = if let Some(operation_id) = operation_id.as_ref() {
+                operations::with_store(session.inner.operations.clone(), || {
+                    with_current_session(session.clone(), || {
+                        shims::with_operation_id(operation_id.clone(), || {
+                            dispatch::submit(&method, &request_message, &response_message,
+                                &request_bytes, caller_cwd)
+                        })
+                    })
+                })
+            } else {
+                dispatch::submit(&method, &request_message, &response_message,
+                    &request_bytes, caller_cwd)
+            };
             if network && result.is_err() {
+                if let (Some(meta), Some(operation_id)) = (meta.as_ref(), operation_id.as_ref()) {
+                    session.release_request_mapping(&meta.request_id, operation_id);
+                }
                 let mut state = session
                     .inner
                     .state
                     .lock()
                     .unwrap_or_else(|e| e.into_inner());
-                if let Some(admitting) = state.admitting.take() {
+                if let Some(admitting) = state.admitting.remove(
+                    operation_id.as_ref().expect("network operation id")) {
                     let report = CleanupReport::default();
                     if admitting.cancel_requested {
-                        state.last_cancel = Some((admitting.operation_id, report.clone()));
+                        state.last_cancel.insert(admitting.operation_id, report.clone());
                     }
                     admitting.done.finish(report);
                 }
                 session.inner.changed.notify_all();
+            }
+            if result.is_ok() {
+                if let Some(wait) = admission_wait {
+                    match wait.recv() {
+                        Ok(Ok(())) => {}
+                        Ok(Err(AdmissionFailure::Model(err))) => return Err(error::model(err)),
+                        Ok(Err(AdmissionFailure::Runtime(message))) =>
+                            return Err(error::runtime(message)),
+                        Err(_) => return Err(error::runtime("admission worker ended before registration")),
+                    }
+                }
             }
             result
         })
@@ -668,6 +934,75 @@ impl TransportSession {
         py.detach(move || {
             let report = session.cancel_inner(&operation_id)?;
             Ok((report.pending_local_work, report.peer_cleanup_confirmed))
+        })
+    }
+
+    fn release_operation(&self, py: Python<'_>, operation_id: &str) -> PyResult<()> {
+        let operation_id = operation_id.to_owned();
+        let session = self.clone();
+        py.detach(move || session.release_inner(&operation_id))
+    }
+
+    fn subscribe_events(&self, operation_id: &str) -> PyResult<Vec<Vec<u8>>> {
+        self.validate_operation_id(operation_id)?;
+        self.inner
+            .operations
+            .events(operation_id)?
+            .into_iter()
+            .map(|event| codec::encode_message("encode OperationEvent", || event.to_cbor()))
+            .collect()
+    }
+
+    fn wait_events(
+        &self,
+        py: Python<'_>,
+        operation_id: &str,
+        after_sequence: i64,
+        timeout_ms: u64,
+    ) -> PyResult<(Vec<Vec<u8>>, bool)> {
+        let session = self.clone();
+        let operation_id = operation_id.to_owned();
+        py.detach(move || {
+            session.validate_operation_id(&operation_id)?;
+            let (events, complete) = session.inner.operations.wait_events(
+                &operation_id,
+                after_sequence,
+                std::time::Duration::from_millis(timeout_ms),
+            )?;
+            let encoded = events
+                .into_iter()
+                .map(|event| codec::encode_message("encode OperationEvent", || event.to_cbor()))
+                .collect::<PyResult<Vec<_>>>()?;
+            Ok((encoded, complete))
+        })
+    }
+
+    fn operation_result(&self, py: Python<'_>, operation_id: &str) -> PyResult<Vec<u8>> {
+        let session = self.clone();
+        let operation_id = operation_id.to_owned();
+        py.detach(move || {
+            session.validate_operation_id(&operation_id)?;
+            let result = session.inner.operations.result(&operation_id)?;
+            codec::encode_message("encode OperationResult", || result.to_cbor())
+        })
+    }
+
+    fn try_operation_result(&self, operation_id: &str) -> PyResult<Option<Vec<u8>>> {
+        self.validate_operation_id(operation_id)?;
+        self.inner
+            .operations
+            .try_result(operation_id)?
+            .map(|result| codec::encode_message("encode OperationResult", || result.to_cbor()))
+            .transpose()
+    }
+
+    fn merge_operation_response(&self, py: Python<'_>, operation_id: &str) -> PyResult<Vec<u8>> {
+        let session = self.clone();
+        let operation_id = operation_id.to_owned();
+        py.detach(move || {
+            session.validate_operation_id(&operation_id)?;
+            let response = session.inner.operations.merge_response(&operation_id)?;
+            codec::encode_message("encode MergeResponse", || response.to_cbor())
         })
     }
 }

@@ -9,6 +9,7 @@ from typing import Any
 import pytest
 
 from gwz import Client
+from gwz.errors import GwzBridgeError
 from gwz.protocol.generated import (
     ActionKind,
     AggregateStatus,
@@ -250,6 +251,36 @@ def test_create_workspace_without_root_defaults_to_cwd(tmp_path: Path, monkeypat
     assert request.workspace_root == str(tmp_path.resolve())
     assert request.meta.workspace is not None
     assert request.meta.workspace.root == str(tmp_path.resolve())
+
+
+def test_client_host_capacity_default_is_inherited_and_can_be_overridden() -> None:
+    client = Client(max_connections_per_host=16)
+    assert client.meta().policy.max_connections_per_host == 16
+    assert client.meta(max_connections_per_host=32).policy.max_connections_per_host == 32
+    with pytest.raises(ValueError):
+        Client(max_connections_per_host=0)
+
+
+def test_request_id_uses_core_identifier_grammar_before_bridge_creation() -> None:
+    client = Client()
+    assert client.meta(request_id="x" * 128).request_id == "x" * 128
+    for invalid in ("", "x" * 129, "bad\nname", "bad\u0085name"):
+        with pytest.raises(GwzBridgeError) as raised:
+            client.meta(request_id=invalid)
+        assert raised.value.code == "InvalidRequest"
+    assert client._bridge is None
+
+
+def test_retained_result_and_events_are_readable_after_client_close() -> None:
+    async def run() -> None:
+        bridge = FakeBridge()
+        client = Client(bridge=bridge)
+        assert await client.close() is None
+        assert (await client.operation_result("op_test")).operation_id == "op_test"
+        assert [event async for event in client.operation_events("op_test")] == []
+        assert bridge.subscriptions == ["op_test"]
+
+    asyncio.run(run())
 
 
 def test_meta_builds_target_selection_fields() -> None:

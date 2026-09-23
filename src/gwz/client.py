@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import unicodedata
 import inspect
 import itertools
 from collections.abc import AsyncIterator, Iterable, Sequence
@@ -156,10 +158,22 @@ def _validate_member_id(value: str) -> None:
 class Client:
     """Async Python facade over gwz-core protocol requests."""
 
-    def __init__(self, root: str | Path | None = None, bridge: CoreBridge | None = None) -> None:
+    def __init__(
+        self,
+        root: str | Path | None = None,
+        bridge: CoreBridge | None = None,
+        *,
+        max_connections_per_host: int = 32,
+    ) -> None:
+        if (isinstance(max_connections_per_host, bool)
+                or not isinstance(max_connections_per_host, int)
+                or max_connections_per_host <= 0):
+            raise ValueError("max_connections_per_host must be a positive integer")
         self.root = Path(root) if root is not None else None
         self._bridge = bridge
         self._closed = False
+        self._max_connections_per_host = max_connections_per_host
+        self.close_report: TransportCleanup | None = None
 
     async def __aenter__(self) -> "Client":
         if self._closed:
@@ -180,17 +194,38 @@ class Client:
             return None
         result = close()
         if inspect.isawaitable(result):
-            result = await result
+            try:
+                result = await result
+            except asyncio.CancelledError:
+                self.close_report = getattr(self._bridge, "close_report", None)
+                raise
+        self.close_report = result
         return result
 
     async def cancel_operation(self, operation_id: str) -> TransportCleanup:
-        cancel = getattr(self.bridge, "cancel_operation", None)
+        cancel = getattr(self._record_bridge(), "cancel_operation", None)
         if cancel is None:
             raise GwzBridgeError("transport cancellation is unavailable", code="UnsupportedOperation")
         result = cancel(operation_id)
         if inspect.isawaitable(result):
             result = await result
         return result
+
+    async def release_operation(self, operation_id: str) -> None:
+        release = getattr(self._record_bridge(), "release_operation", None)
+        if release is None:
+            raise GwzBridgeError("operation release is unavailable", code="UnsupportedOperation")
+        result = release(operation_id)
+        if inspect.isawaitable(result):
+            await result
+
+    def operation_events(self, operation_id: str) -> AsyncIterator[OperationEvent]:
+        return self._record_bridge().subscribe_events(operation_id)
+
+    def _record_bridge(self) -> CoreBridge:
+        if self._bridge is None:
+            raise GwzBridgeError("operation is not owned by this client", code="InvalidRequest")
+        return self._bridge
 
     @property
     def bridge(self) -> CoreBridge:
@@ -223,6 +258,14 @@ class Client:
         attribution: OperationAttribution | None = None,
         transport: TransportOptions | None = None,
     ) -> RequestMeta:
+        selected_request_id = _request_id() if request_id is None else request_id
+        if (not isinstance(selected_request_id, str)
+                or not selected_request_id
+                or len(selected_request_id.encode("utf-8")) > 128
+                or any(unicodedata.category(char) == "Cc" for char in selected_request_id)):
+            raise GwzBridgeError("invalid request_id", code="InvalidRequest")
+        if max_connections_per_host is None and self._max_connections_per_host != 32:
+            max_connections_per_host = self._max_connections_per_host
         # Capture this exactly once.  All caller-relative request locations use
         # this base, and the same value crosses the native/worker boundary.
         caller_cwd = Path.cwd().resolve()
@@ -289,7 +332,7 @@ class Client:
             )
 
         return RequestMeta(
-            request_id=request_id or _request_id(),
+            request_id=selected_request_id,
             schema_version=SCHEMA_VERSION,
             workspace=workspace,
             selection=selection,
@@ -1271,7 +1314,7 @@ class Client:
         return self.events_subscribe(operation_id)
 
     async def operation_result(self, operation_id: str) -> OperationResult:
-        result = await self.bridge.operation_result(operation_id)
+        result = await self._record_bridge().operation_result(operation_id)
         raise_for_response(result)
         return result
 
