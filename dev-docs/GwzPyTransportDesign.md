@@ -1,5 +1,7 @@
 # Python transport session for GWZ 1.1.0
 
+Current release-gate status (2026-09-23): **NO-GO for Phase 6 completion and Phase 7 activation** because the single-active-operation rule prevents overlapping network commands on one Python `Client`. See the [operator-directed finding](../../dev-docs/GwzPyTransportConcurrencyNoGo.md) and [draft remediation/design amendment](../../dev-docs/GwzPyTransportConcurrencyRemPlan.md). The historical design GO below remains the verdict on the earlier review object; it does not close this new finding. The concurrency amendment has not yet received review GO or been implemented.
+
 Status: **S1.1/S1.2 design accepted for implementation, 2026-09-23**.
 Consistency, Safety and Surface report GO at Python
 `259f73cc030c0da0bf29903bab258de0463b7d02`, paired with the setup-failure
