@@ -27,6 +27,7 @@ class GwzBridgeError(GwzError):
         machine_message: str | None = None,
         record_context: Any | None = None,
         response_meta: Any | None = None,
+        operation_id: str | None = None,
     ) -> None:
         super().__init__(message)
         self.code = code
@@ -37,6 +38,7 @@ class GwzBridgeError(GwzError):
         self.machine_message = machine_message
         self.record_context = record_context
         self.response_meta = response_meta
+        self.operation_id = operation_id
 
 
 class GwzCoreLoadError(GwzBridgeError):

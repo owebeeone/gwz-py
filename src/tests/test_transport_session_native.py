@@ -7,14 +7,19 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+import asyncio
 import importlib.machinery
 import importlib.util
 import os
 import time
+from threading import Event
 
 import pytest
+from taut.wire import cbor as wire_cbor
 
 from gwz.protocol.codec import decode_message, encode_message
+from gwz.bridge import NativeCoreBridge
+from gwz.errors import GwzBridgeError
 from gwz.protocol.generated import AggregateStatus, FetchRequest
 from test_bridge_transport import status_request
 
@@ -64,6 +69,8 @@ def test_native_session_bounds_independent_reservations_and_closes_them(native_m
             session.call("fetch", "FetchRequest", "FetchResponse", payload)
         assert closing.result(timeout=2) == (0, False)
         assert session.close() == (0, False)
+        with pytest.raises(RuntimeError, match="cancelled before admission"):
+            session.operation_result(ids[1])
 
 
 def test_native_operation_identity_is_per_session_and_request_ids_are_validated(native_module):
@@ -119,3 +126,99 @@ def test_preaccept_failure_is_retained_before_submit_returns(native_module, monk
     session.close()
     assert decode_message("OperationResult", session.operation_result(operation_id)) == result
     session.release_operation(operation_id)
+
+
+@pytest.mark.parametrize("method", ["call", "submit"])
+def test_cancelled_reservation_cannot_remint_without_explicit_token(native_module, method):
+    session = native_module.TransportSession()
+    operation_id = session.reserve_operation("cancelled-request")
+    assert session.cancel_operation(operation_id) == (0, False)
+    meta = replace(status_request().meta, request_id="cancelled-request")
+    payload = encode_message("FetchRequest", FetchRequest(meta=meta))
+    with pytest.raises(RuntimeError, match="cancelled before admission"):
+        getattr(session, method)("fetch", "FetchRequest", "FetchResponse", payload)
+    with pytest.raises(RuntimeError, match="cancelled before admission"):
+        session.operation_result(operation_id)
+    with pytest.raises(RuntimeError, match="cancelled before admission"):
+        session.try_operation_result(operation_id)
+    next_id = session.reserve_operation("next-request")
+    assert int(next_id.rsplit("_", 1)[1]) == int(operation_id.rsplit("_", 1)[1]) + 1
+    session.release_operation(operation_id)
+    session.cancel_operation(next_id)
+    session.close()
+
+
+@pytest.mark.parametrize("method", ["call", "submit"])
+@pytest.mark.parametrize("home_available", [False, True])
+def test_explicit_cli_placement_refuses_before_endpoint_construction(
+    native_module, monkeypatch, tmp_path, method, home_available,
+):
+    if home_available:
+        monkeypatch.setenv("HOME", str(tmp_path))
+    else:
+        monkeypatch.delenv("HOME", raising=False)
+    session = native_module.TransportSession()
+    payload = wire_cbor.loads(encode_message("FetchRequest", FetchRequest(meta=status_request().meta)))
+    payload[1][8] = {1: None, 2: [], 3: None, 4: 2, 5: None}
+    with pytest.raises(RuntimeError, match="no CLI endpoint placement"):
+        getattr(session, method)("fetch", "FetchRequest", "FetchResponse", wire_cbor.dumps(payload))
+    session.close()
+
+
+@pytest.mark.parametrize("method", ["call", "submit"])
+def test_queued_native_call_keeps_issued_id_after_prestart_cancel(native_module, monkeypatch, method):
+    monkeypatch.delenv("HOME", raising=False)
+
+    async def run():
+        blocked = Event()
+        release = Event()
+        loop = asyncio.get_running_loop()
+        with ThreadPoolExecutor(max_workers=1) as workers:
+            loop.set_default_executor(workers)
+
+            def occupy():
+                blocked.set()
+                release.wait(timeout=2)
+
+            blocker = loop.run_in_executor(None, occupy)
+            assert blocked.wait(timeout=1)
+            bridge = NativeCoreBridge(native=native_module)
+            operation_id = bridge.issue_operation("req_transport")
+            request = FetchRequest(meta=status_request().meta)
+            task = asyncio.create_task(getattr(bridge, method)(
+                "fetch", "FetchRequest", "FetchResponse", request,
+            ))
+            await asyncio.sleep(0)
+            task.cancel()
+            await asyncio.sleep(0.02)
+            release.set()
+            await blocker
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            assert bridge._session.issued_operation(operation_id)
+            with pytest.raises(RuntimeError, match="cancelled before admission"):
+                bridge._session.operation_result(operation_id)
+            next_id = bridge.issue_operation("next")
+            assert int(next_id.rsplit("_", 1)[1]) == int(operation_id.rsplit("_", 1)[1]) + 1
+            await bridge.close()
+
+    asyncio.run(run())
+
+
+def test_implicit_preaccept_refusals_expose_releasable_ids(native_module, monkeypatch):
+    monkeypatch.delenv("HOME", raising=False)
+
+    async def run():
+        bridge = NativeCoreBridge(native=native_module)
+        for index in range(65):
+            meta = replace(status_request().meta, request_id=f"refused-{index}")
+            with pytest.raises(GwzBridgeError) as failure:
+                await bridge.call("fetch", "FetchRequest", "FetchResponse", FetchRequest(meta=meta))
+            operation_id = failure.value.operation_id
+            assert operation_id is not None
+            with pytest.raises(GwzBridgeError, match="HOME is unavailable"):
+                await bridge.operation_result(operation_id)
+            await bridge.release_operation(operation_id)
+        await bridge.close()
+
+    asyncio.run(run())

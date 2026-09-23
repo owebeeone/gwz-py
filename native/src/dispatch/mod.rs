@@ -7,11 +7,11 @@ mod materialize;
 mod merge;
 mod read;
 
-use std::path::PathBuf;
 use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::path::PathBuf;
 use std::thread;
 
-use pyo3::PyResult;
+use pyo3::{PyErr, PyResult};
 
 use crate::{codec, error, operations, shims};
 
@@ -463,6 +463,9 @@ fn spawn_call(
     let request_message = request_message.to_owned();
     let response_message = response_message.to_owned();
     let request_bytes = request_bytes.to_vec();
+    let failure_recorder = recorder.clone();
+    let failure_request_id = request_id.clone();
+    let failure_schema_version = schema_version.clone();
     thread::Builder::new().name("gwz-py-operation".into()).spawn(move || {
         let outcome = catch_unwind(AssertUnwindSafe(|| {
             cfg_if::cfg_if! {
@@ -470,6 +473,7 @@ fn spawn_call(
                     if let Some(session) = session.as_ref() {
                         session.spawned_call(
                             &method, &request_message, &response_message, &request_bytes, caller_cwd,
+                            &operation_id,
                         )
                     } else {
                         call(&method, &request_message, &response_message, &request_bytes, caller_cwd)
@@ -498,6 +502,46 @@ fn spawn_call(
                 }
             }
         }
-    }).map_err(|err| error::runtime(format!("native worker unavailable: {err}")))?;
+    }).map_err(|err| worker_spawn_failure(
+        failure_recorder, failure_request_id, failure_schema_version, action, err,
+    ))?;
     Ok(())
+}
+
+fn worker_spawn_failure(
+    recorder: operations::OperationRecorder,
+    request_id: String,
+    schema_version: String,
+    action: gwz_core::ActionKind,
+    source: std::io::Error,
+) -> PyErr {
+    let message = format!("native worker unavailable: {source}");
+    let _ = recorder.finish_error(request_id, schema_version, action, message.clone());
+    error::runtime(message)
+}
+
+cfg_if::cfg_if! {
+    if #[cfg(test)] {
+        mod worker_spawn_failure_tests {
+            use super::*;
+
+            #[test]
+            fn spawn_failure_writes_terminal_before_returning() {
+                let store = std::sync::Arc::new(operations::OperationStore::default());
+                let operation_id = "spawn-failure-test";
+                store.issue(operation_id).unwrap();
+                let recorder = operations::with_store(store.clone(), || operations::begin(operation_id));
+                let _ = worker_spawn_failure(
+                    recorder,
+                    "request".into(),
+                    "gwz.protocol/v0".into(),
+                    gwz_core::ActionKind::Fetch,
+                    std::io::Error::other("injected spawn failure"),
+                );
+                let result = store.result(operation_id).expect("failed launch has a terminal");
+                assert_eq!(result.operation_id, operation_id);
+                assert_eq!(result.aggregate_status, gwz_core::AggregateStatus::Failed);
+            }
+        }
+    }
 }

@@ -50,6 +50,32 @@ def test_two_native_session_results_with_the_same_id_do_not_use_module_store() -
     asyncio.run(run())
 
 
+def test_current_native_session_never_reads_legacy_or_foreign_results() -> None:
+    class Session:
+        def issued_operation(self, _operation_id: str) -> bool:
+            return False
+
+        def operation_result(self, _operation_id: str) -> bytes:
+            failure = RuntimeError("operation is not owned by this session")
+            failure.code = "InvalidRequest"  # type: ignore[attr-defined]
+            raise failure
+
+    class Module:
+        def TransportSession(self) -> Session:
+            return Session()
+
+        def operation_result(self, _operation_id: str) -> bytes:
+            raise AssertionError("native Client reached the legacy store")
+
+    async def run() -> None:
+        bridge = NativeCoreBridge(native=Module())
+        with pytest.raises(GwzBridgeError) as failure:
+            await bridge.operation_result("op_legacy")
+        assert failure.value.code == "InvalidRequest"
+
+    asyncio.run(run())
+
+
 def test_native_bridge_does_not_serialize_independent_network_calls() -> None:
     entered = Event()
     release = Event()

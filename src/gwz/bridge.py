@@ -252,7 +252,7 @@ class NativeCoreBridge:
     def _operation_source(self, operation_id: str) -> Any:
         if self._session is not None:
             issued = getattr(self._session, "issued_operation", None)
-            if issued is not None and issued(operation_id):
+            if issued is not None:
                 return self._session
             if operation_id in self._network_operation_ids:
                 return self._session
@@ -335,6 +335,8 @@ class NativeCoreBridge:
         response_message: str,
         request_bytes: bytes,
         request: Any,
+        *,
+        bind_issued_id: bool = False,
     ) -> NativeBytePayload:
         operation_id: str | None = None
         if self._session is not None and _needs_transport(method, request):
@@ -351,11 +353,16 @@ class NativeCoreBridge:
                             if isinstance(issued, str):
                                 operation_id = issued
                     self._remember_network_id(operation_id)
-        worker = asyncio.create_task(asyncio.to_thread(
-            native_call, method, request_message, response_message, request_bytes,
-        ))
+        arguments = (method, request_message, response_message, request_bytes)
+        if bind_issued_id and operation_id is not None:
+            arguments += (operation_id,)
+        worker = asyncio.create_task(asyncio.to_thread(native_call, *arguments))
         try:
             return await asyncio.shield(worker)
+        except Exception as exc:
+            if operation_id is not None:
+                exc.operation_id = operation_id
+            raise
         except asyncio.CancelledError:
             cancellation_error: Exception | None = None
             if operation_id is not None:
@@ -395,6 +402,7 @@ class NativeCoreBridge:
             else:
                 response_bytes = await self._run_native(
                     native_call, method, request_message, response_message, request_bytes, request,
+                    bind_issued_id=self._session is not None and hasattr(self._session, "issued_operation"),
                 )
         except GwzBridgeError:
             raise
@@ -429,6 +437,7 @@ class NativeCoreBridge:
             else:
                 response_bytes = await self._run_native(
                     submit, method, request_message, response_message, request_bytes, request,
+                    bind_issued_id=self._session is not None and hasattr(self._session, "issued_operation"),
                 )
         except AttributeError:
             return await self.call(method, request_message, response_message, request)
@@ -473,9 +482,7 @@ class NativeCoreBridge:
         except GwzBridgeError:
             raise
         except Exception as exc:
-            raise GwzBridgeError(
-                f"native event subscription failed for {operation_id}: {exc}"
-            ) from exc
+            raise _native_bridge_error(f"native event subscription failed for {operation_id}", exc) from exc
 
     async def _wait_event_bytes(
         self,
@@ -493,9 +500,7 @@ class NativeCoreBridge:
         except GwzBridgeError:
             raise
         except Exception as exc:
-            raise GwzBridgeError(
-                f"native event wait failed for {operation_id}: {exc}"
-            ) from exc
+            raise _native_bridge_error(f"native event wait failed for {operation_id}", exc) from exc
         return list(event_bytes), bool(complete)
 
     async def operation_result(self, operation_id: str) -> Any:
@@ -504,9 +509,7 @@ class NativeCoreBridge:
         except GwzBridgeError:
             raise
         except Exception as exc:
-            raise GwzBridgeError(
-                f"native operation result lookup failed for {operation_id}: {exc}"
-            ) from exc
+            raise _native_bridge_error(f"native operation result lookup failed for {operation_id}", exc) from exc
         return decode_message(result_message_name(), _bytes(result_bytes, result_message_name()))
 
     async def merge_operation_response(self, operation_id: str) -> Any:
@@ -519,9 +522,7 @@ class NativeCoreBridge:
         except GwzBridgeError:
             raise
         except Exception as exc:
-            raise GwzBridgeError(
-                f"native merge response lookup failed for {operation_id}: {exc}"
-            ) from exc
+            raise _native_bridge_error(f"native merge response lookup failed for {operation_id}", exc) from exc
         return decode_message(message_name, _bytes(response_bytes, message_name))
 
     async def diff_log_read(
@@ -638,4 +639,5 @@ def _native_bridge_error(prefix: str, error: BaseException) -> GwzBridgeError:
         machine_message=getattr(error, "machine_message", None),
         record_context=getattr(error, "record_context", None),
         response_meta=response_meta,
+        operation_id=getattr(error, "operation_id", None),
     )

@@ -81,6 +81,14 @@ pub(crate) struct OperationStore {
 }
 
 impl OperationStore {
+    pub(crate) fn refuse(
+        &self,
+        operation_id: &str,
+        reason: gwz_core::model::ModelError,
+    ) -> PyResult<()> {
+        self.record(operation_id)?.refuse(reason);
+        Ok(())
+    }
     pub(crate) fn issue(&self, operation_id: &str) -> PyResult<()> {
         let mut records = self.records.lock().expect("operation store poisoned");
         if records.len() >= 64 {
@@ -97,14 +105,18 @@ impl OperationStore {
     }
 
     pub(crate) fn discard(&self, operation_id: &str) -> PyResult<()> {
-        self.records.lock().expect("operation store poisoned")
+        self.records
+            .lock()
+            .expect("operation store poisoned")
             .remove(operation_id)
             .map(|_| ())
             .ok_or_else(|| error::runtime("operation is not owned by this session"))
     }
 
     pub(crate) fn contains(&self, operation_id: &str) -> bool {
-        self.records.lock().expect("operation store poisoned")
+        self.records
+            .lock()
+            .expect("operation store poisoned")
             .contains_key(operation_id)
     }
 
@@ -172,8 +184,11 @@ impl OperationStore {
         self.record(operation_id)?.result()
     }
 
-    pub(crate) fn try_result(&self, operation_id: &str) -> PyResult<Option<gwz_core::OperationResult>> {
-        Ok(self.record(operation_id)?.try_result())
+    pub(crate) fn try_result(
+        &self,
+        operation_id: &str,
+    ) -> PyResult<Option<gwz_core::OperationResult>> {
+        self.record(operation_id)?.try_result()
     }
 
     pub(crate) fn merge_response(&self, operation_id: &str) -> PyResult<gwz_core::MergeResponse> {
@@ -194,11 +209,23 @@ struct OperationState {
     merge_response: Option<gwz_core::MergeResponse>,
     defer_terminal: bool,
     pending_terminal: Option<(gwz_core::OperationResult, Option<gwz_core::MergeResponse>)>,
+    refusal: Option<gwz_core::model::ModelError>,
 }
 
 impl OperationRecord {
+    fn refuse(&self, reason: gwz_core::model::ModelError) {
+        let mut state = self.state.lock().expect("operation state poisoned");
+        if state.result.is_none() && state.pending_terminal.is_none() && state.refusal.is_none() {
+            state.refusal = Some(reason);
+            drop(state);
+            self.changed.notify_all();
+        }
+    }
     fn defer_terminal(&self) {
-        self.state.lock().expect("operation state poisoned").defer_terminal = true;
+        self.state
+            .lock()
+            .expect("operation state poisoned")
+            .defer_terminal = true;
     }
 
     fn publish_terminal(&self) {
@@ -245,7 +272,7 @@ impl OperationRecord {
         let mut state = self.state.lock().expect("operation state poisoned");
         loop {
             let events = unseen_events(&state.events, after_sequence);
-            let complete = state.result.is_some();
+            let complete = state.result.is_some() || state.refusal.is_some();
             if !events.is_empty() || complete {
                 return (events, complete);
             }
@@ -258,7 +285,7 @@ impl OperationRecord {
             if wait.1.timed_out() {
                 return (
                     unseen_events(&state.events, after_sequence),
-                    state.result.is_some(),
+                    state.result.is_some() || state.refusal.is_some(),
                 );
             }
         }
@@ -374,7 +401,7 @@ impl OperationRecord {
         merge_response: Option<gwz_core::MergeResponse>,
     ) -> PyResult<()> {
         let mut state = self.state.lock().expect("operation state poisoned");
-        if state.result.is_some() || state.pending_terminal.is_some() {
+        if state.result.is_some() || state.pending_terminal.is_some() || state.refusal.is_some() {
             return Err(error::runtime(format!(
                 "operation {} is already complete",
                 result.operation_id
@@ -395,12 +422,12 @@ impl OperationRecord {
         Ok(())
     }
 
-    fn try_result(&self) -> Option<gwz_core::OperationResult> {
-        self.state
-            .lock()
-            .expect("operation state poisoned")
-            .result
-            .clone()
+    fn try_result(&self) -> PyResult<Option<gwz_core::OperationResult>> {
+        let state = self.state.lock().expect("operation state poisoned");
+        if let Some(reason) = &state.refusal {
+            return Err(error::model(reason.clone()));
+        }
+        Ok(state.result.clone())
     }
 
     fn result(&self) -> PyResult<gwz_core::OperationResult> {
@@ -408,6 +435,9 @@ impl OperationRecord {
         loop {
             if let Some(value) = &state.result {
                 return Ok(value.clone());
+            }
+            if let Some(reason) = &state.refusal {
+                return Err(error::model(reason.clone()));
             }
             state = self.changed.wait(state).expect("operation state poisoned");
         }
@@ -418,6 +448,9 @@ impl OperationRecord {
         loop {
             if let Some(value) = &state.merge_response {
                 return Ok(value.clone());
+            }
+            if let Some(reason) = &state.refusal {
+                return Err(error::model(reason.clone()));
             }
             if state.result.is_some() {
                 return Err(error::runtime(format!(
@@ -577,10 +610,14 @@ mod tests {
         let store = OperationStore::default();
         let recorder = store.begin_exclusive("transport-id").unwrap();
         store.defer_terminal("transport-id");
-        recorder.finish_error(
-            "request".into(), "gwz.protocol/v0".into(),
-            gwz_core::ActionKind::Fetch, "failed".into(),
-        ).unwrap();
+        recorder
+            .finish_error(
+                "request".into(),
+                "gwz.protocol/v0".into(),
+                gwz_core::ActionKind::Fetch,
+                "failed".into(),
+            )
+            .unwrap();
         assert!(store.try_result("transport-id").unwrap().is_none());
         store.publish_terminal("transport-id").unwrap();
         assert!(store.try_result("transport-id").unwrap().is_some());
@@ -588,6 +625,7 @@ mod tests {
 
     #[test]
     fn issued_records_are_bounded_independently_of_active_workers() {
+        pyo3::Python::initialize();
         let store = OperationStore::default();
         for index in 0..64 {
             store.issue(&format!("issued-{index}")).unwrap();
@@ -769,7 +807,7 @@ mod tests {
             ..gwz_core::OperationEvent::default()
         });
         assert!(
-            record.try_result().is_none(),
+            record.try_result().unwrap().is_none(),
             "the finish event must be stored before completion is published"
         );
         record
