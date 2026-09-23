@@ -11,8 +11,13 @@ name = "_gwz_core"
 path = "native/src/lib.rs"
 crate-type = ["cdylib"]
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(gwz_transport_candidate)'] }
+
 [dependencies]
+cfg-if = "1"
 gwz-core = { path = "../gwz-core" }
 pyo3 = { version = "0.28.3", features = ["abi3-py310", "extension-module"] }
+tokio = { version = "1", features = ["rt-multi-thread", "time"] }
 
 [workspace]

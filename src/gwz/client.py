@@ -6,7 +6,7 @@ from collections.abc import AsyncIterator, Iterable, Sequence
 from pathlib import Path
 from typing import Any
 
-from .bridge import CoreBridge, DiffLogRead, LogOutputRead, NativeCoreBridge
+from .bridge import CoreBridge, DiffLogRead, LogOutputRead, NativeCoreBridge, TransportCleanup
 from .errors import GwzBridgeError
 from .client_helpers import (
     enum_value as _enum_value,
@@ -159,22 +159,43 @@ class Client:
     def __init__(self, root: str | Path | None = None, bridge: CoreBridge | None = None) -> None:
         self.root = Path(root) if root is not None else None
         self._bridge = bridge
+        self._closed = False
 
     async def __aenter__(self) -> "Client":
+        if self._closed:
+            raise GwzBridgeError("client is closed", code="InvalidRequest")
         if self._bridge is None:
             self._bridge = NativeCoreBridge()
         return self
 
     async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
+        await self.close()
+
+    async def close(self) -> TransportCleanup | None:
+        self._closed = True
+        if self._bridge is None:
+            return None
         close = getattr(self._bridge, "close", None)
         if close is None:
-            return
+            return None
         result = close()
         if inspect.isawaitable(result):
-            await result
+            result = await result
+        return result
+
+    async def cancel_operation(self, operation_id: str) -> TransportCleanup:
+        cancel = getattr(self.bridge, "cancel_operation", None)
+        if cancel is None:
+            raise GwzBridgeError("transport cancellation is unavailable", code="UnsupportedOperation")
+        result = cancel(operation_id)
+        if inspect.isawaitable(result):
+            result = await result
+        return result
 
     @property
     def bridge(self) -> CoreBridge:
+        if self._closed:
+            raise GwzBridgeError("client is closed", code="InvalidRequest")
         if self._bridge is None:
             self._bridge = NativeCoreBridge()
         return self._bridge

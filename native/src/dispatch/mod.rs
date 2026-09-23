@@ -393,20 +393,38 @@ fn submit_accepted(
 ) -> PyResult<Vec<u8>> {
     let operation_id = shims::operation_id(&meta.request_id);
     let recorder = operations::begin(&operation_id);
+    cfg_if::cfg_if! {
+        if #[cfg(all(unix, gwz_transport_candidate))] {
+            let response_meta = gwz_core::ResponseMeta {
+                transport_message: None,
+                transport: None,
+                request_id: meta.request_id.clone(),
+                schema_version: meta.schema_version.clone(),
+                action,
+                aggregate_status: gwz_core::AggregateStatus::Accepted,
+                operation_id: Some(operation_id),
+                message: None,
+                attribution: meta.attribution.clone(),
+            };
+        } else {
+            let response_meta = gwz_core::ResponseMeta {
+                transport: None,
+                request_id: meta.request_id.clone(),
+                schema_version: meta.schema_version.clone(),
+                action,
+                aggregate_status: gwz_core::AggregateStatus::Accepted,
+                operation_id: Some(operation_id),
+                message: None,
+                attribution: meta.attribution.clone(),
+            };
+        }
+    }
     let envelope = gwz_core::ResponseEnvelope {
-        meta: gwz_core::ResponseMeta {
-            transport: None,
-            request_id: meta.request_id.clone(),
-            schema_version: meta.schema_version.clone(),
-            action,
-            aggregate_status: gwz_core::AggregateStatus::Accepted,
-            operation_id: Some(operation_id),
-            message: None,
-            attribution: meta.attribution.clone(),
-        },
+        meta: response_meta,
         members: Vec::new(),
         errors: Vec::new(),
     };
+    let accepted = codec::encode_message("encode accepted response", || encode_response(envelope))?;
     spawn_call(
         method,
         request_message,
@@ -418,7 +436,7 @@ fn submit_accepted(
         action,
         caller_cwd.to_path_buf(),
     );
-    codec::encode_message("encode accepted response", || encode_response(envelope))
+    Ok(accepted)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -433,18 +451,30 @@ fn spawn_call(
     action: gwz_core::ActionKind,
     caller_cwd: PathBuf,
 ) {
+    cfg_if::cfg_if! {
+        if #[cfg(all(unix, gwz_transport_candidate))] {
+            let session = crate::transport_session::current_session();
+        }
+    }
     let method = method.to_owned();
     let request_message = request_message.to_owned();
     let response_message = response_message.to_owned();
     let request_bytes = request_bytes.to_vec();
     thread::spawn(move || {
-        if let Err(err) = call(
-            &method,
-            &request_message,
-            &response_message,
-            &request_bytes,
-            caller_cwd,
-        ) {
+        cfg_if::cfg_if! {
+            if #[cfg(all(unix, gwz_transport_candidate))] {
+                let result = if let Some(session) = session {
+                    session.spawned_call(
+                        &method, &request_message, &response_message, &request_bytes, caller_cwd,
+                    )
+                } else {
+                    call(&method, &request_message, &response_message, &request_bytes, caller_cwd)
+                };
+            } else {
+                let result = call(&method, &request_message, &response_message, &request_bytes, caller_cwd);
+            }
+        }
+        if let Err(err) = result {
             let _ = recorder.finish_error(request_id, schema_version, action, err.to_string());
         }
     });

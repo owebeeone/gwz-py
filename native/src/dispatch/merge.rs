@@ -91,9 +91,10 @@ fn run(
 }
 
 fn accepted_response(meta: &gwz_core::RequestMeta, operation_id: &str) -> gwz_core::MergeResponse {
-    gwz_core::MergeResponse {
-        response: gwz_core::ResponseEnvelope {
-            meta: gwz_core::ResponseMeta {
+    cfg_if::cfg_if! {
+        if #[cfg(all(unix, gwz_transport_candidate))] {
+            let response_meta = gwz_core::ResponseMeta {
+                transport_message: None,
                 transport: None,
                 request_id: meta.request_id.clone(),
                 schema_version: meta.schema_version.clone(),
@@ -102,7 +103,23 @@ fn accepted_response(meta: &gwz_core::RequestMeta, operation_id: &str) -> gwz_co
                 operation_id: Some(operation_id.to_owned()),
                 message: None,
                 attribution: meta.attribution.clone(),
-            },
+            };
+        } else {
+            let response_meta = gwz_core::ResponseMeta {
+                transport: None,
+                request_id: meta.request_id.clone(),
+                schema_version: meta.schema_version.clone(),
+                action: gwz_core::ActionKind::Merge,
+                aggregate_status: gwz_core::AggregateStatus::Accepted,
+                operation_id: Some(operation_id.to_owned()),
+                message: None,
+                attribution: meta.attribution.clone(),
+            };
+        }
+    }
+    gwz_core::MergeResponse {
+        response: gwz_core::ResponseEnvelope {
+            meta: response_meta,
             members: Vec::new(),
             errors: Vec::new(),
         },

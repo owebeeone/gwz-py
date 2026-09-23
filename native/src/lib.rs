@@ -10,6 +10,11 @@ mod error;
 mod log_outputs;
 mod operations;
 mod shims;
+cfg_if::cfg_if! {
+    if #[cfg(all(unix, gwz_transport_candidate))] {
+        mod transport_session;
+    }
+}
 
 #[pyfunction]
 fn health() -> &'static str {
@@ -199,6 +204,11 @@ fn merge_operation_response(py: Python<'_>, operation_id: &str) -> PyResult<Vec<
 
 #[pymodule]
 fn _gwz_core(module: &Bound<'_, PyModule>) -> PyResult<()> {
+    cfg_if::cfg_if! {
+        if #[cfg(all(unix, gwz_transport_candidate))] {
+            module.add_class::<transport_session::TransportSession>()?;
+        }
+    }
     module.add_function(wrap_pyfunction!(health, module)?)?;
     module.add_function(wrap_pyfunction!(version, module)?)?;
     module.add_function(wrap_pyfunction!(provenance, module)?)?;

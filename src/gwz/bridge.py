@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator, Iterable
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from typing import Any, NamedTuple, Protocol, TypeAlias
+from weakref import WeakKeyDictionary
 
 from .errors import GwzBridgeError, GwzCoreLoadError, GwzProtocolError
 from .protocol.codec import decode_message, encode_message, event_message_name, result_message_name
@@ -11,6 +14,49 @@ NativeBytePayload: TypeAlias = bytes | bytearray | memoryview
 _EVENT_WAIT_TIMEOUT_MS = 30_000
 _DIFF_OUTPUT_RECORD_MESSAGE = "DiffOutputRecord"
 _LOG_OUTPUT_RECORD_MESSAGE = "LogOutputRecord"
+
+
+@dataclass(frozen=True, slots=True)
+class TransportCleanup:
+    """Final native transport cleanup facts."""
+
+    pending_local_work: int
+    peer_cleanup_confirmed: bool
+
+
+def _cleanup(value: Any) -> TransportCleanup:
+    if isinstance(value, TransportCleanup):
+        return value
+    pending, confirmed = value
+    return TransportCleanup(int(pending), bool(confirmed))
+
+
+async def _await_completion(task: asyncio.Task[Any]) -> Any:
+    """Keep waiting for native cleanup through repeated caller cancellation."""
+    while not task.done():
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            continue
+    return task.result()
+
+
+_NETWORK_METHODS = frozenset({
+    "init_from_sources", "materialize", "clone_workspace", "clone_repo_member",
+    "attach_repo_member", "pull_head", "pull_snapshot", "push", "fetch",
+})
+
+
+def _needs_transport(method: str, request: Any) -> bool:
+    if method in _NETWORK_METHODS:
+        return True
+    if method == "tag":
+        op = getattr(request, "op", None)
+        name = getattr(op, "name", op)
+        return name in {"push", "fetch"} or (
+            name in {"list", "delete"} and getattr(request, "remote", None) is not None
+        )
+    return False
 
 
 class DiffLogRead(NamedTuple):
@@ -155,17 +201,100 @@ class NativeCoreBridge:
     """Loader for the future PyO3 extension that embeds gwz-core."""
 
     def __init__(self, native: NativeModule | None = None) -> None:
-        if native is not None:
-            self._native = native
-            return
+        if native is None:
+            try:
+                from . import _gwz_core
+            except ImportError as exc:
+                raise GwzCoreLoadError(
+                    "gwz._gwz_core is not installed yet; pass a custom bridge for tests "
+                    "or build the native gwz-core extension"
+                ) from exc
+            native = _gwz_core
+        self._native = native
+        factory = getattr(native, "TransportSession", None)
+        self._session = factory() if factory is not None else None
+        self._closed = False
+        self._close_result: TransportCleanup | None = None
+        self._control_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="gwz-control") if self._session is not None else None
+        self._network_locks: WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Lock] = WeakKeyDictionary()
+
+    def _network_lock(self) -> asyncio.Lock:
+        loop = asyncio.get_running_loop()
+        lock = self._network_locks.get(loop)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._network_locks[loop] = lock
+        return lock
+
+    def _ensure_open(self) -> None:
+        if self._closed:
+            raise GwzBridgeError("client is closed", code="InvalidRequest")
+
+    async def close(self) -> TransportCleanup:
+        if self._close_result is not None:
+            return self._close_result
+        self._closed = True
+        if self._session is None:
+            self._close_result = TransportCleanup(0, False)
+            return self._close_result
         try:
-            from . import _gwz_core
-        except ImportError as exc:
-            raise GwzCoreLoadError(
-                "gwz._gwz_core is not installed yet; pass a custom bridge for tests "
-                "or build the native gwz-core extension"
-            ) from exc
-        self._native = _gwz_core
+            loop = asyncio.get_running_loop()
+            self._close_result = _cleanup(await loop.run_in_executor(self._control_executor, self._session.close))
+        except Exception as exc:
+            raise _native_bridge_error("native transport close failed", exc) from exc
+        return self._close_result
+
+    async def cancel_operation(self, operation_id: str) -> TransportCleanup:
+        if self._session is None:
+            raise GwzBridgeError("transport cancellation is unavailable", code="UnsupportedOperation")
+        try:
+            loop = asyncio.get_running_loop()
+            return _cleanup(await loop.run_in_executor(
+                self._control_executor, self._session.cancel_operation, operation_id,
+            ))
+        except Exception as exc:
+            raise _native_bridge_error("native transport cancellation failed", exc) from exc
+
+    async def _run_native(
+        self,
+        native_call: Any,
+        method: str,
+        request_message: str,
+        response_message: str,
+        request_bytes: bytes,
+        request: Any,
+    ) -> NativeBytePayload:
+        operation_id: str | None = None
+        if self._session is not None and _needs_transport(method, request):
+            request_id = getattr(getattr(request, "meta", None), "request_id", None)
+            if request_id is not None:
+                operation_id = f"op_{request_id}"
+                reserve = getattr(self._session, "reserve_operation", None)
+                if reserve is not None:
+                    reserve(operation_id)
+        worker = asyncio.create_task(asyncio.to_thread(
+            native_call, method, request_message, response_message, request_bytes,
+        ))
+        try:
+            return await asyncio.shield(worker)
+        except asyncio.CancelledError:
+            cancellation_error: Exception | None = None
+            if operation_id is not None:
+                cancellation = asyncio.create_task(self.cancel_operation(operation_id))
+                try:
+                    await _await_completion(cancellation)
+                except GwzBridgeError as exc:
+                    if exc.code != "InvalidRequest":
+                        cancellation_error = exc
+                except Exception as exc:
+                    cancellation_error = exc
+            try:
+                await _await_completion(worker)
+            except Exception:
+                pass
+            if cancellation_error is not None:
+                raise cancellation_error
+            raise
 
     async def call(
         self,
@@ -174,15 +303,20 @@ class NativeCoreBridge:
         response_message: str,
         request: Any,
     ) -> Any:
+        self._ensure_open()
         request_bytes = encode_message(request_message, request)
         try:
-            response_bytes = await asyncio.to_thread(
-                self._native.call,
-                method,
-                request_message,
-                response_message,
-                request_bytes,
-            )
+            native_call = self._session.call if self._session is not None else self._native.call
+            if _needs_transport(method, request):
+                async with self._network_lock():
+                    self._ensure_open()
+                    response_bytes = await self._run_native(
+                        native_call, method, request_message, response_message, request_bytes, request,
+                    )
+            else:
+                response_bytes = await self._run_native(
+                    native_call, method, request_message, response_message, request_bytes, request,
+                )
         except GwzBridgeError:
             raise
         except Exception as exc:
@@ -196,16 +330,22 @@ class NativeCoreBridge:
         response_message: str,
         request: Any,
     ) -> Any:
+        self._ensure_open()
         request_bytes = encode_message(request_message, request)
         try:
-            submit = getattr(self._native, "submit")
-            response_bytes = await asyncio.to_thread(
-                submit,
-                method,
-                request_message,
-                response_message,
-                request_bytes,
-            )
+            submit = getattr(self._session, "submit", None) if self._session is not None else None
+            if submit is None:
+                submit = getattr(self._native, "submit")
+            if _needs_transport(method, request):
+                async with self._network_lock():
+                    self._ensure_open()
+                    response_bytes = await self._run_native(
+                        submit, method, request_message, response_message, request_bytes, request,
+                    )
+            else:
+                response_bytes = await self._run_native(
+                    submit, method, request_message, response_message, request_bytes, request,
+                )
         except AttributeError:
             return await self.call(method, request_message, response_message, request)
         except GwzBridgeError:
