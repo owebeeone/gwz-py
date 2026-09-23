@@ -1,10 +1,13 @@
 # Python transport session for GWZ 1.1.0
 
-Status: **S1.1 draft for Consistency and Safety review; design only**. This
-document proposes one bounded package-boundary amendment to the accepted
-[1.1.0 plan](../../gwz-core/dev-docs/GwzV110Plan.md) §3 Phase 1/6. Review
-must accept that amendment before S6 implementation. No product code, release
-pin, tag or activation gate changes here.
+Status: **S1.1/S1.2 design accepted for implementation, 2026-09-23**.
+Consistency, Safety and Surface report GO at Python
+`259f73cc030c0da0bf29903bab258de0463b7d02`, paired with the setup-failure
+amendment at core `479926c18265276e5a45659c4523a13a71f4a51f`. Reports:
+`../../dev-docs/GwzTransportParallelInterfaces-Review{Consistency,Safety,Surface}-1.md`.
+Operator authorized implementation. This accepts the bounded package-boundary
+amendment to the [1.1.0 plan](../../gwz-core/dev-docs/GwzV110Plan.md) §3 Phase 1/6;
+product acceptance, release pins, tags and activation remain separate gates.
 
 ## 1. Binding and package decision
 
