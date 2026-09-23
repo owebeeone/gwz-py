@@ -1,0 +1,213 @@
+# Python transport session for GWZ 1.1.0
+
+Status: **S1.1 draft for Consistency and Safety review; design only**. This
+document proposes one bounded package-boundary amendment to the accepted
+[1.1.0 plan](../../gwz-core/dev-docs/GwzV110Plan.md) §3 Phase 1/6. Review
+must accept that amendment before S6 implementation. No product code, release
+pin, tag or activation gate changes here.
+
+## 1. Binding and package decision
+
+The existing `gwz._gwz_core` PyO3 extension in **`gwz-py` is the Python
+binding**. It owns an opaque native `TransportSession` that wraps one
+long-lived `gwz_core::transport_host::TransportRuntime`. Core remains the sole
+owner of its transport mux, endpoint workers, pools, request registration,
+cancellation and bounded cleanup. `gwz-transport` provides those Rust
+primitives to core; it has no Python-specific owner, facade or PyO3 feature.
+The Python extension calls the core host API to manage sessions and operations,
+and therefore uses the same `gwz-transport` pooling code as the Rust host.
+It does not expose a generic pool, raw stream, transport envelope or clock.
+
+This requires a **bounded amendment** to S1.1's binary choice of bindings
+inside `gwz-transport` versus a separate package, and to S6.1/S6.2's direct
+binding-crate edge. The revised choice is the already-published `gwz-py`
+package's existing extension. S6.1 and S6.2 can be one `gwz-py` implementation
+lane after S1.2 GO; no fifth crate or extra Phase 8 release step is needed.
+`gwz-transport` still publishes at Phase 8 step 2, core links it at step 5,
+and `gwz-py` links registry-pinned core at step 7. The extension need not
+declare an ornamental direct `gwz-transport` dependency: it reaches the
+transport through core's public host API. This changes package placement,
+not the 1.1.0 product scope or acceptance gates.
+
+The reason is visible in current source. `gwz-py/native/src/shims.rs` makes
+`Git2Backend::new()` per call, while the candidate core
+`TransportRuntime::request(meta, operation_id)` already returns a scoped
+`TransportRequest` with `backend()`, `cancel()` and async `finish()`.
+`TransportRuntime::shutdown()` drains the host. Core's `Session` already
+registers and begins the mux request and owns endpoint cleanup. Adding a
+`gwz-transport::python` wrapper to register or cancel the same request would
+create duplicate lifecycle authority and require exports of private endpoint
+handles. A separate binding crate that depends on the new core host would
+also be scheduled for publication before core 1.1.0 in the current Phase 8
+order. The existing extension is the narrow, acyclic boundary.
+
+## 2. Host and operation lifetime
+
+`NativeCoreBridge` holds one opaque native `TransportSession`; `Client` keeps
+using that bridge. Bridge construction is **lazy**: it creates only the cheap
+Python/native holder. Local-only status, tag, snapshot and other operations
+must never construct an SSH/HTTPS endpoint or parse proxy/CA settings. On
+the first network operation, the native side captures endpoint environment
+and asks core to construct the local SSH+gh HTTPS host. Construction performs
+no Git-host connection or credential request. An invalid HTTPS proxy or CA
+may refuse that network operation, but cannot break a preceding or later
+local-only operation. A failed construction leaves no half-installed host;
+the next network request may retry construction after the environment is
+corrected. Once installed, the host and its endpoint environment are stable
+until bridge close; changing process environment mid-session does not silently
+change its credentials or trust context.
+
+Every network operation gets an immutable `RequestMeta`, existing request ID,
+operation ID and `TransportRequest`. Its handler receives only
+`request.backend()`. The backend cannot outlive the request. After handler
+completion or error, native dispatch awaits `request.finish()` before
+publishing completion or admitting the next network operation. The host
+survives request finish, preserving healthy connections. Explicit
+`NativeCoreBridge.close()` is idempotent: it cancels an active request, waits
+for bounded request finish, then awaits host shutdown. It retains the
+`CleanupReport`, including nonzero `pending_local_work` and a false
+`peer_cleanup_confirmed`; it must not report success by dropping these facts.
+Last-owner drop initiates shutdown, but awaited close is the inspectable
+completion path. `Client.__aexit__` already calls an available bridge close.
+
+The current endpoint has scheme-specific `gwz-transport::pool::Pool` values
+for SSH and HTTPS under one `shared_reservation::Authority`. The plan's “one
+pool” requirement means one Rust-owned host and pooling authority across
+operations, with no Python pool. It does not imply that current SSH and HTTPS
+share a literal `Pool` value. Separate OS processes naturally have separate
+hosts and pools.
+
+The native flow is:
+
+```text
+Client -> NativeCoreBridge -> gwz._gwz_core.TransportSession (lazy owner)
+  -> first network call: core production TransportRuntime constructor
+     -> existing core endpoint/mux and gwz-transport pools
+  -> each network call: runtime.request(meta, operation_id)
+     -> existing core handler(request.backend())
+     -> TransportRequest.finish() -> existing response/events
+  -> close: cancel active request -> finish -> runtime.shutdown()
+```
+
+The dependency graph is `gwz-py -> gwz-core -> gwz-transport`. The wheel has
+one importable native module and no Python-visible pool object. The current
+`with_local_transport` helper creates and shuts down a runtime per command,
+so the Python bridge must not use it for each call. Every network funnel,
+including clone/materialize, remote reads, fetch and push, must use the
+bridge's host once Phase 6/7 activates transport. Existing local-only
+handlers can retain their current backend path.
+
+## 3. Admission, cancellation and threads
+
+**Rust refuses a second active network operation** on the same native
+session, including one arriving through another Python thread. This is the
+authoritative overlap rule; a second call receives a typed busy/capacity
+error and cannot install a new policy or touch the first request. Python may
+offer an `asyncio` lock to serialize calls on one bridge, but that is only a
+convenience. Cancelling a call while it waits for that lock removes that
+queued Python call and does not invoke native cancellation, alter pool
+capacity, or cancel the active operation. A direct native call still obeys
+the Rust refusal. On successful admission, core resolves and installs the
+operation policy before the first remote open, while no lease is non-idle.
+
+An admitted operation has a native cancellation handle keyed to its request
+ID. Python task cancellation signals that handle from another Rust thread,
+lets transport close only that request's streams, awaits bounded finish,
+then propagates `CancelledError`. A submitted operation retains its native
+owner until result and cleanup are recorded even if its event consumer stops.
+Dropping an async event generator cannot shut down the host. The existing
+extension detaches the GIL around blocking `call`, `submit` and event waits;
+keep it detached for host construction, admission, Git work, cancellation
+waits and shutdown. `NativeCoreBridge` can continue to use
+`asyncio.to_thread`. Rust workers do not call Python while holding a
+session or pool lock.
+
+The bounded core additions are a production constructor for the accepted
+endpoint-owned SSH+gh HTTPS `TransportRuntime` and a request-specific
+cancellation handle reachable while its synchronous Git handler runs.
+`TransportRuntime::request(meta, operation_id)` and
+`TransportRequest::finish()` remain the operation API. No extra registration,
+`request_with_policy`, Python retry method, generic host trait, or raw pool
+export is needed.
+
+## 4. Python API, protocol and endpoint security
+
+Keep `Client.fetch`, `fetch_stream`, `push`, `push_stream`, the existing
+`NativeCoreBridge.call/submit` behavior and `Client.meta` inputs. Add
+`NativeCoreBridge.close()` and request-specific `cancel_operation`; the
+native session object stays private to `gwz.bridge`. Add optional
+`Client.meta(max_retries: int | None = None)` beside `concurrency` and
+`max_connections_per_host`. It writes only the corresponding accepted
+`RequestMeta.policy` field. Custom `CoreBridge` test doubles keep working;
+optional close/cancel hooks cannot falsely claim that a remote operation
+was cancelled.
+
+`configure_transport_runtime` remains the typed core message for its
+existing server-timeout setting; it neither constructs this host nor
+configures Python clocks. `transport_capabilities` remains a typed reporter.
+For a network call, the capability preflight and dispatch must use the same
+live core receiver/runtime generation. Python already checks explicit file
+identity through this message; S6.2 extends that check for explicit
+placement. Omitted placement uses local. Explicit `cli` requires an
+installed and bound endpoint on the same runtime, supported route and
+capability intersection, or refuses before mutation or credential access.
+The accepted in-process attachment path stays in Rust. Python does not
+interpret `Envelope` values or provide a physical carrier. No new wire
+message is required.
+
+The endpoint host owns SSH agent/known-host and explicit-key resolution,
+gh execution, HTTPS TLS/proxy policy and physical opens. HTTPS remains
+gh-only. The Python surface receives neither agent-socket contents,
+known-host bodies, gh tokens/headers nor raw helper output. Sanitize
+display text, machine messages, event details and nested causes before
+attaching errors to Python exceptions, while preserving stable error codes
+and request attribution. A gh failure or unsupported proxy refuses through
+the core model error.
+
+The [retry plan](../../gwz-core/dev-docs/GwzRemoteTransportRetryPlan.md)
+has Consistency, Safety and Surface GO on plan SHA-256
+`08e198e00c5f6ff697dca6b71f8117ce8963afb91126a30af2b5ea94a6ac6619`
+at core `ef29f890`; its acceptance is an implementation dependency.
+Python sends the accepted operation policy: default `jobs=100`,
+`max_per_host=32`, `max_retries=3`, with explicit larger values preserved.
+Core installs pool per-host caps from the operation, total at least
+`max(256, jobs)` and outstanding requests at least `max(1024, jobs)`.
+Setup retry classification and backoff stay in Rust. The 9 s stall and
+30 s aggregate defaults, zero disabling both network deadlines, and 60 s
+idle rule are host clocks. `asyncio.to_thread` and event-wait polling are
+scheduling tools, not transport deadlines. Python has no retry loop, jitter,
+attempt count, timeout override, or replay of a failed push body.
+
+## 5. Integration and verification
+
+After S1.2 accepts the bounded amendment, S6 implementation lives in
+`gwz-py` with the narrow core host API above. Update `gwz-py/RELEASE.md`,
+its release script and publish workflow so the release branch uses
+`gwz-core = "=1.1.0"` from the registry, with no `git` key or sibling path.
+Core's own registry pin brings in the published `gwz-transport` version.
+Development checkouts may retain local path pins. Protocol regeneration
+runs only for accepted schema changes. Phase 7 activation and Phase 8
+registry-only wheel smoke remain separate gates.
+
+Focused tests use the actual native extension and disposable SSH/HTTPS
+endpoints. One bridge makes two sequential network operations against the
+same endpoint; endpoint instrumentation or sanitized Rust pool facts prove
+reuse of the physical session, beyond equal responses. Test both SSH and
+HTTPS, a second bridge's independent host, and process isolation. Local-only
+status/tag/snapshot succeed before and after an invalid HTTPS proxy/CA
+network refusal. An overlapping direct native call is refused by Rust;
+Python lock queue cancellation leaves the active operation intact. Cancelling
+an admitted setup or stream ends exactly that request, finishes cleanup, and
+allows a later operation to use the host. Exercise local and installed
+in-process `cli` placement and refusal of unbound explicit `cli`. A gh
+failure, unsupported proxy, host-key/identity refusal and an injected
+secret-bearing helper failure preserve codes while Python-visible fields
+contain no credential material. Verify another Python thread progresses
+while native construction, Git work and close block. A close test asserts
+the returned cleanup facts, including a nonzero pending-work case.
+
+Review must catch a second host constructed by `shims.rs` for the next
+operation, lost cancellation during a blocking handler, and accidental
+credential/proxy parsing on local-only operations. New conditional platform
+sections use explicit `cfg_if!` boundaries, and syntax-aware checks inspect
+disabled branches as required by workspace policy.
