@@ -291,6 +291,16 @@ registered IDs. A cancellation handle binds its public operation ID and the
 original core generation; a caller request ID reused after rollover cannot
 redirect an old handle to new work.
 
+Draft foundation pointer (2026-09-24, pending review): for the native Python
+session, the [v4 foundation design](../../dev-docs/GwzPyTransportSessionV4FoundationDesign.md)
+would also supersede §2's per-call `runtime.request(meta, operation_id)` flow
+and §3's statement that no extra registration is needed. The session would
+bootstrap each generation at construction through one reserved internal
+registration, and admit each operation through `admit_local` and
+`register_and_open`. §4's rule that the capability preflight and dispatch use
+the same runtime generation is kept. CLI and local-command paths keep
+`request()`. This design remains authoritative until that draft has review GO.
+
 Review must catch a second host constructed by `shims.rs` for the next
 operation, lost cancellation during a blocking handler, and accidental
 credential/proxy parsing on local-only operations. New conditional platform
