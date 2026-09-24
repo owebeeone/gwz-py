@@ -312,6 +312,13 @@ The committed native build path is maturin-centered. The PyO3 extension is
 request/response calls, operation submission, event subscription, and operation
 result lookup for the generated core service methods.
 
+Draft session pointer (2026-09-24, pending review): the [core session contract](../../dev-docs/GwzCoreSessionDesign.md)
+would replace these entry points with a four-operation message channel (open,
+send, receive, close) to a core session host, keeping `CoreBridge` and the
+public API unchanged. Handlers would run on core's threads, and the only
+blocking call, receive, releases the GIL. This section remains authoritative
+until that contract has review GO.
+
 ## CLI Strategy
 
 Installing `gwz-py` installs a `gwz-py` console script. The script is the Python
