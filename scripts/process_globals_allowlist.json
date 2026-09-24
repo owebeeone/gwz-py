@@ -1,0 +1,26 @@
+{
+  "rule": "No process-global mutable state in the gwz-py native layer: pass it through the session/operation context (GwzCoreSessionDesign O9). This list is the complete inventory of production exceptions. gwz-core's check_process_globals.py, run by src/tests/test_process_globals.py, fails on anything unlisted and on entries that no longer match, so the list only shrinks.",
+  "roots": ["native/src/lib.rs"],
+  "entries": [
+    {"path": "native/src/diff_logs.rs", "kind": "static", "name": "REGISTRY", "disposition": "debt",
+     "reason": "Process-global diff output registry; becomes a member of the session context (RemPlan B5)."},
+    {"path": "native/src/lib.rs", "kind": "env", "name": "env::current_dir", "count": 2, "disposition": "debt",
+     "reason": "Reads the process working directory on every native call, and another Python thread may chdir concurrently. The Python API must pass the start directory explicitly."},
+    {"path": "native/src/log_outputs.rs", "kind": "static", "name": "REGISTRY", "disposition": "debt",
+     "reason": "Process-global commit-log output registry; becomes a member of the session context (RemPlan B5)."},
+    {"path": "native/src/operations.rs", "kind": "env", "name": "env::var", "disposition": "debt",
+     "reason": "Test event-delay hook (GWZ_PY_TEST_EVENT_DELAY_MS) read from the environment in production builds; move it behind a test-only hook."},
+    {"path": "native/src/operations.rs", "kind": "static", "name": "STORE", "disposition": "debt",
+     "reason": "Process-global legacy operation store; becomes a member of the session context (RemPlan B5)."},
+    {"path": "native/src/operations.rs", "kind": "thread_local", "name": "SCOPED_STORE", "disposition": "debt",
+     "reason": "Thread-local store scoping added by the retired Python session train; replace with an explicit parameter from the operation's gate (RemPlan B5)."},
+    {"path": "native/src/shims.rs", "kind": "thread_local", "name": "SCOPED_BACKEND", "disposition": "debt",
+     "reason": "Thread-local backend scoping; replace with an explicit parameter from the operation's gate (RemPlan B5)."},
+    {"path": "native/src/shims.rs", "kind": "thread_local", "name": "SCOPED_OPERATION_ID", "disposition": "debt",
+     "reason": "Thread-local operation-ID scoping; replace with an explicit parameter from the operation's gate (RemPlan B5)."},
+    {"path": "native/src/transport_session.rs", "kind": "env", "name": "env::current_dir", "count": 2, "disposition": "debt",
+     "reason": "As native/src/lib.rs: the start directory must come from the caller."},
+    {"path": "native/src/transport_session.rs", "kind": "thread_local", "name": "CURRENT_SESSION", "disposition": "debt",
+     "reason": "Thread-local current-session scoping; replace with an explicit parameter (RemPlan B5)."}
+  ]
+}
