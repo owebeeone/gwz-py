@@ -1,6 +1,6 @@
 # Concurrent network operations with one Python Client
 
-Status: **DRAFT caller guide for the new session v2 design, 2026-09-24. These methods and concurrent behavior are not active in the current candidate.** The `request_id_consumed` rule below is a draft addition from the [v3 foundation design](../../dev-docs/GwzPyTransportSessionV3FoundationDesign.md), pending its review.
+Status: **DRAFT caller guide for the new session v2 design, 2026-09-24. These methods and concurrent behavior are not active in the current candidate.** The `request_id_consumed` rule below is a draft addition from the [v4 foundation design](../../dev-docs/GwzPyTransportSessionV4FoundationDesign.md), pending its review.
 
 One `Client` can run several independent network operations at once. They share its native SSH/HTTPS host and physical connection pools. Each operation has its own ID, events, result and cancellation. A physical connection still runs one exchange at a time; cancelling one operation does not cancel another.
 
@@ -53,17 +53,30 @@ For the common cases, `client.start_fetch(targets=["mem_app"])` selects one memb
 The existing `await client.fetch(...)`, `await client.push(...)` and `fetch_stream(...)`/`push_stream(...)` convenience forms keep their operation arguments. A stream helper now returns an `OperationStream` asynchronous iterator with public `operation_id`, `request_id`, `result()` and `aclose()`; it still works with `async for`. Use a `start_*` handle when another task needs the operation ID before progress starts. A caller-provided `request_id=` is a correlation label, separate from `operation_id`. It must be nonempty, at most 128 UTF-8 bytes and contain no Unicode control characters, matching core registration; an invalid ID raises `GwzBridgeError(code="InvalidRequest")` synchronously, before an operation ID or endpoint is created. Two Clients may use the same request ID and get distinct operation IDs. Within one Client's current core generation, a request ID **successfully registered with core** cannot be reused, even after completion; `accepted()` refuses it with `InvalidRequest` before effects. A pre-registration capacity or session refusal does **not** consume it: create a fresh handle and retry the same request ID after the conflict clears, provided the Client and generation remain open. A failure **after** successful core registration, such as a failed worker launch, does consume it, so that retry needs a new request ID or a later core generation. Do not work this out from the error code. Every pre-effect refusal (`GwzBridgeError` with effect `none`, and `GwzOperationCancelled` raised before acceptance) carries `request_id_consumed`: `False` proves no registration and permits retry on a fresh handle only after the refusal's cause clears and the generation remains open; `True` means registration occurred or could not be ruled out before the generation closed, so do not reuse that ID in that generation. `recent_operations()` descriptors carry the same field.
 
 ```python
-try:
-    await handle.accepted()
-except GwzBridgeError as exc:
-    request_id = handle.request_id
-    await handle.release()
-    if exc.request_id_consumed:
-        raise  # Any later attempt in this generation needs a new request ID.
-    # After the refusal's cause clears, and only while this Client remains open:
+async def fetch_once_with_retry(client, request_id):
     handle = client.start_fetch(request_id=request_id, targets=["mem_app"])
-    await handle.accepted()
+    try:
+        await handle.accepted()
+    except GwzBridgeError as exc:
+        await handle.release()          # a refused handle holds a record until released or expired
+        if exc.request_id_consumed:
+            raise                       # this generation will not accept that request ID again
+        # Retry once after the refusal's cause clears, only while this Client remains open.
+        handle = client.start_fetch(request_id=request_id, targets=["mem_app"])
+        try:
+            await handle.accepted()
+        except GwzBridgeError:
+            await handle.release()      # second refusal: release and give up on this ID for now
+            raise
+    try:
+        return await handle.result()    # GwzOperationError carries .response and .effect
+    finally:
+        # Task cancellation joins the operation before GwzOperationCancelled is raised,
+        # so the record is terminal here and release succeeds on every exit.
+        await handle.release()
 ```
+
+Every handle the example creates reaches release: the refused handle before retrying, the retried handle whether it is refused, cancelled, fails or completes.
 
 A fresh generated request ID is used when you omit it.
 
