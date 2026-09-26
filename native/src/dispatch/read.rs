@@ -2,12 +2,12 @@ use pyo3::PyResult;
 
 use crate::{codec, error, shims};
 
-pub(crate) fn call(
+/// The transport methods carry no request metadata and use no directory.
+pub(crate) fn call_transport(
     method: &str,
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
-    caller_cwd: &std::path::Path,
 ) -> PyResult<Vec<u8>> {
     match method {
         "configure_transport_runtime" => {
@@ -21,6 +21,32 @@ pub(crate) fn call(
                 .map_err(error::model)?;
             codec::encode_message("encode TransportRuntimeResponse", || response.to_cbor())
         }
+        "transport_capabilities" => {
+            codec::require_request(method, request_message, "TransportCapabilitiesRequest")?;
+            codec::require_response(method, response_message, "TransportCapabilitiesResponse")?;
+            let request = codec::decode_message(
+                request_bytes,
+                "decode TransportCapabilitiesRequest",
+                gwz_core::TransportCapabilitiesRequest::from_cbor,
+            )?;
+            let response = gwz_core::protocol::transport_capabilities::handle(request)
+                .map_err(error::model)?;
+            codec::encode_message("encode TransportCapabilitiesResponse", || {
+                response.to_cbor()
+            })
+        }
+        other => Err(error::unsupported_method(other)),
+    }
+}
+
+pub(crate) fn call(
+    method: &str,
+    request_message: &str,
+    response_message: &str,
+    request_bytes: &[u8],
+    caller_cwd: &std::path::Path,
+) -> PyResult<Vec<u8>> {
+    match method {
         "remote_identity" => {
             codec::require_request(method, request_message, "RemoteIdentityRequest")?;
             codec::require_response(method, response_message, "RemoteIdentityResponse")?;
@@ -39,20 +65,6 @@ pub(crate) fn call(
                 )
             })?;
             codec::encode_message("encode RemoteIdentityResponse", || response.to_cbor())
-        }
-        "transport_capabilities" => {
-            codec::require_request(method, request_message, "TransportCapabilitiesRequest")?;
-            codec::require_response(method, response_message, "TransportCapabilitiesResponse")?;
-            let request = codec::decode_message(
-                request_bytes,
-                "decode TransportCapabilitiesRequest",
-                gwz_core::TransportCapabilitiesRequest::from_cbor,
-            )?;
-            let response = gwz_core::protocol::transport_capabilities::handle(request)
-                .map_err(error::model)?;
-            codec::encode_message("encode TransportCapabilitiesResponse", || {
-                response.to_cbor()
-            })
         }
         "create_workspace" => {
             call_create_workspace(method, request_message, response_message, request_bytes)

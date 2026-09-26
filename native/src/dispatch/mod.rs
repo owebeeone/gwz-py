@@ -15,17 +15,43 @@ use pyo3::{PyErr, PyResult};
 
 use crate::{codec, error, operations, shims};
 
+/// The caller's directory for a request, taken only from its metadata, never
+/// from this process's working directory. It is read only after a method has
+/// been routed, so an unknown method is reported as unsupported first.
+fn request_directory(request_bytes: &[u8]) -> PyResult<PathBuf> {
+    let cbor = codec::decode_cbor(request_bytes)?;
+    let meta = codec::catch_protocol("decode request metadata", || {
+        gwz_core::RequestMeta::from_cbor(cbor.try_get(1)?)
+    })?
+    .map_err(|_| error::protocol("decode request metadata failed"))?;
+    gwz_core::workspace_ops::caller_directory(&meta).map_err(error::model)
+}
+
+/// The directory a routed call runs against: the one a submit already derived
+/// and validated, or else the request's own.
+fn directory(caller_cwd: Option<PathBuf>, request_bytes: &[u8]) -> PyResult<PathBuf> {
+    match caller_cwd {
+        Some(caller_cwd) => Ok(caller_cwd),
+        None => request_directory(request_bytes),
+    }
+}
+
+fn uses_no_directory(method: &str) -> bool {
+    matches!(method, "configure_transport_runtime" | "transport_capabilities")
+}
+
 pub(crate) fn call(
     method: &str,
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
-    caller_cwd: PathBuf,
+    caller_cwd: Option<PathBuf>,
 ) -> PyResult<Vec<u8>> {
+    if uses_no_directory(method) {
+        return read::call_transport(method, request_message, response_message, request_bytes);
+    }
     match method {
-        "configure_transport_runtime"
-        | "remote_identity"
-        | "transport_capabilities"
+        "remote_identity"
         | "create_workspace"
         | "init_from_sources"
         | "add_existing_repo"
@@ -40,7 +66,7 @@ pub(crate) fn call(
             request_message,
             response_message,
             request_bytes,
-            &caller_cwd,
+            &directory(caller_cwd, request_bytes)?,
         ),
         "materialize" | "clone_workspace" | "clone_repo_member" | "attach_repo_member"
         | "snapshot" | "tag" | "capture" => materialize::call(
@@ -48,7 +74,7 @@ pub(crate) fn call(
             request_message,
             response_message,
             request_bytes,
-            &caller_cwd,
+            &directory(caller_cwd, request_bytes)?,
         ),
         "commit" | "stage" | "pull_head" | "pull_snapshot" | "push" | "fetch" => {
             git_mutation::call(
@@ -56,7 +82,7 @@ pub(crate) fn call(
                 request_message,
                 response_message,
                 request_bytes,
-                &caller_cwd,
+                &directory(caller_cwd, request_bytes)?,
             )
         }
         "branch" | "stash" => branch_stash::call(
@@ -64,35 +90,35 @@ pub(crate) fn call(
             request_message,
             response_message,
             request_bytes,
-            &caller_cwd,
+            &directory(caller_cwd, request_bytes)?,
         ),
         "merge" => merge::call(
             method,
             request_message,
             response_message,
             request_bytes,
-            &caller_cwd,
+            &directory(caller_cwd, request_bytes)?,
         ),
         "diff" => diff::call(
             method,
             request_message,
             response_message,
             request_bytes,
-            &caller_cwd,
+            &directory(caller_cwd, request_bytes)?,
         ),
         "log" => log::call(
             method,
             request_message,
             response_message,
             request_bytes,
-            &caller_cwd,
+            &directory(caller_cwd, request_bytes)?,
         ),
         "clone_local_workspace" | "local_family" => local_family::call(
             method,
             request_message,
             response_message,
             request_bytes,
-            &caller_cwd,
+            &directory(caller_cwd, request_bytes)?,
         ),
         other => Err(error::unsupported_method(other)),
     }
@@ -103,7 +129,6 @@ pub(crate) fn submit(
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
-    caller_cwd: PathBuf,
 ) -> PyResult<Vec<u8>> {
     match method {
         "init_from_sources" => submit_init_from_sources(
@@ -111,70 +136,70 @@ pub(crate) fn submit(
             request_message,
             response_message,
             request_bytes,
-            &caller_cwd,
+            &request_directory(request_bytes)?,
         ),
         "materialize" => submit_materialize(
             method,
             request_message,
             response_message,
             request_bytes,
-            &caller_cwd,
+            &request_directory(request_bytes)?,
         ),
         "clone_workspace" => submit_clone_workspace(
             method,
             request_message,
             response_message,
             request_bytes,
-            &caller_cwd,
+            &request_directory(request_bytes)?,
         ),
         "clone_repo_member" => submit_clone_repo_member(
             method,
             request_message,
             response_message,
             request_bytes,
-            &caller_cwd,
+            &request_directory(request_bytes)?,
         ),
         "pull_head" => submit_pull_head(
             method,
             request_message,
             response_message,
             request_bytes,
-            &caller_cwd,
+            &request_directory(request_bytes)?,
         ),
         "pull_snapshot" => submit_pull_snapshot(
             method,
             request_message,
             response_message,
             request_bytes,
-            &caller_cwd,
+            &request_directory(request_bytes)?,
         ),
         "push" => submit_push(
             method,
             request_message,
             response_message,
             request_bytes,
-            &caller_cwd,
+            &request_directory(request_bytes)?,
         ),
         "fetch" => submit_fetch(
             method,
             request_message,
             response_message,
             request_bytes,
-            &caller_cwd,
+            &request_directory(request_bytes)?,
         ),
         "merge" => merge::submit(
             method,
             request_message,
             response_message,
             request_bytes,
-            &caller_cwd,
+            &request_directory(request_bytes)?,
         ),
         "clone_local_workspace" => local_family::submit(
             method,
             request_message,
             response_message,
             request_bytes,
-            &caller_cwd,
+            &request_directory(request_bytes)?,
         ),
         other => Err(error::unsupported_method(other)),
     }
@@ -470,14 +495,14 @@ fn spawn_call(
                 if #[cfg(all(unix, gwz_transport_candidate))] {
                     if let Some(session) = session.as_ref() {
                         session.spawned_call(
-                            &method, &request_message, &response_message, &request_bytes, caller_cwd,
-                            &operation_id,
+                            &method, &request_message, &response_message, &request_bytes,
+                            Some(caller_cwd), &operation_id,
                         )
                     } else {
-                        call(&method, &request_message, &response_message, &request_bytes, caller_cwd)
+                        call(&method, &request_message, &response_message, &request_bytes, Some(caller_cwd))
                     }
                 } else {
-                    call(&method, &request_message, &response_message, &request_bytes, caller_cwd)
+                    call(&method, &request_message, &response_message, &request_bytes, Some(caller_cwd))
                 }
             }
         }));

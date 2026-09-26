@@ -4,8 +4,6 @@
   "entries": [
     {"path": "native/src/diff_logs.rs", "kind": "static", "name": "REGISTRY", "disposition": "debt",
      "reason": "Process-global diff output registry; becomes a member of the session context (RemPlan B5)."},
-    {"path": "native/src/lib.rs", "kind": "env", "name": "env::current_dir", "count": 2, "disposition": "debt",
-     "reason": "Reads the process working directory on every native call, and another Python thread may chdir concurrently. The Python API must pass the start directory explicitly."},
     {"path": "native/src/log_outputs.rs", "kind": "static", "name": "REGISTRY", "disposition": "debt",
      "reason": "Process-global commit-log output registry; becomes a member of the session context (RemPlan B5)."},
     {"path": "native/src/operations.rs", "kind": "env", "name": "env::var", "disposition": "debt",
@@ -18,8 +16,6 @@
      "reason": "Thread-local backend scoping; replace with an explicit parameter from the operation's gate (RemPlan B5)."},
     {"path": "native/src/shims.rs", "kind": "thread_local", "name": "SCOPED_OPERATION_ID", "disposition": "debt",
      "reason": "Thread-local operation-ID scoping; replace with an explicit parameter from the operation's gate (RemPlan B5)."},
-    {"path": "native/src/transport_session.rs", "kind": "env", "name": "env::current_dir", "count": 2, "disposition": "debt",
-     "reason": "As native/src/lib.rs: the start directory must come from the caller."},
     {"path": "native/src/transport_session.rs", "kind": "thread_local", "name": "CURRENT_SESSION", "disposition": "debt",
      "reason": "Thread-local current-session scoping; replace with an explicit parameter (RemPlan B5)."}
   ]

@@ -13,6 +13,7 @@ from .cli_shared import (
     CommandRegistry,
     add_url_scheme_option,
 )
+from .client_helpers import caller_directory
 from .errors import GwzBridgeError
 from .protocol.generated import (
     ActionKind,
@@ -308,4 +309,4 @@ def _result_ok(result: ExecResult) -> bool:
 
 def _workspace_root(context: CommandContext) -> str:
     root = context.args.root or getattr(context.client, "root", None)
-    return str(root) if root is not None else str(Path.cwd())
+    return str(root) if root is not None else str(caller_directory())

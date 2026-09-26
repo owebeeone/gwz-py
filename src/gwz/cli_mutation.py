@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 from typing import Any
 
 from .cli_shared import (
@@ -10,6 +9,7 @@ from .cli_shared import (
     CommandRegistry,
     add_url_scheme_option,
 )
+from .client_helpers import caller_directory
 from .protocol.generated import RemoteCheck, SnapshotSource, SnapshotSourceKind, TagOp
 
 
@@ -179,7 +179,7 @@ def configure_stage(parser: argparse.ArgumentParser) -> None:
 async def handle_stage(context: CommandContext) -> Any:
     return await context.client.stage(
         context.args.pathspecs,
-        cwd=Path.cwd(),
+        cwd=caller_directory(),
         all=True if context.args.stage_all else None,
         **context.meta,
     )

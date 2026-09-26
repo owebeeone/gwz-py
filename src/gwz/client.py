@@ -11,8 +11,10 @@ from typing import Any
 from .bridge import CoreBridge, DiffLogRead, LogOutputRead, NativeCoreBridge, TransportCleanup
 from .errors import GwzBridgeError
 from .client_helpers import (
+    caller_directory as _caller_directory,
     enum_value as _enum_value,
     materialize_target as _target,
+    path_text as _path_text,
     raise_for_response,
     request_id as _request_id,
     sources as _sources,
@@ -268,7 +270,7 @@ class Client:
             max_connections_per_host = self._max_connections_per_host
         # Capture this exactly once.  All caller-relative request locations use
         # this base, and the same value crosses the native/worker boundary.
-        caller_cwd = Path.cwd().resolve()
+        caller_cwd = _caller_directory()
         selected_member_ids = list(member_ids)
         selected_paths = list(paths)
         selected_targets = list(targets)
@@ -327,7 +329,7 @@ class Client:
         workspace = None
         if effective_root is not None or workspace_id is not None:
             workspace = WorkspaceRef(
-                root=str(effective_root) if effective_root is not None else None,
+                root=_path_text(effective_root, "workspace root") if effective_root is not None else None,
                 workspace_id=workspace_id,
             )
 
@@ -343,7 +345,7 @@ class Client:
             # Capture at request construction, before a bridge call can detach
             # or submit work to another thread.  This is transport data, not a
             # late lookup by the receiving native worker.
-            invocation=InvocationContext(caller_cwd=str(caller_cwd)),
+            invocation=InvocationContext(caller_cwd=_path_text(caller_cwd, "working directory")),
         )
 
     async def _require_transport_capability(self, request: Any) -> None:
@@ -427,7 +429,7 @@ class Client:
     ) -> CreateWorkspaceResponse:
         root = Path(workspace_root).resolve() if workspace_root is not None else self.root
         if root is None:
-            root = Path.cwd().resolve()
+            root = _caller_directory()
         request = CreateWorkspaceRequest(
             meta=self.meta(root=root, **meta),
             workspace_root=str(root or ""),
@@ -860,7 +862,10 @@ class Client:
     ) -> StageResponse:
         request = StageRequest(
             meta=self.meta(**meta),
-            cwd=str(Path(cwd).resolve() if cwd is not None else Path.cwd()),
+            cwd=_path_text(
+                Path(cwd).resolve() if cwd is not None else _caller_directory(),
+                "stage working directory",
+            ),
             pathspecs=list(pathspecs),
             all=all,
         )

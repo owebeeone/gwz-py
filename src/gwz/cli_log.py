@@ -21,6 +21,7 @@ from .cli_shared import (
     _is_broken_pipe,
     _silence_broken_stdout,
 )
+from .client_helpers import caller_directory
 from .errors import GwzBridgeError
 from .protocol.generated import LogOutputRecordKind
 
@@ -386,7 +387,7 @@ _EXECUTION_ERROR_CODES = frozenset(
 
 
 def _workspace_relative_cwd(root: str | None) -> str:
-    cwd = Path.cwd().resolve()
+    cwd = caller_directory()
     workspace = Path(root).resolve() if root is not None else cwd
     try:
         relative = cwd.relative_to(workspace)

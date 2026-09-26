@@ -2,12 +2,39 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Any
 
-from .errors import GwzOperationError
+from .errors import GwzBridgeError, GwzOperationError
 from .protocol.generated import MaterializeTarget, MaterializeTargetKind, SourceUrl
 
 SUCCESS_AGGREGATE_STATUS_NAMES = {"accepted", "ok", "noop"}
+
+
+def path_text(path: Path, label: str) -> str:
+    """A path as request text, exactly or not at all.
+
+    Request path fields are Unicode text. Python represents undecodable bytes in
+    a path as lone surrogates, which cannot be sent exactly, so such a path is
+    refused instead of being sent altered.
+    """
+    text = str(path)
+    try:
+        text.encode("utf-8")
+    except UnicodeEncodeError:
+        raise GwzBridgeError(f"{label} is not valid Unicode: {text!r}", code="InvalidRequest") from None
+    return text
+
+
+def caller_directory() -> Path:
+    """The caller's working directory, captured at the client edge.
+
+    This is the only place the client reads the process working directory; core
+    receives it in every request and never reads its own.
+    """
+    directory = Path.cwd().resolve()
+    path_text(directory, "working directory")
+    return directory
 
 
 def request_id() -> str:

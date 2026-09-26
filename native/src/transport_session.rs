@@ -462,7 +462,7 @@ impl TransportSession {
         request_message: &str,
         response_message: &str,
         request_bytes: &[u8],
-        caller_cwd: PathBuf,
+        caller_cwd: Option<PathBuf>,
         defer_failure: bool,
         expected_operation_id: Option<&str>,
     ) -> PyResult<Vec<u8>> {
@@ -861,7 +861,7 @@ impl TransportSession {
         request_message: &str,
         response_message: &str,
         request_bytes: &[u8],
-        caller_cwd: PathBuf,
+        caller_cwd: Option<PathBuf>,
         operation_id: &str,
     ) -> PyResult<Vec<u8>> {
         self.call_inner(
@@ -1119,7 +1119,7 @@ cfg_if::cfg_if! {
                     let error = if index % 2 == 0 {
                         session.call_inner(
                             "fetch", "FetchRequest", "FetchResponse", &bytes,
-                            std::env::current_dir().unwrap(), false, Some(&operation_id),
+                            Some(std::env::current_dir().unwrap()), false, Some(&operation_id),
                         ).unwrap_err()
                     } else {
                         Python::attach(|py| session.submit(
@@ -1207,8 +1207,6 @@ impl TransportSession {
         let response_message = response_message.to_owned();
         let request_bytes = request_bytes.to_vec();
         let operation_id = operation_id.map(str::to_owned);
-        let caller_cwd =
-            std::env::current_dir().map_err(|_| error::runtime("current_dir failed"))?;
         let session = self.clone();
         py.detach(move || {
             session.call_inner(
@@ -1216,7 +1214,8 @@ impl TransportSession {
                 &request_message,
                 &response_message,
                 &request_bytes,
-                caller_cwd,
+                // Dispatch takes the caller's directory from the request itself.
+                None,
                 false,
                 operation_id.as_deref(),
             )
@@ -1238,8 +1237,6 @@ impl TransportSession {
         let response_message = response_message.to_owned();
         let request_bytes = request_bytes.to_vec();
         let issued_operation_id = issued_operation_id.map(str::to_owned);
-        let caller_cwd =
-            std::env::current_dir().map_err(|_| error::runtime("current_dir failed"))?;
         let session = self.clone();
         py.detach(move || {
             let meta = match network_meta(&method, &request_bytes) {
@@ -1319,7 +1316,6 @@ impl TransportSession {
                                 &request_message,
                                 &response_message,
                                 &request_bytes,
-                                caller_cwd,
                             )
                         })
                     })
@@ -1330,7 +1326,6 @@ impl TransportSession {
                     &request_message,
                     &response_message,
                     &request_bytes,
-                    caller_cwd,
                 )
             };
             if network && result.is_err() {
