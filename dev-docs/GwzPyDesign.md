@@ -316,7 +316,8 @@ Draft session pointer (2026-09-25, pending review): the [core session contract](
 would replace these entry points with a host-context constructor and a
 four-operation message channel (open, send, receive, close) to a core session
 host, keeping `CoreBridge` and the public API unchanged. The bridge would
-create one host context per process and pass it to every session. Handlers
+create one host context per process, once and under a lock, and pass it to
+every session. Handlers
 would run on core's threads, and the only blocking call, receive, releases the
 GIL. This section remains authoritative until that contract has review GO.
 
