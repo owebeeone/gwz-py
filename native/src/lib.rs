@@ -163,9 +163,14 @@ fn log_output_release(log_id: &str) {
 }
 
 #[pyfunction]
-fn operation_result(operation_id: &str) -> PyResult<Vec<u8>> {
-    let result = operations::result(operation_id)?;
-    codec::encode_message("encode OperationResult", || result.to_cbor())
+fn operation_result(py: Python<'_>, operation_id: &str) -> PyResult<Vec<u8>> {
+    let operation_id = operation_id.to_owned();
+    // The wait must not hold the GIL: a failing worker needs it to build its
+    // Python error, so a waiter holding it would deadlock with that worker.
+    py.detach(move || {
+        let result = operations::result(&operation_id)?;
+        codec::encode_message("encode OperationResult", || result.to_cbor())
+    })
 }
 
 #[pyfunction]
