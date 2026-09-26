@@ -183,6 +183,9 @@ from gwz.protocol.codec import decode_message, encode_message, from_wire, schema
 # previous pin below exactly. Kept identical to gwz-core
 # protocol/check_log_additive.py and scripts/check_protocol_drift.py.
 #   was: 4b6cf3fd9fb9d0a9338a7a25aa305435eb01ef9219f4ad80b0dad705d4301ee6
+# Python session v2 (2026-09-24) adds only GwzErrorCode.cancelled (73) and
+# transport_record_limit (74). The projection removes exactly those members
+# before comparing with the existing historical pin, as gwz-core does.
 PRE_LOG_WIRE_SHA256 = "4d377a496c8905293b5e9b53392b70867cf6dafccbb623841a623dbd2d555f14"
 
 
@@ -342,5 +345,13 @@ def test_log_addition_preserves_every_pre_existing_wire_shape_and_slot() -> None
         if added != [expected]:
             raise ValueError(f"{name}.private must be the optional boolean at tag {tag}")
         message["fields"].remove(added[0])
+    # Python session v2 (2026-09-24) appends only two terminal codes,
+    # GwzErrorCode.cancelled (73) and transport_record_limit (74). Remove exactly
+    # those members to retain the prior wire pin, as gwz-core's
+    # protocol/check_log_additive.py does.
+    error_codes = next(enum for enum in projected["enums"] if enum["name"] == "GwzErrorCode")
+    for name, value in (("cancelled", 73), ("transport_record_limit", 74)):
+        if error_codes["members"].pop(name, None) != value:
+            raise ValueError(f"GwzErrorCode.{name} must occupy additive slot {value}")
     encoded = json.dumps(projected, sort_keys=True, separators=(",", ":")).encode()
     assert hashlib.sha256(encoded).hexdigest() == PRE_LOG_WIRE_SHA256

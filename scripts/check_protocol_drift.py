@@ -208,6 +208,12 @@ PRE_LOG_WIRE_FINGERPRINT = (
     # from this driver's own packaged IR, through this driver's own
     # projection, reproduced the previous pin below exactly.
     #   was: sha256:4b6cf3fd9fb9d0a9338a7a25aa305435eb01ef9219f4ad80b0dad705d4301ee6
+    #
+    # Python session v2 (2026-09-24) adds only GwzErrorCode.cancelled (73) and
+    # transport_record_limit (74). The projection removes exactly those members
+    # before comparing with the existing historical pin, as gwz-core's
+    # protocol/check_log_additive.py does. MEASURED: with those two members
+    # removed, this driver's packaged IR reproduces the pin below exactly.
     "sha256:4d377a496c8905293b5e9b53392b70867cf6dafccbb623841a623dbd2d555f14"
 )
 
@@ -352,6 +358,14 @@ def pre_log_projection(value: dict[str, Any]) -> dict[str, Any]:
         if added != [expected]:
             raise ValueError(f"{name}.private must be the optional boolean at tag {tag}")
         message["fields"].remove(added[0])
+    # Python session v2 (2026-09-24) appends only two terminal codes,
+    # GwzErrorCode.cancelled (73) and transport_record_limit (74). Remove exactly
+    # those members to retain the prior wire pin, as gwz-core's
+    # protocol/check_log_additive.py does.
+    error_codes = next(enum for enum in projected["enums"] if enum["name"] == "GwzErrorCode")
+    for name, value in (("cancelled", 73), ("transport_record_limit", 74)):
+        if error_codes["members"].pop(name, None) != value:
+            raise ValueError(f"GwzErrorCode.{name} must occupy additive slot {value}")
     return projected
 
 
