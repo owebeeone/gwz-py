@@ -5,6 +5,7 @@ import unicodedata
 import inspect
 import itertools
 from collections.abc import AsyncIterator, Iterable, Sequence
+from dataclasses import fields, replace
 from pathlib import Path
 from typing import Any
 
@@ -128,6 +129,12 @@ from .protocol.generated import (
 
 SCHEMA_VERSION = "gwz.protocol/v0"
 
+# At most one member_progress event per member per 100 ms, the default gwz-cli
+# sends too. Core applies no limit when the field is absent, and libgit2 reports
+# every object it indexes, so an absent value stores one event per object.
+# 0 still asks for every update.
+DEFAULT_PROGRESS_MIN_INTERVAL_MS = 100
+
 # diff.output cursor-loop delivery states. `data` yields and advances; `expired`
 # resumes from the returned cursor; the terminal states stop the loop.
 _DIFF_OUTPUT_TERMINAL_STATES = frozenset({"eof", "closed", "failed"})
@@ -155,6 +162,24 @@ def _validate_member_id(value: str) -> None:
         raise ValueError(
             "member id must start with mem_ and contain only portable characters"
         )
+
+
+def _merge_policy(
+    policy: OperationPolicy | None, chosen: dict[str, Any]
+) -> OperationPolicy | None:
+    """Drop the client's defaults from a merge request's policy.
+
+    Core refuses a progress interval or a host limit on merge, which transfers
+    nothing. As in gwz-cli, only a value the caller passed for this call
+    (`chosen`) is sent, so the refusal names it.
+    """
+    if policy is None:
+        return None
+    defaults = ("progress_min_interval_ms", "max_connections_per_host")
+    policy = replace(policy, **{name: None for name in defaults if chosen.get(name) is None})
+    if all(getattr(policy, field.name) is None for field in fields(policy)):
+        return None
+    return policy
 
 
 class Client:
@@ -268,6 +293,8 @@ class Client:
             raise GwzBridgeError("invalid request_id", code="InvalidRequest")
         if max_connections_per_host is None and self._max_connections_per_host != 32:
             max_connections_per_host = self._max_connections_per_host
+        if progress_min_interval_ms is None:
+            progress_min_interval_ms = DEFAULT_PROGRESS_MIN_INTERVAL_MS
         # Capture this exactly once.  All caller-relative request locations use
         # this base, and the same value crosses the native/worker boundary.
         caller_cwd = _caller_directory()
@@ -293,30 +320,16 @@ class Client:
                 exclude_targets=selected_exclude_targets,
             )
 
-        policy = None
-        if any(
-            value is not None
-            for value in (
-                partial,
-                destructive,
-                sync,
-                unsupported_member,
-                remote,
-                concurrency,
-                progress_min_interval_ms,
-                max_connections_per_host,
-            )
-        ):
-            policy = OperationPolicy(
-                partial=PartialBehavior.partial if partial else None,
-                destructive=DestructiveBehavior.allow if destructive else None,
-                sync=_enum_value(SyncBehavior, sync),
-                unsupported_member=_enum_value(UnsupportedMemberBehavior, unsupported_member),
-                remote=remote,
-                concurrency=concurrency,
-                progress_min_interval_ms=progress_min_interval_ms,
-                max_connections_per_host=max_connections_per_host,
-            )
+        policy = OperationPolicy(
+            partial=PartialBehavior.partial if partial else None,
+            destructive=DestructiveBehavior.allow if destructive else None,
+            sync=_enum_value(SyncBehavior, sync),
+            unsupported_member=_enum_value(UnsupportedMemberBehavior, unsupported_member),
+            remote=remote,
+            concurrency=concurrency,
+            progress_min_interval_ms=progress_min_interval_ms,
+            max_connections_per_host=max_connections_per_host,
+        )
 
         raw_root = Path(root) if root is not None else self.root
         effective_root = (
@@ -1058,8 +1071,10 @@ class Client:
         dry_run: bool | None,
         **meta: Any,
     ) -> MergeRequest:
+        request_meta = self.meta(dry_run=dry_run, **meta)
+        request_meta.policy = _merge_policy(request_meta.policy, meta)
         return MergeRequest(
-            meta=self.meta(dry_run=dry_run, **meta),
+            meta=request_meta,
             op=_enum_value(MergeOp, op),
             source_ref=source_ref,
             merge_id=merge_id,

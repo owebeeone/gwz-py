@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import subprocess
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -14,8 +15,8 @@ def native_module():
     return pytest.importorskip("gwz._gwz_core")
 
 
-def native_client(root: Path) -> Client:
-    return Client(root=root, bridge=NativeCoreBridge(native=native_module()))
+def native_client(root: Path, **options: Any) -> Client:
+    return Client(root=root, bridge=NativeCoreBridge(native=native_module()), **options)
 
 
 def git(repo: Path, *args: str) -> str:

@@ -36,7 +36,9 @@ async with Client(root=Path(".")) as client:
 ```
 
 Long-running operations such as clone, materialize, pull, and push also expose
-streaming forms for operation progress events.
+streaming forms for operation progress events. Transfer progress arrives at most
+once per member every 100 ms, as in gwz-cli; pass `progress_min_interval_ms=0`
+to receive every update.
 
 ## Python CLI
 

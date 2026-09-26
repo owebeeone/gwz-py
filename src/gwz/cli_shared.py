@@ -315,7 +315,7 @@ def add_global_options(
         dest=f"{dest_prefix}progress_min_interval_ms",
         type=non_negative_int,
         default=scalar_default,
-        help="Min milliseconds between progress events per repo",
+        help="Min milliseconds between progress events per repo; 0 emits every update (default 100)",
     )
     parser.add_argument(
         "--json",

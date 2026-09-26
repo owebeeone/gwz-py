@@ -4,6 +4,7 @@ import asyncio
 from dataclasses import replace
 from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -81,6 +82,17 @@ def test_native_merge_status_closes_one_event_stream(tmp_path: Path) -> None:
         EventKind.operation_finished,
     ]
     assert [event.sequence for event in events] == [0, 1]
+
+
+def test_native_merge_does_not_inherit_the_client_host_limit(tmp_path: Path) -> None:
+    # Core refuses a host limit on every merge op. The client's own limit is
+    # for network operations, so it must not ride along on a merge.
+    client = native_client(tmp_path, max_connections_per_host=16)
+    asyncio.run(client.create_workspace(workspace_id="ws_merge_host_limit"))
+
+    response = asyncio.run(client.merge(op=MergeOp.status))
+
+    assert response.response.meta.operation_id is not None
 
 
 def test_native_operation_events_and_result_round_trip(tmp_path: Path) -> None:
@@ -231,6 +243,42 @@ def test_native_clone_repo_member_stream_uses_submitted_route(tmp_path: Path) ->
     assert result.action is ActionKind.clone_repo_member
     assert result.aggregate_status is AggregateStatus.ok
     assert (workspace / "libs" / "shared" / ".git").is_dir()
+
+
+def test_native_clone_progress_is_coalesced_by_default(tmp_path: Path) -> None:
+    # A file:// URL takes libgit2's transfer path, which reports progress for
+    # every object it indexes; a plain path copies the object store instead.
+    source = tmp_path / "source-member"
+    create_git_repo(source)
+    for index in range(1500):
+        (source / f"file-{index:04}.txt").write_text(f"{index}\n", encoding="utf-8")
+    git(source, "add", ".")
+    git(source, "commit", "-m", "many objects")
+
+    def progress_events(name: str, **meta: Any) -> int:
+        workspace = tmp_path / name
+        workspace.mkdir()
+        client = native_client(workspace)
+        asyncio.run(client.create_workspace(workspace_id=f"ws_{name}"))
+        events = asyncio.run(
+            collect(
+                client.clone_repo_member_stream(
+                    source.as_uri(),
+                    "libs/shared",
+                    member_id="mem_shared",
+                    source_id="src_shared",
+                    **meta,
+                )
+            )
+        )
+        return sum(event.kind is EventKind.member_progress for event in events)
+
+    every_update = progress_events("every", progress_min_interval_ms=0)
+    default = progress_events("default")
+
+    assert every_update >= 1500
+    # At most one event per member per 100 ms: a handful, not one per object.
+    assert 1 <= default < every_update // 10
 
 
 def test_native_operation_lookup_reports_missing_id(tmp_path: Path) -> None:

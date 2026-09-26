@@ -9,6 +9,7 @@ from typing import Any
 import pytest
 
 from gwz import Client
+from gwz.client import DEFAULT_PROGRESS_MIN_INTERVAL_MS
 from gwz.errors import GwzBridgeError
 from gwz.protocol.generated import (
     ActionKind,
@@ -59,6 +60,7 @@ from gwz.protocol.generated import (
     StatusRequest,
     StatusResponse,
     TagResponse,
+    UnsupportedMemberBehavior,
 )
 
 
@@ -235,6 +237,42 @@ def test_merge_forwards_filesystem_strict_to_the_request() -> None:
     assert request.filesystem_strict is True
 
 
+def test_merge_sends_only_a_progress_interval_the_caller_chose() -> None:
+    # Core refuses the field on merge, so the client default must not ride
+    # along. An explicit value is still sent, so core's refusal names it.
+    bridge = FakeBridge()
+    client = Client(root=Path("/tmp/workspace"), bridge=bridge)
+
+    asyncio.run(client.merge("feature/refactor"))
+    asyncio.run(client.merge("feature/refactor", unsupported_member="fail"))
+    asyncio.run(client.merge("feature/refactor", progress_min_interval_ms=250))
+
+    plain, other_policy, explicit = (call[3] for call in bridge.calls)
+    assert plain.meta.policy is None
+    assert other_policy.meta.policy is not None
+    assert other_policy.meta.policy.unsupported_member is UnsupportedMemberBehavior.fail
+    assert other_policy.meta.policy.progress_min_interval_ms is None
+    assert explicit.meta.policy is not None
+    assert explicit.meta.policy.progress_min_interval_ms == 250
+
+
+def test_merge_does_not_inherit_the_client_host_limit() -> None:
+    # Core refuses a host limit on merge, which transfers nothing. A limit
+    # passed to this merge call is still sent, so core's refusal names it.
+    bridge = FakeBridge()
+    client = Client(root=Path("/tmp/workspace"), bridge=bridge, max_connections_per_host=16)
+
+    asyncio.run(client.merge("feature/refactor"))
+    asyncio.run(client.merge("feature/refactor", max_connections_per_host=8))
+    asyncio.run(client.status())
+
+    plain, explicit, status = (call[3] for call in bridge.calls)
+    assert plain.meta.policy is None
+    assert explicit.meta.policy is not None
+    assert explicit.meta.policy.max_connections_per_host == 8
+    assert status.meta.policy.max_connections_per_host == 16
+
+
 def test_create_workspace_without_root_defaults_to_cwd(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     bridge = FakeBridge()
@@ -259,6 +297,15 @@ def test_client_host_capacity_default_is_inherited_and_can_be_overridden() -> No
     assert client.meta(max_connections_per_host=32).policy.max_connections_per_host == 32
     with pytest.raises(ValueError):
         Client(max_connections_per_host=0)
+
+
+def test_progress_interval_defaults_to_100_ms_like_gwz_cli() -> None:
+    client = Client()
+    assert DEFAULT_PROGRESS_MIN_INTERVAL_MS == 100
+    assert client.meta().policy.progress_min_interval_ms == 100
+    # 0 is a value, not "unset": it still asks for every update.
+    assert client.meta(progress_min_interval_ms=0).policy.progress_min_interval_ms == 0
+    assert client.meta(progress_min_interval_ms=250).policy.progress_min_interval_ms == 250
 
 
 def test_request_id_uses_core_identifier_grammar_before_bridge_creation() -> None:
