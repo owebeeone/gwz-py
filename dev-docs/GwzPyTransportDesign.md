@@ -1,8 +1,10 @@
 # Python transport session for GWZ 1.1.0
 
-Current release-gate status (2026-09-24): **NO-GO for Phase 6 completion and Phase 7 activation** because the single-active-operation rule prevents overlapping network commands on one Python `Client`. The concurrency design train that followed, from the [operator-directed finding](../../dev-docs/history/GwzPyTransportConcurrencyNoGo.md) through the v4 foundation draft, was retired to history on 2026-09-24. A [clean-slate proposal](../../dev-docs/GwzClientCoreTransportProposals.md) for the client, core and transport boundary replaces it, and its draft [core session contract](../../dev-docs/GwzCoreSessionDesign.md) is pending review. The historical design GO below remains the verdict on the earlier review object; it does not close the NO-GO.
+Current release-gate status (2026-09-24): **NO-GO for Phase 6 completion and Phase 7 activation** because the single-active-operation rule prevents overlapping network commands on one Python `Client`. The concurrency design train that followed, from the [operator-directed finding](../../dev-docs/history/GwzPyTransportConcurrencyNoGo.md) through the v4 foundation draft, was retired to history on 2026-09-24. A [clean-slate proposal](../../dev-docs/GwzClientCoreTransportProposals.md) for the client, core and transport boundary replaces it, and its draft [core session contract](../../dev-docs/GwzCoreSessionDesign.md) is pending review. The historical design GO below remains the verdict on the earlier review object; it does not close the NO-GO. [GwzTransportReleasePlan.md](../../gwz-core/dev-docs/GwzTransportReleasePlan.md) §4 sets the NO-GO's closing condition as of 2026-09-27: two overlapping Python operations on one `Client` complete independently through the core session host, on all three platforms. The [1.1.0 plan amendment](../../gwz-core/dev-docs/GwzV110PlanAmendment.md) of 2026-09-26 had set it as that plan's S6.3 test.
 
-Status: **S1.1/S1.2 design accepted for implementation, 2026-09-23**.
+Status: **superseded for the long-lived `TransportSession` design, its 2026-09-23 acceptance and the bounded amendment to the 1.1.0 plan's Phase 1 and Phase 6 that it accepted, by [GwzV110PlanAmendment.md](../../gwz-core/dev-docs/GwzV110PlanAmendment.md) as of 2026-09-26. Historical evidence and already-completed gates remain valid only where that amendment says they do**. The amendment planned an S1.1 revision of this document to the per-operation model. [GwzTransportReleasePlan.md](../../gwz-core/dev-docs/GwzTransportReleasePlan.md) §4 retires that revision as of 2026-09-27, under its OD1: gwz-py moves onto the core session host instead. That plan's TR1.7 marks this document superseded by the session contract's §9, §10 and §14. This document is not implementation authority.
+
+The superseded status, kept for the record: "S1.1/S1.2 design accepted for implementation, 2026-09-23".
 Consistency, Safety and Surface report GO at Python
 `259f73cc030c0da0bf29903bab258de0463b7d02`, paired with the setup-failure
 amendment at core `479926c18265276e5a45659c4523a13a71f4a51f`. Reports:
@@ -278,3 +280,7 @@ operation, lost cancellation during a blocking handler, and accidental
 credential/proxy parsing on local-only operations. New conditional platform
 sections use explicit `cfg_if!` boundaries, and syntax-aware checks inspect
 disabled branches as required by workspace policy.
+
+## Changelog
+
+- 2026-09-27: the planned S1.1 revision retired, and the NO-GO's closing condition re-pointed, by [`GwzTransportReleasePlan.md`](../../gwz-core/dev-docs/GwzTransportReleasePlan.md) §4.
