@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::thread;
@@ -10,41 +9,12 @@ use crate::error;
 
 static STORE: OnceLock<OperationStore> = OnceLock::new();
 
-thread_local! {
-    static SCOPED_STORE: RefCell<Option<Arc<OperationStore>>> = const { RefCell::new(None) };
-}
-
-pub(crate) fn with_store<T>(selected: Arc<OperationStore>, action: impl FnOnce() -> T) -> T {
-    struct Restore(Option<Arc<OperationStore>>);
-    impl Drop for Restore {
-        fn drop(&mut self) {
-            SCOPED_STORE.with(|slot| *slot.borrow_mut() = self.0.take());
-        }
-    }
-    let previous = SCOPED_STORE.with(|slot| slot.borrow_mut().replace(selected));
-    let restore = Restore(previous);
-    let result = action();
-    drop(restore);
-    result
-}
-
-fn selected<T>(action: impl FnOnce(&OperationStore) -> T) -> T {
-    SCOPED_STORE.with(|slot| {
-        let current = slot.borrow();
-        if let Some(current) = current.as_ref() {
-            action(current)
-        } else {
-            action(store())
-        }
-    })
-}
-
 pub(crate) fn begin(operation_id: &str) -> OperationRecorder {
-    selected(|store| store.begin(operation_id))
+    store().begin(operation_id)
 }
 
 pub(crate) fn begin_exclusive(operation_id: &str) -> PyResult<OperationRecorder> {
-    selected(|store| store.begin_exclusive(operation_id))
+    store().begin_exclusive(operation_id)
 }
 
 pub(crate) fn events(operation_id: &str) -> PyResult<Vec<gwz_core::OperationEvent>> {
@@ -81,54 +51,6 @@ pub(crate) struct OperationStore {
 }
 
 impl OperationStore {
-    pub(crate) fn refuse(
-        &self,
-        operation_id: &str,
-        reason: gwz_core::model::ModelError,
-    ) -> PyResult<()> {
-        self.record(operation_id)?.refuse(reason);
-        Ok(())
-    }
-    pub(crate) fn issue(&self, operation_id: &str) -> PyResult<()> {
-        let mut records = self.records.lock().expect("operation store poisoned");
-        if records.len() >= 64 {
-            return Err(error::model(gwz_core::model::ModelError::new(
-                gwz_core::model::ErrorCode::TransportSessionFull,
-                "operation ledger is full; inspect recent operations and release completed records",
-            )));
-        }
-        if records.contains_key(operation_id) {
-            return Err(error::runtime("operation identity already issued"));
-        }
-        records.insert(operation_id.to_owned(), Arc::new(OperationRecord::new()));
-        Ok(())
-    }
-
-    pub(crate) fn discard(&self, operation_id: &str) -> PyResult<()> {
-        self.records
-            .lock()
-            .expect("operation store poisoned")
-            .remove(operation_id)
-            .map(|_| ())
-            .ok_or_else(|| error::runtime("operation is not owned by this session"))
-    }
-
-    pub(crate) fn contains(&self, operation_id: &str) -> bool {
-        self.records
-            .lock()
-            .expect("operation store poisoned")
-            .contains_key(operation_id)
-    }
-
-    pub(crate) fn defer_terminal(&self, operation_id: &str) {
-        self.begin(operation_id).record.defer_terminal();
-    }
-
-    pub(crate) fn publish_terminal(&self, operation_id: &str) -> PyResult<()> {
-        self.record(operation_id)?.publish_terminal();
-        Ok(())
-    }
-
     fn begin(&self, operation_id: &str) -> OperationRecorder {
         let mut records = self.records.lock().expect("operation store poisoned");
         let record = records
@@ -207,33 +129,14 @@ struct OperationState {
     events: Vec<gwz_core::OperationEvent>,
     result: Option<gwz_core::OperationResult>,
     merge_response: Option<gwz_core::MergeResponse>,
-    defer_terminal: bool,
-    pending_terminal: Option<(gwz_core::OperationResult, Option<gwz_core::MergeResponse>)>,
     refusal: Option<gwz_core::model::ModelError>,
 }
 
 impl OperationRecord {
     fn refuse(&self, reason: gwz_core::model::ModelError) {
         let mut state = self.state.lock().expect("operation state poisoned");
-        if state.result.is_none() && state.pending_terminal.is_none() && state.refusal.is_none() {
+        if state.result.is_none() && state.refusal.is_none() {
             state.refusal = Some(reason);
-            drop(state);
-            self.changed.notify_all();
-        }
-    }
-    fn defer_terminal(&self) {
-        self.state
-            .lock()
-            .expect("operation state poisoned")
-            .defer_terminal = true;
-    }
-
-    fn publish_terminal(&self) {
-        let mut state = self.state.lock().expect("operation state poisoned");
-        state.defer_terminal = false;
-        if let Some((result, merge_response)) = state.pending_terminal.take() {
-            state.merge_response = merge_response;
-            state.result = Some(result);
             drop(state);
             self.changed.notify_all();
         }
@@ -365,14 +268,11 @@ impl OperationRecord {
     ) -> PyResult<()> {
         let failure = self.failure_result(operation_id, request_id, action, message);
         let mut state = self.state.lock().expect("operation state poisoned");
-        if state.result.is_some() {
-            // A published success is possible only after transport finish.
+        if state.result.is_some() || state.refusal.is_some() {
+            // The operation finished before it panicked; its outcome stands.
             return Ok(());
         }
-        if state.refusal.is_some() {
-            return Ok(());
-        }
-        state.pending_terminal = Some((failure, None));
+        state.result = Some(failure);
         drop(state);
         self.changed.notify_all();
         Ok(())
@@ -433,7 +333,7 @@ impl OperationRecord {
         merge_response: Option<gwz_core::MergeResponse>,
     ) -> PyResult<()> {
         let mut state = self.state.lock().expect("operation state poisoned");
-        if state.result.is_some() || state.pending_terminal.is_some() || state.refusal.is_some() {
+        if state.result.is_some() || state.refusal.is_some() {
             return Err(error::runtime(format!(
                 "operation {} is already complete",
                 result.operation_id
@@ -443,10 +343,6 @@ impl OperationRecord {
         // Publish the typed response and terminal result under the same lock.
         // Readers can therefore never observe completion without also seeing
         // the successful merge response.
-        if state.defer_terminal {
-            state.pending_terminal = Some((result, merge_response));
-            return Ok(());
-        }
         state.merge_response = merge_response;
         state.result = Some(result);
         drop(state);
@@ -634,74 +530,43 @@ mod tests {
     }
 
     #[test]
-    fn scoped_recorder_does_not_publish_to_process_legacy_store() {
-        let scoped = Arc::new(OperationStore::default());
-        with_store(scoped.clone(), || {
-            let recorder = begin("scoped-id");
-            recorder
-                .finish_error(
-                    "request".into(),
-                    "gwz.protocol/v0".into(),
-                    gwz_core::ActionKind::Push,
-                    "failed".into(),
-                )
-                .unwrap();
-        });
-        assert!(scoped.result("scoped-id").is_ok());
-        assert!(result("scoped-id").is_err());
-    }
-
-    #[test]
-    fn native_terminal_is_not_visible_until_transport_finishes() {
-        let store = OperationStore::default();
-        let recorder = store.begin_exclusive("transport-id").unwrap();
-        store.defer_terminal("transport-id");
-        recorder
-            .finish_error(
-                "request".into(),
-                "gwz.protocol/v0".into(),
-                gwz_core::ActionKind::Fetch,
-                "failed".into(),
-            )
-            .unwrap();
-        assert!(store.try_result("transport-id").unwrap().is_none());
-        store.publish_terminal("transport-id").unwrap();
-        assert!(store.try_result("transport-id").unwrap().is_some());
-    }
-
-    #[test]
-    fn cleanup_panic_overrides_a_staged_success_before_publication() {
+    fn a_panicked_operation_publishes_its_failure() {
         let store = OperationStore::default();
         let recorder = store.begin_exclusive("panic-id").unwrap();
-        store.defer_terminal("panic-id");
+        recorder
+            .finish_panic_error(
+                "request".into(),
+                gwz_core::ActionKind::Fetch,
+                "native operation panicked".into(),
+            )
+            .unwrap();
+        let result = store
+            .try_result("panic-id")
+            .unwrap()
+            .expect("the failure is published without waiting");
+        assert_eq!(result.aggregate_status, gwz_core::AggregateStatus::Failed);
+        assert_eq!(result.errors[0].code, gwz_core::GwzErrorCode::InternalError);
+        assert!(store.wait_events("panic-id", 0, Duration::ZERO).unwrap().1);
+    }
+
+    #[test]
+    fn a_panic_after_a_published_result_leaves_it() {
+        let store = OperationStore::default();
+        let recorder = store.begin_exclusive("done-id").unwrap();
         let mut response = merge_response("request").response;
-        response.meta.operation_id = Some("panic-id".into());
+        response.meta.operation_id = Some("done-id".into());
         recorder.finish(&response).unwrap();
-        assert!(store.try_result("panic-id").unwrap().is_none());
         recorder
             .finish_panic_error(
                 "request".into(),
                 gwz_core::ActionKind::Merge,
-                "transport finish panicked".into(),
+                "a late panic".into(),
             )
             .unwrap();
-        store.publish_terminal("panic-id").unwrap();
-        let result = store.result("panic-id").unwrap();
-        assert_eq!(result.aggregate_status, gwz_core::AggregateStatus::Failed);
-        assert_eq!(result.errors[0].code, gwz_core::GwzErrorCode::InternalError);
-    }
-
-    #[test]
-    fn issued_records_are_bounded_independently_of_active_workers() {
-        pyo3::Python::initialize();
-        let store = OperationStore::default();
-        for index in 0..64 {
-            store.issue(&format!("issued-{index}")).unwrap();
-        }
-        let error = store.issue("issued-64").unwrap_err();
-        assert!(error.to_string().contains("ledger is full"));
-        store.discard("issued-0").unwrap();
-        store.issue("issued-64").unwrap();
+        assert_eq!(
+            store.result("done-id").unwrap().aggregate_status,
+            gwz_core::AggregateStatus::Ok
+        );
     }
 
     fn request_meta(request_id: &str) -> gwz_core::RequestMeta {

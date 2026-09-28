@@ -9,14 +9,6 @@
     {"path": "native/src/operations.rs", "kind": "env", "name": "env::var", "disposition": "debt",
      "reason": "Test event-delay hook (GWZ_PY_TEST_EVENT_DELAY_MS) read from the environment in production builds; move it behind a test-only hook."},
     {"path": "native/src/operations.rs", "kind": "static", "name": "STORE", "disposition": "debt",
-     "reason": "Process-global legacy operation store; becomes a member of the session context (RemPlan B5)."},
-    {"path": "native/src/operations.rs", "kind": "thread_local", "name": "SCOPED_STORE", "disposition": "debt",
-     "reason": "Thread-local store scoping added by the retired Python session train; replace with an explicit parameter from the operation's gate (RemPlan B5)."},
-    {"path": "native/src/shims.rs", "kind": "thread_local", "name": "SCOPED_BACKEND", "disposition": "debt",
-     "reason": "Thread-local backend scoping; replace with an explicit parameter from the operation's gate (RemPlan B5)."},
-    {"path": "native/src/shims.rs", "kind": "thread_local", "name": "SCOPED_OPERATION_ID", "disposition": "debt",
-     "reason": "Thread-local operation-ID scoping; replace with an explicit parameter from the operation's gate (RemPlan B5)."},
-    {"path": "native/src/transport_session.rs", "kind": "thread_local", "name": "CURRENT_SESSION", "disposition": "debt",
-     "reason": "Thread-local current-session scoping; replace with an explicit parameter (RemPlan B5)."}
+     "reason": "Process-global legacy operation store; becomes a member of the session context (RemPlan B5)."}
   ]
 }

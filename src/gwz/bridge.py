@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator, Iterable
-from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from threading import Lock
 from typing import Any, NamedTuple, Protocol, TypeAlias
@@ -25,15 +24,8 @@ class TransportCleanup:
     peer_cleanup_confirmed: bool
 
 
-def _cleanup(value: Any) -> TransportCleanup:
-    if isinstance(value, TransportCleanup):
-        return value
-    pending, confirmed = value
-    return TransportCleanup(int(pending), bool(confirmed))
-
-
 async def _await_completion(task: asyncio.Task[Any]) -> Any:
-    """Keep waiting for native cleanup through repeated caller cancellation."""
+    """Keep waiting for a native worker through repeated caller cancellation."""
     while not task.done():
         try:
             await asyncio.shield(task)
@@ -212,51 +204,10 @@ class NativeCoreBridge:
                 ) from exc
             native = _gwz_core
         self._native = native
-        factory = getattr(native, "TransportSession", None)
-        self._session = factory() if factory is not None else None
         self._closed = False
         self._close_result: TransportCleanup | None = None
-        self._close_future: Future[Any] | None = None
         self._close_guard = Lock()
-        self._control_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="gwz-control") if self._session is not None else None
         self._legacy_network_locks: WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Lock] = WeakKeyDictionary()
-        self._network_operation_ids: set[str] = set()
-        self._issued_requests: dict[str, str] = {}
-
-    def issue_operation(self, request_id: str) -> str:
-        """Mint a native operation identity without starting endpoint work."""
-        with self._close_guard:
-            self._ensure_open()
-            reserve = getattr(self._session, "reserve_operation", None)
-            if reserve is None:
-                raise GwzBridgeError("native operation handles are unavailable", code="UnsupportedOperation")
-            try:
-                operation_id = reserve(request_id)
-            except Exception as exc:
-                raise _native_bridge_error("native operation reservation failed", exc) from exc
-            if not isinstance(operation_id, str):
-                raise GwzBridgeError("native operation identity is unavailable", code="UnsupportedOperation")
-            self._issued_requests[request_id] = operation_id
-            self._remember_network_id(operation_id)
-            return operation_id
-
-    def _remember_network_id(self, operation_id: str) -> None:
-        if self._session is not None and hasattr(self._session, "issued_operation"):
-            return
-        # Compatibility with older native sessions that do not expose the
-        # high-water identity check. The current native ledger owns this state.
-        if len(self._network_operation_ids) >= 64:
-            self._network_operation_ids.clear()
-        self._network_operation_ids.add(operation_id)
-
-    def _operation_source(self, operation_id: str) -> Any:
-        if self._session is not None:
-            issued = getattr(self._session, "issued_operation", None)
-            if issued is not None:
-                return self._session
-            if operation_id in self._network_operation_ids:
-                return self._session
-        return self._native
 
     def _legacy_network_lock(self) -> asyncio.Lock:
         loop = asyncio.get_running_loop()
@@ -271,61 +222,24 @@ class NativeCoreBridge:
             raise GwzBridgeError("client is closed", code="InvalidRequest")
 
     async def close(self) -> TransportCleanup:
+        """Close the bridge. Until the session host serves it, there is no cleanup to report."""
         with self._close_guard:
-            if self._close_result is not None:
-                return self._close_result
-            self._closed = True
-            if self._session is None:
+            if self._close_result is None:
+                self._closed = True
                 self._close_result = TransportCleanup(0, False)
-                return self._close_result
-            if self._close_future is None:
-                assert self._control_executor is not None
-                self._close_future = self._control_executor.submit(self._session.close)
-            future = self._close_future
-        cancelled = False
-        try:
-            while not future.done():
-                try:
-                    await asyncio.shield(asyncio.wrap_future(future))
-                except asyncio.CancelledError:
-                    cancelled = True
-            result = _cleanup(future.result())
-        except Exception as exc:
-            raise _native_bridge_error("native transport close failed", exc) from exc
-        with self._close_guard:
-            self._close_result = result
-        if cancelled:
-            raise asyncio.CancelledError
-        return result
+            return self._close_result
 
     @property
     def close_report(self) -> TransportCleanup | None:
         return self._close_result
 
     async def cancel_operation(self, operation_id: str) -> TransportCleanup:
-        if self._session is None:
-            raise GwzBridgeError("transport cancellation is unavailable", code="UnsupportedOperation")
-        try:
-            loop = asyncio.get_running_loop()
-            return _cleanup(await loop.run_in_executor(
-                self._control_executor, self._session.cancel_operation, operation_id,
-            ))
-        except Exception as exc:
-            raise _native_bridge_error("native transport cancellation failed", exc) from exc
+        """Unavailable until the session host serves this bridge (contract §10)."""
+        raise GwzBridgeError("transport cancellation is unavailable", code="UnsupportedOperation")
 
     async def release_operation(self, operation_id: str) -> None:
-        release = getattr(self._session, "release_operation", None)
-        if release is None:
-            raise GwzBridgeError("native operation release is unavailable", code="UnsupportedOperation")
-        try:
-            await asyncio.to_thread(release, operation_id)
-            with self._close_guard:
-                self._network_operation_ids.discard(operation_id)
-                for request_id, issued in list(self._issued_requests.items()):
-                    if issued == operation_id:
-                        del self._issued_requests[request_id]
-        except Exception as exc:
-            raise _native_bridge_error("native operation release failed", exc) from exc
+        """Unavailable until the session host serves this bridge (contract §10)."""
+        raise GwzBridgeError("native operation release is unavailable", code="UnsupportedOperation")
 
     async def _run_native(
         self,
@@ -334,52 +248,17 @@ class NativeCoreBridge:
         request_message: str,
         response_message: str,
         request_bytes: bytes,
-        request: Any,
-        *,
-        bind_issued_id: bool = False,
     ) -> NativeBytePayload:
-        operation_id: str | None = None
-        if self._session is not None and _needs_transport(method, request):
-            request_id = getattr(getattr(request, "meta", None), "request_id", None)
-            if request_id is not None:
-                with self._close_guard:
-                    self._ensure_open()
-                    operation_id = self._issued_requests.pop(request_id, None)
-                    if operation_id is None:
-                        operation_id = f"op_{request_id}"
-                        reserve = getattr(self._session, "reserve_operation", None)
-                        if reserve is not None:
-                            issued = reserve(request_id)
-                            if isinstance(issued, str):
-                                operation_id = issued
-                    self._remember_network_id(operation_id)
-        arguments = (method, request_message, response_message, request_bytes)
-        if bind_issued_id and operation_id is not None:
-            arguments += (operation_id,)
-        worker = asyncio.create_task(asyncio.to_thread(native_call, *arguments))
+        worker = asyncio.create_task(
+            asyncio.to_thread(native_call, method, request_message, response_message, request_bytes)
+        )
         try:
             return await asyncio.shield(worker)
-        except Exception as exc:
-            if operation_id is not None:
-                exc.operation_id = operation_id
-            raise
         except asyncio.CancelledError:
-            cancellation_error: Exception | None = None
-            if operation_id is not None:
-                cancellation = asyncio.create_task(self.cancel_operation(operation_id))
-                try:
-                    await _await_completion(cancellation)
-                except GwzBridgeError as exc:
-                    if exc.code != "InvalidRequest":
-                        cancellation_error = exc
-                except Exception as exc:
-                    cancellation_error = exc
             try:
                 await _await_completion(worker)
             except Exception:
                 pass
-            if cancellation_error is not None:
-                raise cancellation_error
             raise
 
     async def call(
@@ -392,28 +271,22 @@ class NativeCoreBridge:
         self._ensure_open()
         request_bytes = encode_message(request_message, request)
         try:
-            native_call = self._session.call if self._session is not None else self._native.call
-            if self._session is None and _needs_transport(method, request):
+            native_call = self._native.call
+            if _needs_transport(method, request):
                 async with self._legacy_network_lock():
                     self._ensure_open()
                     response_bytes = await self._run_native(
-                        native_call, method, request_message, response_message, request_bytes, request,
+                        native_call, method, request_message, response_message, request_bytes,
                     )
             else:
                 response_bytes = await self._run_native(
-                    native_call, method, request_message, response_message, request_bytes, request,
-                    bind_issued_id=self._session is not None and hasattr(self._session, "issued_operation"),
+                    native_call, method, request_message, response_message, request_bytes,
                 )
         except GwzBridgeError:
             raise
         except Exception as exc:
             raise _native_bridge_error(f"native bridge call failed for {method}", exc) from exc
-        response = decode_message(response_message, _bytes(response_bytes, response_message))
-        if _needs_transport(method, request):
-            operation_id = getattr(getattr(getattr(response, "response", None), "meta", None), "operation_id", None)
-            if operation_id is not None:
-                self._remember_network_id(operation_id)
-        return response
+        return decode_message(response_message, _bytes(response_bytes, response_message))
 
     async def submit(
         self,
@@ -425,19 +298,16 @@ class NativeCoreBridge:
         self._ensure_open()
         request_bytes = encode_message(request_message, request)
         try:
-            submit = getattr(self._session, "submit", None) if self._session is not None else None
-            if submit is None:
-                submit = getattr(self._native, "submit")
-            if self._session is None and _needs_transport(method, request):
+            submit = getattr(self._native, "submit")
+            if _needs_transport(method, request):
                 async with self._legacy_network_lock():
                     self._ensure_open()
                     response_bytes = await self._run_native(
-                        submit, method, request_message, response_message, request_bytes, request,
+                        submit, method, request_message, response_message, request_bytes,
                     )
             else:
                 response_bytes = await self._run_native(
-                    submit, method, request_message, response_message, request_bytes, request,
-                    bind_issued_id=self._session is not None and hasattr(self._session, "issued_operation"),
+                    submit, method, request_message, response_message, request_bytes,
                 )
         except AttributeError:
             return await self.call(method, request_message, response_message, request)
@@ -445,18 +315,12 @@ class NativeCoreBridge:
             raise
         except Exception as exc:
             raise _native_bridge_error(f"native bridge submit failed for {method}", exc) from exc
-        response = decode_message(response_message, _bytes(response_bytes, response_message))
-        if _needs_transport(method, request):
-            operation_id = getattr(getattr(getattr(response, "response", None), "meta", None), "operation_id", None)
-            if operation_id is not None:
-                self._remember_network_id(operation_id)
-        return response
+        return decode_message(response_message, _bytes(response_bytes, response_message))
 
     def subscribe_events(self, operation_id: str) -> AsyncIterator[Any]:
         async def _events() -> AsyncIterator[Any]:
             message_name = event_message_name()
-            source = self._operation_source(operation_id)
-            if not hasattr(source, "wait_events"):
+            if not hasattr(self._native, "wait_events"):
                 for item in await self._event_bytes(operation_id):
                     yield decode_message(message_name, _bytes(item, message_name))
                 return
@@ -477,8 +341,7 @@ class NativeCoreBridge:
 
     async def _event_bytes(self, operation_id: str) -> list[NativeBytePayload]:
         try:
-            source = self._operation_source(operation_id)
-            return await asyncio.to_thread(lambda: list(source.subscribe_events(operation_id)))
+            return await asyncio.to_thread(lambda: list(self._native.subscribe_events(operation_id)))
         except GwzBridgeError:
             raise
         except Exception as exc:
@@ -490,7 +353,7 @@ class NativeCoreBridge:
         after_sequence: int,
     ) -> tuple[list[NativeBytePayload], bool]:
         try:
-            wait_events = getattr(self._operation_source(operation_id), "wait_events")
+            wait_events = self._native.wait_events
             event_bytes, complete = await asyncio.to_thread(
                 wait_events,
                 operation_id,
@@ -505,7 +368,7 @@ class NativeCoreBridge:
 
     async def operation_result(self, operation_id: str) -> Any:
         try:
-            result_bytes = await asyncio.to_thread(self._operation_source(operation_id).operation_result, operation_id)
+            result_bytes = await asyncio.to_thread(self._native.operation_result, operation_id)
         except GwzBridgeError:
             raise
         except Exception as exc:
@@ -516,7 +379,7 @@ class NativeCoreBridge:
         message_name = "MergeResponse"
         try:
             response_bytes = await asyncio.to_thread(
-                self._operation_source(operation_id).merge_operation_response,
+                self._native.merge_operation_response,
                 operation_id,
             )
         except GwzBridgeError:

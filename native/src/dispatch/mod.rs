@@ -457,7 +457,6 @@ fn submit_accepted(
         response_message,
         request_bytes,
         recorder,
-        operation_id,
         meta.request_id.clone(),
         meta.schema_version.clone(),
         action,
@@ -473,63 +472,41 @@ fn spawn_call(
     response_message: &str,
     request_bytes: &[u8],
     recorder: operations::OperationRecorder,
-    operation_id: String,
     request_id: String,
     schema_version: String,
     action: gwz_core::ActionKind,
     caller_cwd: PathBuf,
 ) -> PyResult<()> {
-    cfg_if::cfg_if! {
-        if #[cfg(all(unix, gwz_transport_candidate))] {
-            let session = crate::transport_session::current_session();
-        }
-    }
     let method = method.to_owned();
     let request_message = request_message.to_owned();
     let response_message = response_message.to_owned();
     let request_bytes = request_bytes.to_vec();
     let failure_recorder = recorder.clone();
-    thread::Builder::new().name("gwz-py-operation".into()).spawn(move || {
-        let outcome = catch_unwind(AssertUnwindSafe(|| {
-            cfg_if::cfg_if! {
-                if #[cfg(all(unix, gwz_transport_candidate))] {
-                    if let Some(session) = session.as_ref() {
-                        session.spawned_call(
-                            &method, &request_message, &response_message, &request_bytes,
-                            Some(caller_cwd), &operation_id,
-                        )
-                    } else {
-                        call(&method, &request_message, &response_message, &request_bytes, Some(caller_cwd))
-                    }
+    thread::Builder::new()
+        .name("gwz-py-operation".into())
+        .spawn(move || {
+            let outcome = catch_unwind(AssertUnwindSafe(|| {
+                call(
+                    &method,
+                    &request_message,
+                    &response_message,
+                    &request_bytes,
+                    Some(caller_cwd),
+                )
+            }));
+            let panicked = outcome.is_err();
+            let result =
+                outcome.unwrap_or_else(|_| Err(error::runtime("native operation panicked")));
+            if let Err(err) = result {
+                if panicked {
+                    let _ = recorder.finish_panic_error(request_id, action, err.to_string());
                 } else {
-                    call(&method, &request_message, &response_message, &request_bytes, Some(caller_cwd))
+                    let _ =
+                        recorder.finish_error(request_id, schema_version, action, err.to_string());
                 }
             }
-        }));
-        let panicked = outcome.is_err();
-        let result = outcome.unwrap_or_else(|_| Err(error::runtime("native operation panicked")));
-        if let Err(err) = result {
-            if panicked {
-                let _ = recorder.finish_panic_error(request_id, action, err.to_string());
-            } else {
-                let _ = recorder.finish_error(request_id, schema_version, action, err.to_string());
-            }
-            cfg_if::cfg_if! {
-                if #[cfg(all(unix, gwz_transport_candidate))] {
-                    if let Some(session) = session {
-                        if panicked {
-                            session.worker_panicked(&operation_id);
-                        } else {
-                            session.complete_failed_admission(&operation_id);
-                        }
-                    }
-                } else {
-                    let _ = operation_id;
-                    let _ = panicked;
-                }
-            }
-        }
-    }).map_err(|err| worker_spawn_failure(failure_recorder, err))?;
+        })
+        .map_err(|err| worker_spawn_failure(failure_recorder, err))?;
     Ok(())
 }
 
@@ -549,10 +526,8 @@ cfg_if::cfg_if! {
             fn spawn_failure_writes_terminal_before_returning() {
                 use pyo3::types::PyAnyMethods;
                 pyo3::Python::initialize();
-                let store = std::sync::Arc::new(operations::OperationStore::default());
                 let operation_id = "spawn-failure-test";
-                store.issue(operation_id).unwrap();
-                let recorder = operations::with_store(store.clone(), || operations::begin(operation_id));
+                let recorder = operations::begin(operation_id);
                 let error = worker_spawn_failure(
                     recorder,
                     std::io::Error::other("injected spawn failure"),
@@ -561,12 +536,12 @@ cfg_if::cfg_if! {
                     let code: String = error.value(py).getattr("code").unwrap().extract().unwrap();
                     assert_eq!(code, "IoError");
                 });
-                let retained = store.result(operation_id).expect_err("failed launch is a refusal");
+                let retained = operations::result(operation_id).expect_err("failed launch is a refusal");
                 pyo3::Python::attach(|py| {
                     let code: String = retained.value(py).getattr("code").unwrap().extract().unwrap();
                     assert_eq!(code, "IoError");
                 });
-                assert!(store.wait_events(operation_id, 0, std::time::Duration::ZERO).unwrap().1);
+                assert!(operations::wait_events(operation_id, 0, std::time::Duration::ZERO).unwrap().1);
             }
         }
     }
