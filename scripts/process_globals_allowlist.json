@@ -1,14 +1,14 @@
 {
-  "rule": "No process-global mutable state in the gwz-py native layer: pass it through the session/operation context (GwzCoreSessionDesign O9). This list is the complete inventory of production exceptions. gwz-core's check_process_globals.py, run by src/tests/test_process_globals.py, fails on anything unlisted and on entries that no longer match, so the list only shrinks.",
+  "rule": "No process-global mutable state in the gwz-py native layer: pass it through the session/operation context (GwzCoreSessionDesign O9). This list is the complete inventory of production exceptions. gwz-core's check_process_globals.py, run by src/tests/test_process_globals.py, fails on anything unlisted and on entries that no longer match, so the list only shrinks. 'debt', 'permanent', 'owner' and 'imposed_by' mean what the rule of gwz-core's scripts/checks/process_globals_allowlist.json says (GwzCoreSessionCrateMap §1, 'No globals').",
   "roots": ["native/src/lib.rs"],
   "entries": [
-    {"path": "native/src/diff_logs.rs", "kind": "static", "name": "REGISTRY", "disposition": "debt",
+    {"path": "native/src/diff_logs.rs", "kind": "static", "name": "REGISTRY", "disposition": "debt", "owner": "CS4.8 (session plan §5.4)",
      "reason": "Process-global diff output registry; becomes a member of the session context (RemPlan B5)."},
-    {"path": "native/src/log_outputs.rs", "kind": "static", "name": "REGISTRY", "disposition": "debt",
+    {"path": "native/src/log_outputs.rs", "kind": "static", "name": "REGISTRY", "disposition": "debt", "owner": "CS4.8 (session plan §5.4)",
      "reason": "Process-global commit-log output registry; becomes a member of the session context (RemPlan B5)."},
     {"path": "native/src/operations.rs", "kind": "env", "name": "env::var", "disposition": "debt",
      "reason": "Test event-delay hook (GWZ_PY_TEST_EVENT_DELAY_MS) read from the environment in production builds; move it behind a test-only hook."},
-    {"path": "native/src/operations.rs", "kind": "static", "name": "STORE", "disposition": "debt",
+    {"path": "native/src/operations.rs", "kind": "static", "name": "STORE", "disposition": "debt", "owner": "CS4.8 (session plan §5.4)",
      "reason": "Process-global legacy operation store; becomes a member of the session context (RemPlan B5)."}
   ]
 }
