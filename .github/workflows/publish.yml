@@ -89,6 +89,13 @@ jobs:
           path: gwz-core
           persist-credentials: false
 
+      - name: Check out git2-rs beside gwz-core
+        # gwz-core builds against the git2-rs fork by path (`../git2-rs`, package
+        # `gwz-git2`), at the commit gwz-core's .github/git2-rs.commit pins.
+        shell: bash
+        working-directory: gwz-core
+        run: bash .github/checkout-git2-rs.sh
+
       - name: Checkout matching gwz-cli tag
         uses: actions/checkout@v5
         with:

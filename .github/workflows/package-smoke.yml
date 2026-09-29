@@ -32,6 +32,13 @@ jobs:
           repository: owebeeone/gwz-core
           path: gwz-core
 
+      - name: Check out git2-rs beside gwz-core
+        # gwz-core builds against the git2-rs fork by path (`../git2-rs`, package
+        # `gwz-git2`), at the commit gwz-core's .github/git2-rs.commit pins.
+        shell: bash
+        working-directory: gwz-core
+        run: bash .github/checkout-git2-rs.sh
+
       - name: Checkout gwz-cli
         uses: actions/checkout@v5
         with:
@@ -120,6 +127,13 @@ jobs:
         with:
           repository: owebeeone/gwz-core
           path: gwz-core
+
+      - name: Check out git2-rs beside gwz-core
+        # gwz-core builds against the git2-rs fork by path (`../git2-rs`, package
+        # `gwz-git2`), at the commit gwz-core's .github/git2-rs.commit pins.
+        shell: bash
+        working-directory: gwz-core
+        run: bash .github/checkout-git2-rs.sh
 
       - name: Set up Python
         uses: actions/setup-python@v6
