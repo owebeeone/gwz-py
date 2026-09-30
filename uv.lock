@@ -54,8 +54,8 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },
     { name = "setuptools-scm", marker = "extra == 'dev'", specifier = ">=8" },
-    { name = "taut-proto", specifier = "==0.9.1" },
-    { name = "taut-proto", marker = "extra == 'dev'", specifier = "==0.9.1" },
+    { name = "taut-proto", specifier = "==0.10.0" },
+    { name = "taut-proto", marker = "extra == 'dev'", specifier = "==0.10.0" },
 ]
 provides-extras = ["dev"]
 
@@ -178,11 +178,11 @@ wheels = [
 
 [[package]]
 name = "taut-proto"
-version = "0.9.1"
+version = "0.10.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/b1/ed/53864057ed36d78c892a1484af1cc54cf56a42c04fd5dfc639d1f76f4cb7/taut_proto-0.9.1.tar.gz", hash = "sha256:5ef4f570c0fc91ff8f2e8d2279f2eeb3a625fa25ff22002bf63219ea2640aeed", size = 502291, upload-time = "2026-08-25T00:59:06.826Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/76/27/3697860c397cc117669ff88e3b0517360d29d52c28070a998eaa1ef919cc/taut_proto-0.10.0.tar.gz", hash = "sha256:04985a68f9bbf528bc06ec0e1cb4506c059af099e65bdb8ddcd5b4a25e2b95f9", size = 843790, upload-time = "2026-09-30T02:27:34.388Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/0b/db/3df51f638b74e428fdf405bd264ea1dad2d0f0257c5b5d2043ebd3df872e/taut_proto-0.9.1-py3-none-any.whl", hash = "sha256:9ef45664985265ada2402b4cf06fc4d83b27471f386ba4265fd83742470ecfbf", size = 142158, upload-time = "2026-08-25T00:59:05.379Z" },
+    { url = "https://files.pythonhosted.org/packages/04/7b/d6614e6fe4970fd8f5ac8e91a992ac239ba2721d19eb29a3029e294be16b/taut_proto-0.10.0-py3-none-any.whl", hash = "sha256:9d839a8c2eea2ea3a006713b48a187699b7876e82e572f2a472b7969320dc663", size = 244650, upload-time = "2026-09-30T02:27:32.91Z" },
 ]
 
 [[package]]

@@ -5,6 +5,8 @@ import importlib.util
 import json
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "check_protocol_drift.py"
@@ -17,7 +19,7 @@ spec.loader.exec_module(protocol_drift)
 
 
 def test_pre_log_projection_preserves_the_pinned_baseline_and_detects_old_shape_drift() -> None:
-    protocol = json.loads(IR.read_text(encoding="utf-8"))
+    protocol = protocol_drift.ir_version_1(json.loads(IR.read_text(encoding="utf-8")))
     assert (
         protocol_drift.fingerprint(protocol_drift.pre_log_projection(protocol))
         == protocol_drift.PRE_LOG_WIRE_FINGERPRINT
@@ -30,3 +32,12 @@ def test_pre_log_projection_preserves_the_pinned_baseline_and_detects_old_shape_
         protocol_drift.fingerprint(protocol_drift.pre_log_projection(changed))
         != protocol_drift.PRE_LOG_WIRE_FINGERPRINT
     )
+
+
+def test_the_version_1_projection_refuses_a_declared_taut_option() -> None:
+    # Declaring a taut option (a decode bound, say) is a deliberate change the
+    # pre-log check must take up, never something the projection drops.
+    protocol = json.loads(IR.read_text(encoding="utf-8"))
+    protocol["messages"][0]["fields"][0]["options"] = {"max_depth": 8}
+    with pytest.raises(SystemExit):
+        protocol_drift.ir_version_1(protocol)

@@ -25,7 +25,10 @@ pub(crate) fn require_response(method: &str, actual: &str, expected: &str) -> Py
 }
 
 pub(crate) fn decode_cbor(data: &[u8]) -> PyResult<gwz_core::Cbor> {
-    catch_protocol("decode CBOR", || gwz_core::decode(data))
+    // The unwind guard stays for any residual panic path in the runtime, as in
+    // `decode_message`.
+    catch_protocol("decode CBOR", || gwz_core::try_decode(data))?
+        .map_err(|e| error::protocol(format!("decode CBOR failed: {e:?}")))
 }
 
 pub(crate) fn encode_cbor(value: &gwz_core::Cbor) -> Vec<u8> {

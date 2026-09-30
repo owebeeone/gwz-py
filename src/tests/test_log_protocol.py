@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 from copy import deepcopy
 from pathlib import Path
@@ -307,9 +308,20 @@ def test_log_output_stream_discriminates_entries_and_degradations() -> None:
     _round_trip("LogOutputRecord", degradation_record)
 
 
+def _protocol_drift():
+    script = Path(__file__).resolve().parents[2] / "scripts" / "check_protocol_drift.py"
+    spec = importlib.util.spec_from_file_location("protocol_drift", script)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
 def test_log_addition_preserves_every_pre_existing_wire_shape_and_slot() -> None:
     ir_path = Path(generated.__file__).with_name("gwz.ir.json")
-    projected = deepcopy(json.loads(ir_path.read_text(encoding="utf-8")))
+    # The pin was taken over IR version 1; the drift check's projection drops
+    # version 2's option maps, which carry no wire shape.
+    projected = _protocol_drift().ir_version_1(json.loads(ir_path.read_text(encoding="utf-8")))
     projected["messages"] = [m for m in projected["messages"] if not m["name"].startswith("Log")]
     projected["enums"] = [e for e in projected["enums"] if not e["name"].startswith("Log")]
     actions = next(e for e in projected["enums"] if e["name"] == "ActionKind")["members"]

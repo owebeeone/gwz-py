@@ -240,7 +240,7 @@ def main() -> int:
         print("  run: python scripts/regen_protocol.py", file=sys.stderr)
         return 1
 
-    pre_log_fingerprint = fingerprint(pre_log_projection(actual))
+    pre_log_fingerprint = fingerprint(pre_log_projection(ir_version_1(actual)))
     if pre_log_fingerprint != PRE_LOG_WIRE_FINGERPRINT:
         print("check_protocol_drift: gwz-log changed a pre-existing wire shape", file=sys.stderr)
         print(f"  expected: {PRE_LOG_WIRE_FINGERPRINT}", file=sys.stderr)
@@ -274,6 +274,43 @@ def add_local_taut_to_path() -> None:
         sys.path.insert(0, str(local_taut))
     os.environ.setdefault("SETUPTOOLS_SCM_PRETEND_VERSION", "0.0.0")
     os.environ.setdefault("SETUPTOOLS_SCM_PRETEND_VERSION_FOR_TAUT_PROTO", "0.0.0")
+
+
+def ir_version_1(value: dict[str, Any]) -> dict[str, Any]:
+    """The IR version 1 document of an IR version 2 export that declares no option.
+
+    taut v0.10.0 exports IR version 2, which adds option maps (`options` at every
+    level, `member_options` on enums) and their effective values (`effective` on the
+    file and on each message). They carry no wire shape, and the pre-log pin was
+    taken over version 1, so the projection starts from version 1. A schema that
+    declares an option is refused, not stripped: adopting taut options is a
+    deliberate change to this check.
+    """
+    if value.get("version") != 2:
+        fail(f"expected taut IR version 2, got {value.get('version')!r}")
+    document = json.loads(json.dumps(value))
+    document["version"] = 1
+    nodes = [("the file", document)]
+    nodes += [(f"enum {enum['name']}", enum) for enum in document["enums"]]
+    nodes += [(f"message {message['name']}", message) for message in document["messages"]]
+    nodes += [
+        (f"field {message['name']}.{field['name']}", field)
+        for message in document["messages"]
+        for field in message["fields"]
+    ]
+    nodes += [(f"service {service['name']}", service) for service in document["services"]]
+    nodes += [
+        (f"method {service['name']}.{method['name']}", method)
+        for service in document["services"]
+        for method in service["methods"]
+    ]
+    for where, node in nodes:
+        options = node.pop("options", {})
+        member_options = node.pop("member_options", {})
+        node.pop("effective", None)
+        if options or any(member_options.values()):
+            fail(f"{where} declares taut options, which this check predates")
+    return document
 
 
 def fingerprint(value: dict[str, Any]) -> str:
