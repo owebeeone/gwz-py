@@ -21,6 +21,7 @@ from typing import Any
 
 import pytest
 
+from gwz.errors import GwzOperationError
 from gwz.protocol.generated import (
     AggregateStatus,
     MemberStatus,
@@ -494,3 +495,87 @@ def test_both_clis_share_the_check_remotes_help_text(tmp_path: Path) -> None:
         descriptions[name] = option_help(result.stdout, "--check-remotes")
 
     assert descriptions == {"rust": CHECK_REMOTES_HELP, "python": CHECK_REMOTES_HELP}
+
+
+# Partial results (TR2.3): a `partial` result lists each failed member's error in
+# its top-level `errors`, and `GwzOperationError.member_errors` is that list
+# (`gwz-cli/docs/MachineOutput.md`, "Partial results").
+
+
+def test_a_partial_push_raises_with_each_failed_members_error(tmp_path: Path) -> None:
+    workspace = PublishedWorkspace(tmp_path)
+    # `app`'s remote gains a commit `app` never fetched, then `app` and `lib` each
+    # commit a change: `lib` publishes, `app`'s remote refuses, and the root is
+    # not attempted.
+    other = tmp_path / "other-app"
+    git(tmp_path, "clone", str(workspace.remote("app")), str(other))
+    commit_file(other, "OTHER.md", "other\n", "other")
+    git(other, "push", "origin", "HEAD:refs/heads/main")
+    workspace.commit_a_change_in_app()
+    (workspace.root / LIB[1] / "CHANGE.md").write_text("change\n", encoding="utf-8")
+    run_ok(PYTHON_CLI, workspace.root, "add", f"{LIB[1]}/CHANGE.md")
+    run_ok(PYTHON_CLI, workspace.root, "commit", "-m", "change lib")
+
+    with pytest.raises(GwzOperationError) as raised:
+        asyncio.run(native_client(workspace.root).push())
+
+    envelope = raised.value.response.response
+    assert envelope.meta.aggregate_status is AggregateStatus.partial
+    assert [(row.member_id, row.status) for row in envelope.members] == [
+        ("mem_app", MemberStatus.failed), ("mem_lib", MemberStatus.ok), ("@root", MemberStatus.rejected),
+    ]
+    copies = [envelope.members[0].error, envelope.members[2].error]
+    assert envelope.errors == copies
+    assert raised.value.member_errors == copies
+
+
+def partial_fetch_workspace(tmp_path: Path) -> PublishedWorkspace:
+    """`lib`'s remote moves away, so a fetch reads `app` and the root and fails
+    `lib`: a partial result."""
+    workspace = PublishedWorkspace(tmp_path)
+    workspace.remote("lib").rename(workspace.remotes / "moved.git")
+    return workspace
+
+
+def error_facts(document: dict[str, Any]) -> list[tuple[Any, ...]]:
+    """What both CLIs' `--json` `errors` entries must agree on, in one spelling."""
+    keys = ("member_id", "member_path", "message")
+    return [
+        (label(str(error["code"])), label(str(error["target_kind"])), *(error[key] for key in keys))
+        for error in document["errors"]
+    ]
+
+
+def test_a_partial_fetch_lists_the_failed_members_error_in_errors(tmp_path: Path) -> None:
+    workspace = partial_fetch_workspace(tmp_path)
+
+    machine = run_cli(PYTHON_CLI, workspace.root, "--json", "fetch")
+    with pytest.raises(GwzOperationError) as raised:
+        asyncio.run(native_client(workspace.root).fetch())
+
+    envelope = raised.value.response.response
+    assert envelope.meta.aggregate_status is AggregateStatus.partial
+    assert [(row.member_id, row.status) for row in envelope.members] == [
+        ("@root", MemberStatus.noop), ("mem_app", MemberStatus.noop), ("mem_lib", MemberStatus.failed),
+    ]
+    failure = envelope.members[2].error
+    assert envelope.errors == [failure]
+    assert raised.value.member_errors == [failure]
+    # The CLI's error document lists that failure rather than only the status.
+    assert machine.returncode == 1, (machine.stdout, machine.stderr)
+    assert error_facts(json.loads(machine.stdout)) == [
+        ("remoterejected", "member", "mem_lib", "lib", failure.message),
+    ]
+
+
+def test_both_clis_list_a_partial_fetchs_failure_in_errors(tmp_path: Path) -> None:
+    workspace = partial_fetch_workspace(tmp_path)
+
+    facts = {}
+    for name, driver in (("rust", rust_cli()), ("python", PYTHON_CLI)):
+        result = run_cli(driver, workspace.root, "--json", "fetch")
+        assert result.returncode == 1, (name, result.stdout, result.stderr)
+        facts[name] = error_facts(json.loads(result.stdout))
+
+    assert facts["rust"] == facts["python"]
+    assert [fact[2] for fact in facts["rust"]] == ["mem_lib"]

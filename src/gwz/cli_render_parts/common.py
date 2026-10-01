@@ -30,9 +30,19 @@ def status_line(response: Any) -> str:
     return f"status: {enum_label(getattr(meta, 'aggregate_status', None))}"
 
 
+def errors_not_on_members(envelope: Any) -> list[Any]:
+    """The top-level errors a human report prints after its rows: every one that
+    is not a copy of a member entry's error. A `partial` result copies each
+    failed member's error into `errors` for machine readers (gwz-cli
+    docs/MachineOutput.md, "Partial results"); a report prints no copy, as the
+    Rust CLI's reports do."""
+    members = getattr(envelope, "members", None) or []
+    copied = [member.error for member in members if getattr(member, "error", None) is not None]
+    return [error for error in getattr(envelope, "errors", None) or [] if error not in copied]
+
+
 def append_errors(lines: list[str], response: Any) -> None:
-    envelope = getattr(response, "response", None)
-    for error in getattr(envelope, "errors", []):
+    for error in errors_not_on_members(getattr(response, "response", None)):
         lines.append(f"{enum_label(error.code)}: {error.message}")
 
 

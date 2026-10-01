@@ -75,6 +75,7 @@ def _response(
     aggregate_status: AggregateStatus,
     members: list[MemberResponse],
     repos: list[FetchRepoSummary],
+    errors: list[GwzError] | None = None,
 ) -> FetchResponse:
     return FetchResponse(
         response=ResponseEnvelope(
@@ -89,7 +90,7 @@ def _response(
                 attribution=None,
             ),
             members=members,
-            errors=[],
+            errors=errors or [],
         ),
         repos=repos,
     )
@@ -198,6 +199,9 @@ def test_a_dry_run_row_says_it_would_contact_and_never_says_no_change() -> None:
 
 
 def test_a_failed_row_carries_its_reason() -> None:
+    """Core repeats a partial result's member failures in `errors` (gwz-cli
+    docs/MachineOutput.md, "Partial results"); the report prints the copy no
+    second time, so it reads as it did before core sent copies."""
     error = GwzError(
         code=GwzErrorCode.remote_rejected,
         message="connection refused",
@@ -207,29 +211,19 @@ def test_a_failed_row_carries_its_reason() -> None:
         target_kind=TargetKind.member,
         record_context=None,
     )
-    rendered = render_response(
-        _response(
-            AggregateStatus.partial,
-            [
-                _member("mem_good", "good", MemberStatus.noop),
-                _member("mem_broken", "broken", MemberStatus.failed, error),
-            ],
-            [
-                _row("mem_good", "good", FetchResult.unchanged),
-                _row(
-                    "mem_broken",
-                    "broken",
-                    FetchResult.failed,
-                    upstream=None,
-                    ahead=None,
-                    behind=None,
-                ),
-            ],
-        )
-    )
+    members = [
+        _member("mem_good", "good", MemberStatus.noop),
+        _member("mem_broken", "broken", MemberStatus.failed, error),
+    ]
+    repos = [
+        _row("mem_good", "good", FetchResult.unchanged),
+        _row("mem_broken", "broken", FetchResult.failed, upstream=None, ahead=None, behind=None),
+    ]
+    rendered = render_response(_response(AggregateStatus.partial, members, repos, [error]))
     assert rendered.startswith("status: Partial")
     assert "failed" in rendered
-    assert "connection refused" in rendered
+    assert rendered.count("connection refused") == 1, rendered
+    assert rendered == render_response(_response(AggregateStatus.partial, members, repos))
 
 
 def test_a_branch_response_still_renders_as_a_branch_response() -> None:

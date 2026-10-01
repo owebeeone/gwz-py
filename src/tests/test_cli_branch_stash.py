@@ -6,8 +6,23 @@ from typing import Any
 import pytest
 
 from gwz.cli import build_parser
+from gwz.cli_render import render_response
 from gwz.cli_shared import CliUsageError, CommandContext, meta_kwargs, validate_args
-from gwz.protocol.generated import BranchOp, StashOp
+from gwz.protocol.generated import (
+    ActionKind,
+    AggregateStatus,
+    BranchOp,
+    GwzError,
+    GwzErrorCode,
+    MemberResponse,
+    MemberStatus,
+    ResponseEnvelope,
+    ResponseMeta,
+    SourceKind,
+    StashOp,
+    StashResponse,
+    TargetKind,
+)
 
 
 class FakeClient:
@@ -103,3 +118,31 @@ def test_stash_push_rejects_untracked_and_ignored() -> None:
 
     with pytest.raises(CliUsageError, match="-u and -a"):
         run_handler(["stash", "push", "-u", "-a"], client)
+
+
+def test_a_partial_stash_report_prints_no_copied_member_error() -> None:
+    """A partial result repeats each failed member's error in `errors` (gwz-cli
+    docs/MachineOutput.md, "Partial results"). The stash report shows member
+    statuses only, and like the Rust CLI's it prints no copy."""
+    error = GwzError(
+        code=GwzErrorCode.git_command_failed, message="stash failed", detail=None,
+        member_id="mem_lib", member_path="lib", target_kind=TargetKind.member, record_context=None,
+    )
+
+    def member(member_id: str, status: MemberStatus, error: GwzError | None) -> MemberResponse:
+        return MemberResponse(
+            member_id=member_id, member_path=member_id[4:], source_kind=SourceKind.git, status=status,
+            error=error, planned=None, state=None, git_status=None, lock_match=None,
+            target_kind=TargetKind.member, lock_difference_reasons=None, url_resolution=None,
+        )
+
+    def stash(errors: list[GwzError]) -> StashResponse:
+        meta = ResponseMeta(
+            request_id="req_stash", schema_version="gwz.protocol/v0", action=ActionKind.stash,
+            aggregate_status=AggregateStatus.partial, operation_id="op_stash", message=None,
+            attribution=None, transport=None,
+        )
+        members = [member("mem_app", MemberStatus.ok, None), member("mem_lib", MemberStatus.failed, error)]
+        return StashResponse(response=ResponseEnvelope(meta=meta, members=members, errors=errors), bundles=[])
+
+    assert render_response(stash([error])) == render_response(stash([]))

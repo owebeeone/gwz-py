@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .common import enum_label, enum_name, status_line
+from .common import enum_label, enum_name, errors_not_on_members, status_line
 
 __all__ = ["render_fetch_response"]
 
@@ -74,6 +74,6 @@ def render_fetch_response(response: Any, repos: list[Any]) -> str:
         # The movement column is padded so the tracking column lines up; a row
         # with nothing after it must not carry that padding off the end.
         lines.append(line.rstrip())
-    for error in getattr(envelope, "errors", None) or []:
+    for error in errors_not_on_members(envelope):
         lines.append(f"{enum_label(error.code)}: {error.message}")
     return "\n".join(lines)
