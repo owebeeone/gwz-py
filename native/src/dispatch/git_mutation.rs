@@ -8,6 +8,7 @@ pub(crate) fn call(
     response_message: &str,
     request_bytes: &[u8],
     caller_cwd: &std::path::Path,
+    backend: &shims::Backend<'_>,
 ) -> PyResult<Vec<u8>> {
     match method {
         "commit" => call_commit(
@@ -16,6 +17,7 @@ pub(crate) fn call(
             response_message,
             request_bytes,
             caller_cwd,
+            backend,
         ),
         "stage" => call_stage(
             method,
@@ -23,6 +25,7 @@ pub(crate) fn call(
             response_message,
             request_bytes,
             caller_cwd,
+            backend,
         ),
         "pull_head" => call_pull_head(
             method,
@@ -30,6 +33,7 @@ pub(crate) fn call(
             response_message,
             request_bytes,
             caller_cwd,
+            backend,
         ),
         "pull_snapshot" => call_pull_snapshot(
             method,
@@ -37,6 +41,7 @@ pub(crate) fn call(
             response_message,
             request_bytes,
             caller_cwd,
+            backend,
         ),
         "push" => call_push(
             method,
@@ -44,6 +49,7 @@ pub(crate) fn call(
             response_message,
             request_bytes,
             caller_cwd,
+            backend,
         ),
         "fetch" => call_fetch(
             method,
@@ -51,6 +57,7 @@ pub(crate) fn call(
             response_message,
             request_bytes,
             caller_cwd,
+            backend,
         ),
         other => error::unsupported(other),
     }
@@ -62,6 +69,7 @@ fn call_commit(
     response_message: &str,
     request_bytes: &[u8],
     caller_cwd: &std::path::Path,
+    backend: &shims::Backend<'_>,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "CommitRequest")?;
     codec::require_response(method, response_message, "CommitResponse")?;
@@ -71,7 +79,7 @@ fn call_commit(
     })?;
     let request_id = request.meta.request_id.clone();
     let start = caller_cwd;
-    let response = shims::backend(&request_id, |backend, operation_id| {
+    let response = shims::backend(backend, &request_id, |backend, operation_id| {
         gwz_core::workspace_ops::handle_commit(backend, start, request, operation_id)
     })?;
     codec::encode_message("encode CommitResponse", || response.to_cbor())
@@ -83,6 +91,7 @@ fn call_stage(
     response_message: &str,
     request_bytes: &[u8],
     caller_cwd: &std::path::Path,
+    backend: &shims::Backend<'_>,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "StageRequest")?;
     codec::require_response(method, response_message, "StageResponse")?;
@@ -92,7 +101,7 @@ fn call_stage(
     })?;
     let request_id = request.meta.request_id.clone();
     let start = caller_cwd;
-    let response = shims::backend(&request_id, |backend, operation_id| {
+    let response = shims::backend(backend, &request_id, |backend, operation_id| {
         gwz_core::workspace_ops::handle_stage(backend, start, request, operation_id)
     })?;
     codec::encode_message("encode StageResponse", || response.to_cbor())
@@ -104,6 +113,7 @@ fn call_pull_head(
     response_message: &str,
     request_bytes: &[u8],
     caller_cwd: &std::path::Path,
+    backend: &shims::Backend<'_>,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "PullHeadRequest")?;
     codec::require_response(method, response_message, "PullHeadResponse")?;
@@ -114,7 +124,7 @@ fn call_pull_head(
     let request_id = request.meta.request_id.clone();
     let start = caller_cwd;
     let (response, recorder) =
-        shims::backend_with_events(&request_id, |backend, operation_id, events| {
+        shims::backend_with_events(backend, &request_id, |backend, operation_id, events| {
             gwz_core::workspace_ops::handle_pull_head_with_events(
                 backend,
                 start,
@@ -133,6 +143,7 @@ fn call_pull_snapshot(
     response_message: &str,
     request_bytes: &[u8],
     caller_cwd: &std::path::Path,
+    backend: &shims::Backend<'_>,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "PullSnapshotRequest")?;
     codec::require_response(method, response_message, "PullSnapshotResponse")?;
@@ -143,7 +154,7 @@ fn call_pull_snapshot(
     let request_id = request.meta.request_id.clone();
     let start = caller_cwd;
     let (response, recorder) =
-        shims::backend_with_events(&request_id, |backend, operation_id, events| {
+        shims::backend_with_events(backend, &request_id, |backend, operation_id, events| {
             gwz_core::workspace_ops::handle_pull_snapshot(
                 backend,
                 start,
@@ -162,6 +173,7 @@ fn call_push(
     response_message: &str,
     request_bytes: &[u8],
     caller_cwd: &std::path::Path,
+    backend: &shims::Backend<'_>,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "PushRequest")?;
     codec::require_response(method, response_message, "PushResponse")?;
@@ -172,7 +184,7 @@ fn call_push(
     let request_id = request.meta.request_id.clone();
     let start = caller_cwd;
     let (response, recorder) =
-        shims::backend_with_events(&request_id, |backend, operation_id, events| {
+        shims::backend_with_events(backend, &request_id, |backend, operation_id, events| {
             gwz_core::workspace_ops::handle_push_with_events(
                 backend,
                 start,
@@ -191,6 +203,7 @@ fn call_fetch(
     response_message: &str,
     request_bytes: &[u8],
     caller_cwd: &std::path::Path,
+    backend: &shims::Backend<'_>,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "FetchRequest")?;
     codec::require_response(method, response_message, "FetchResponse")?;
@@ -201,7 +214,7 @@ fn call_fetch(
     let request_id = request.meta.request_id.clone();
     let start = caller_cwd;
     let (response, recorder) =
-        shims::backend_with_events(&request_id, |backend, operation_id, events| {
+        shims::backend_with_events(backend, &request_id, |backend, operation_id, events| {
             gwz_core::workspace_ops::handle_fetch_with_events(
                 backend,
                 start,

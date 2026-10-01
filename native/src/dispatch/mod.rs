@@ -11,8 +11,10 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
 use std::thread;
 
+use gwz_core::model::{ErrorCode, ModelError};
 use pyo3::{PyErr, PyResult};
 
+use crate::client_host::{Network, Ran};
 use crate::{codec, error, operations, shims};
 
 /// The caller's directory for a request, taken only from its metadata, never
@@ -40,12 +42,15 @@ fn uses_no_directory(method: &str) -> bool {
     matches!(method, "configure_transport_runtime" | "transport_capabilities")
 }
 
+/// Routes one request to its handler, which runs on `backend`: a network
+/// operation's route's backend, or a backend of its own (`shims`).
 pub(crate) fn call(
     method: &str,
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
     caller_cwd: Option<PathBuf>,
+    backend: &shims::Backend<'_>,
 ) -> PyResult<Vec<u8>> {
     if uses_no_directory(method) {
         return read::call_transport(method, request_message, response_message, request_bytes);
@@ -67,6 +72,7 @@ pub(crate) fn call(
             response_message,
             request_bytes,
             &directory(caller_cwd, request_bytes)?,
+            backend,
         ),
         "materialize" | "clone_workspace" | "clone_repo_member" | "attach_repo_member"
         | "snapshot" | "tag" | "capture" => materialize::call(
@@ -75,6 +81,7 @@ pub(crate) fn call(
             response_message,
             request_bytes,
             &directory(caller_cwd, request_bytes)?,
+            backend,
         ),
         "commit" | "stage" | "pull_head" | "pull_snapshot" | "push" | "fetch" => {
             git_mutation::call(
@@ -83,6 +90,7 @@ pub(crate) fn call(
                 response_message,
                 request_bytes,
                 &directory(caller_cwd, request_bytes)?,
+                backend,
             )
         }
         "branch" | "stash" => branch_stash::call(
@@ -91,6 +99,7 @@ pub(crate) fn call(
             response_message,
             request_bytes,
             &directory(caller_cwd, request_bytes)?,
+            backend,
         ),
         "merge" => merge::call(
             method,
@@ -98,6 +107,7 @@ pub(crate) fn call(
             response_message,
             request_bytes,
             &directory(caller_cwd, request_bytes)?,
+            backend,
         ),
         "diff" => diff::call(
             method,
@@ -119,16 +129,21 @@ pub(crate) fn call(
             response_message,
             request_bytes,
             &directory(caller_cwd, request_bytes)?,
+            backend,
         ),
         other => Err(error::unsupported_method(other)),
     }
 }
 
+/// Accepts one request and runs it on its own `gwz-py-operation` thread. A
+/// network operation arrives with its `network`, registered with its host,
+/// and waits on that thread for a slot.
 pub(crate) fn submit(
     method: &str,
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
+    network: Option<Network>,
 ) -> PyResult<Vec<u8>> {
     match method {
         "init_from_sources" => submit_init_from_sources(
@@ -137,6 +152,7 @@ pub(crate) fn submit(
             response_message,
             request_bytes,
             &request_directory(request_bytes)?,
+            network,
         ),
         "materialize" => submit_materialize(
             method,
@@ -144,6 +160,7 @@ pub(crate) fn submit(
             response_message,
             request_bytes,
             &request_directory(request_bytes)?,
+            network,
         ),
         "clone_workspace" => submit_clone_workspace(
             method,
@@ -151,6 +168,7 @@ pub(crate) fn submit(
             response_message,
             request_bytes,
             &request_directory(request_bytes)?,
+            network,
         ),
         "clone_repo_member" => submit_clone_repo_member(
             method,
@@ -158,6 +176,7 @@ pub(crate) fn submit(
             response_message,
             request_bytes,
             &request_directory(request_bytes)?,
+            network,
         ),
         "pull_head" => submit_pull_head(
             method,
@@ -165,6 +184,7 @@ pub(crate) fn submit(
             response_message,
             request_bytes,
             &request_directory(request_bytes)?,
+            network,
         ),
         "pull_snapshot" => submit_pull_snapshot(
             method,
@@ -172,6 +192,7 @@ pub(crate) fn submit(
             response_message,
             request_bytes,
             &request_directory(request_bytes)?,
+            network,
         ),
         "push" => submit_push(
             method,
@@ -179,6 +200,7 @@ pub(crate) fn submit(
             response_message,
             request_bytes,
             &request_directory(request_bytes)?,
+            network,
         ),
         "fetch" => submit_fetch(
             method,
@@ -186,6 +208,7 @@ pub(crate) fn submit(
             response_message,
             request_bytes,
             &request_directory(request_bytes)?,
+            network,
         ),
         "merge" => merge::submit(
             method,
@@ -211,6 +234,7 @@ fn submit_init_from_sources(
     response_message: &str,
     request_bytes: &[u8],
     caller_cwd: &std::path::Path,
+    network: Option<Network>,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "InitFromSourcesRequest")?;
     codec::require_response(method, response_message, "InitFromSourcesResponse")?;
@@ -226,6 +250,7 @@ fn submit_init_from_sources(
         &request.meta,
         gwz_core::ActionKind::InitFromSources,
         |response| gwz_core::InitFromSourcesResponse { response }.to_cbor(),
+        network,
     )
 }
 
@@ -235,6 +260,7 @@ fn submit_materialize(
     response_message: &str,
     request_bytes: &[u8],
     caller_cwd: &std::path::Path,
+    network: Option<Network>,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "MaterializeRequest")?;
     codec::require_response(method, response_message, "MaterializeResponse")?;
@@ -250,6 +276,7 @@ fn submit_materialize(
         &request.meta,
         gwz_core::ActionKind::Materialize,
         |response| gwz_core::MaterializeResponse { response }.to_cbor(),
+        network,
     )
 }
 
@@ -259,6 +286,7 @@ fn submit_clone_workspace(
     response_message: &str,
     request_bytes: &[u8],
     caller_cwd: &std::path::Path,
+    network: Option<Network>,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "CloneWorkspaceRequest")?;
     codec::require_response(method, response_message, "CloneWorkspaceResponse")?;
@@ -274,6 +302,7 @@ fn submit_clone_workspace(
         &request.meta,
         gwz_core::ActionKind::CloneWorkspace,
         |response| gwz_core::CloneWorkspaceResponse { response }.to_cbor(),
+        network,
     )
 }
 
@@ -283,6 +312,7 @@ fn submit_clone_repo_member(
     response_message: &str,
     request_bytes: &[u8],
     caller_cwd: &std::path::Path,
+    network: Option<Network>,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "CloneRepoMemberRequest")?;
     codec::require_response(method, response_message, "CloneRepoMemberResponse")?;
@@ -298,6 +328,7 @@ fn submit_clone_repo_member(
         &request.meta,
         gwz_core::ActionKind::CloneRepoMember,
         |response| gwz_core::CloneRepoMemberResponse { response }.to_cbor(),
+        network,
     )
 }
 
@@ -307,6 +338,7 @@ fn submit_pull_head(
     response_message: &str,
     request_bytes: &[u8],
     caller_cwd: &std::path::Path,
+    network: Option<Network>,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "PullHeadRequest")?;
     codec::require_response(method, response_message, "PullHeadResponse")?;
@@ -322,6 +354,7 @@ fn submit_pull_head(
         &request.meta,
         gwz_core::ActionKind::PullHead,
         |response| gwz_core::PullHeadResponse { response }.to_cbor(),
+        network,
     )
 }
 
@@ -331,6 +364,7 @@ fn submit_pull_snapshot(
     response_message: &str,
     request_bytes: &[u8],
     caller_cwd: &std::path::Path,
+    network: Option<Network>,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "PullSnapshotRequest")?;
     codec::require_response(method, response_message, "PullSnapshotResponse")?;
@@ -346,6 +380,7 @@ fn submit_pull_snapshot(
         &request.meta,
         gwz_core::ActionKind::PullSnapshot,
         |response| gwz_core::PullSnapshotResponse { response }.to_cbor(),
+        network,
     )
 }
 
@@ -355,6 +390,7 @@ fn submit_push(
     response_message: &str,
     request_bytes: &[u8],
     caller_cwd: &std::path::Path,
+    network: Option<Network>,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "PushRequest")?;
     codec::require_response(method, response_message, "PushResponse")?;
@@ -370,6 +406,7 @@ fn submit_push(
         &request.meta,
         gwz_core::ActionKind::Push,
         |response| gwz_core::PushResponse { response }.to_cbor(),
+        network,
     )
 }
 
@@ -382,6 +419,7 @@ fn submit_fetch(
     response_message: &str,
     request_bytes: &[u8],
     caller_cwd: &std::path::Path,
+    network: Option<Network>,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "FetchRequest")?;
     codec::require_response(method, response_message, "FetchResponse")?;
@@ -403,6 +441,7 @@ fn submit_fetch(
             }
             .to_cbor()
         },
+        network,
     )
 }
 
@@ -416,6 +455,7 @@ fn submit_accepted(
     meta: &gwz_core::RequestMeta,
     action: gwz_core::ActionKind,
     encode_response: impl FnOnce(gwz_core::ResponseEnvelope) -> gwz_core::Cbor,
+    network: Option<Network>,
 ) -> PyResult<Vec<u8>> {
     let operation_id = shims::operation_id(&meta.request_id);
     let recorder = operations::begin(&operation_id);
@@ -457,10 +497,10 @@ fn submit_accepted(
         response_message,
         request_bytes,
         recorder,
-        meta.request_id.clone(),
-        meta.schema_version.clone(),
+        meta.clone(),
         action,
         caller_cwd.to_path_buf(),
+        network,
     )?;
     Ok(accepted)
 }
@@ -472,10 +512,10 @@ fn spawn_call(
     response_message: &str,
     request_bytes: &[u8],
     recorder: operations::OperationRecorder,
-    request_id: String,
-    schema_version: String,
+    meta: gwz_core::RequestMeta,
     action: gwz_core::ActionKind,
     caller_cwd: PathBuf,
+    network: Option<Network>,
 ) -> PyResult<()> {
     let method = method.to_owned();
     let request_message = request_message.to_owned();
@@ -485,29 +525,82 @@ fn spawn_call(
     thread::Builder::new()
         .name("gwz-py-operation".into())
         .spawn(move || {
-            let outcome = catch_unwind(AssertUnwindSafe(|| {
+            let run = |backend: &shims::Backend<'_>| {
                 call(
                     &method,
                     &request_message,
                     &response_message,
                     &request_bytes,
                     Some(caller_cwd),
+                    backend,
                 )
-            }));
-            let panicked = outcome.is_err();
-            let result =
-                outcome.unwrap_or_else(|_| Err(error::runtime("native operation panicked")));
-            if let Err(err) = result {
-                if panicked {
-                    let _ = recorder.finish_panic_error(request_id, action, err.to_string());
-                } else {
-                    let _ =
-                        recorder.finish_error(request_id, schema_version, action, err.to_string());
+            };
+            let outcome = catch_unwind(AssertUnwindSafe(|| match network {
+                None => Submitted::Ran(run(&shims::Backend::own())),
+                Some(network) => {
+                    Submitted::from(network.run(|backend| run(&shims::Backend::given(backend))))
                 }
-            }
+            }));
+            record(&recorder, &meta, action, outcome);
         })
         .map_err(|err| worker_spawn_failure(failure_recorder, err))?;
     Ok(())
+}
+
+/// What became of a submitted operation, for its record.
+enum Submitted {
+    /// It ran; a handler that succeeded recorded its result itself.
+    Ran(PyResult<Vec<u8>>),
+    /// It was refused before its handler ran, or its entry failed.
+    Refused(ModelError),
+}
+
+impl From<Ran<PyResult<Vec<u8>>>> for Submitted {
+    fn from(ran: Ran<PyResult<Vec<u8>>>) -> Self {
+        match ran.result {
+            // After a close at interpreter exit the operation must not
+            // attach to the interpreter, so a Python error is recorded
+            // without its text, which only the interpreter can render.
+            Ok(Err(_)) if ran.exiting => Self::Refused(ModelError::new(
+                ErrorCode::InternalError,
+                "the operation failed after its client closed at interpreter exit",
+            )),
+            Ok(result) => Self::Ran(result),
+            Err(refusal) => Self::Refused(refusal),
+        }
+    }
+}
+
+/// Records a submitted operation's failure; a success its handler recorded.
+fn record(
+    recorder: &operations::OperationRecorder,
+    meta: &gwz_core::RequestMeta,
+    action: gwz_core::ActionKind,
+    outcome: thread::Result<Submitted>,
+) {
+    match outcome {
+        // The text that rendering `native operation panicked` as a Python
+        // error gave, without attaching to the interpreter.
+        Err(_) => {
+            let _ = recorder.finish_panic_error(
+                meta.request_id.clone(),
+                action,
+                "RuntimeError: native operation panicked".into(),
+            );
+        }
+        Ok(Submitted::Refused(refusal)) => {
+            let _ = recorder.finish_model_error(meta, action, &refusal);
+        }
+        Ok(Submitted::Ran(Err(err))) => {
+            let _ = recorder.finish_error(
+                meta.request_id.clone(),
+                meta.schema_version.clone(),
+                action,
+                err.to_string(),
+            );
+        }
+        Ok(Submitted::Ran(Ok(_))) => {}
+    }
 }
 
 fn worker_spawn_failure(recorder: operations::OperationRecorder, source: std::io::Error) -> PyErr {

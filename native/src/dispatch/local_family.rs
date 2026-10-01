@@ -16,6 +16,7 @@ pub(crate) fn call(
     response_message: &str,
     request_bytes: &[u8],
     caller_cwd: &std::path::Path,
+    backend: &shims::Backend<'_>,
 ) -> PyResult<Vec<u8>> {
     match method {
         "clone_local_workspace" => call_clone_local_workspace(
@@ -24,6 +25,7 @@ pub(crate) fn call(
             response_message,
             request_bytes,
             caller_cwd,
+            backend,
         ),
         "local_family" => call_local_family(
             method,
@@ -31,6 +33,7 @@ pub(crate) fn call(
             response_message,
             request_bytes,
             caller_cwd,
+            backend,
         ),
         other => error::unsupported(other),
     }
@@ -61,6 +64,7 @@ pub(crate) fn submit(
                 &request.meta,
                 gwz_core::ActionKind::CloneLocalWorkspace,
                 |response| gwz_core::CloneLocalWorkspaceResponse { response }.to_cbor(),
+                None,
             )
         }
         other => Err(error::unsupported_method(other)),
@@ -73,6 +77,7 @@ fn call_clone_local_workspace(
     response_message: &str,
     request_bytes: &[u8],
     caller_cwd: &std::path::Path,
+    backend: &shims::Backend<'_>,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "CloneLocalWorkspaceRequest")?;
     codec::require_response(method, response_message, "CloneLocalWorkspaceResponse")?;
@@ -86,7 +91,7 @@ fn call_clone_local_workspace(
     let (response, recorder): (
         gwz_core::CloneLocalWorkspaceResponse,
         operations::OperationRecorder,
-    ) = shims::backend_with_events(&request_id, |backend, operation_id, events| {
+    ) = shims::backend_with_events(backend, &request_id, |backend, operation_id, events| {
         gwz_core::workspace_ops::handle_clone_local_workspace(
             backend,
             start,
@@ -105,6 +110,7 @@ fn call_local_family(
     response_message: &str,
     request_bytes: &[u8],
     caller_cwd: &std::path::Path,
+    backend: &shims::Backend<'_>,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "LocalFamilyRequest")?;
     codec::require_response(method, response_message, "LocalFamilyResponse")?;
@@ -114,7 +120,7 @@ fn call_local_family(
     let request_id = request.meta.request_id.clone();
     let start = caller_cwd;
     let (response, recorder): (gwz_core::LocalFamilyResponse, operations::OperationRecorder) =
-        shims::backend_with_events(&request_id, |backend, operation_id, events| {
+        shims::backend_with_events(backend, &request_id, |backend, operation_id, events| {
             gwz_core::workspace_ops::handle_local_family(
                 backend,
                 start,

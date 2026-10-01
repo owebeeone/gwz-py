@@ -8,6 +8,7 @@ pub(crate) fn call(
     response_message: &str,
     request_bytes: &[u8],
     caller_cwd: &std::path::Path,
+    backend: &shims::Backend<'_>,
 ) -> PyResult<Vec<u8>> {
     match method {
         "branch" => call_branch(
@@ -16,6 +17,7 @@ pub(crate) fn call(
             response_message,
             request_bytes,
             caller_cwd,
+            backend,
         ),
         "stash" => call_stash(
             method,
@@ -23,6 +25,7 @@ pub(crate) fn call(
             response_message,
             request_bytes,
             caller_cwd,
+            backend,
         ),
         other => error::unsupported(other),
     }
@@ -34,6 +37,7 @@ fn call_branch(
     response_message: &str,
     request_bytes: &[u8],
     caller_cwd: &std::path::Path,
+    backend: &shims::Backend<'_>,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "BranchRequest")?;
     codec::require_response(method, response_message, "BranchResponse")?;
@@ -43,7 +47,7 @@ fn call_branch(
     })?;
     let request_id = request.meta.request_id.clone();
     let start = caller_cwd;
-    let response = shims::backend(&request_id, |backend, operation_id| {
+    let response = shims::backend(backend, &request_id, |backend, operation_id| {
         gwz_core::workspace_ops::handle_branch(backend, start, request, operation_id)
     })?;
     codec::encode_message("encode BranchResponse", || response.to_cbor())
@@ -55,6 +59,7 @@ fn call_stash(
     response_message: &str,
     request_bytes: &[u8],
     caller_cwd: &std::path::Path,
+    backend: &shims::Backend<'_>,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "StashRequest")?;
     codec::require_response(method, response_message, "StashResponse")?;
@@ -64,7 +69,7 @@ fn call_stash(
     })?;
     let request_id = request.meta.request_id.clone();
     let start = caller_cwd;
-    let response = shims::backend(&request_id, |backend, operation_id| {
+    let response = shims::backend(backend, &request_id, |backend, operation_id| {
         gwz_core::workspace_ops::handle_stash(backend, start, request, operation_id)
     })?;
     codec::encode_message("encode StashResponse", || response.to_cbor())

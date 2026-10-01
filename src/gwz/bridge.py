@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Iterable
+from collections.abc import AsyncIterator, Callable, Iterable
 from dataclasses import dataclass
-from threading import Lock
+from functools import partial
+from threading import Lock, Thread
 from typing import Any, NamedTuple, Protocol, TypeAlias
-from weakref import WeakKeyDictionary
 
 from .errors import GwzBridgeError, GwzCoreLoadError, GwzProtocolError
 from .protocol.codec import decode_message, encode_message, event_message_name, result_message_name
@@ -18,7 +18,8 @@ _LOG_OUTPUT_RECORD_MESSAGE = "LogOutputRecord"
 
 @dataclass(frozen=True, slots=True)
 class TransportCleanup:
-    """Final native transport cleanup facts."""
+    """Final native transport cleanup facts: one operation's, from
+    ``cancel_operation``, or a ``Client``'s, from ``close``."""
 
     pending_local_work: int
     peer_cleanup_confirmed: bool
@@ -34,22 +35,30 @@ async def _await_completion(task: asyncio.Task[Any]) -> Any:
     return task.result()
 
 
-_NETWORK_METHODS = frozenset({
-    "init_from_sources", "materialize", "clone_workspace", "clone_repo_member",
-    "attach_repo_member", "pull_head", "pull_snapshot", "push", "fetch",
-})
+async def _on_own_thread(name: str, function: Callable[[], Any]) -> Any:
+    """Run a bounded native wait on a thread of its own. A network call that
+    waits for a slot holds its default-executor thread (gwz-py
+    dev-docs/GwzPyPerOperationTransportDesign.md §2.4), so close and cancel,
+    which release such calls, must not queue behind them there."""
+    loop = asyncio.get_running_loop()
+    future: asyncio.Future[Any] = loop.create_future()
 
+    def settle(outcome: Callable[[], None]) -> None:
+        if not future.done():
+            outcome()
 
-def _needs_transport(method: str, request: Any) -> bool:
-    if method in _NETWORK_METHODS:
-        return True
-    if method == "tag":
-        op = getattr(request, "op", None)
-        name = getattr(op, "name", op)
-        return name in {"push", "fetch"} or (
-            name in {"list", "delete"} and getattr(request, "remote", None) is not None
-        )
-    return False
+    def run() -> None:
+        try:
+            outcome = partial(future.set_result, function())
+        except BaseException as exc:  # noqa: BLE001 - delivered to the awaiting task
+            outcome = partial(future.set_exception, exc)
+        try:
+            loop.call_soon_threadsafe(settle, outcome)
+        except RuntimeError:
+            pass  # The loop has closed; nobody awaits the outcome.
+
+    Thread(target=run, name=name, daemon=True).start()
+    return await future
 
 
 class DiffLogRead(NamedTuple):
@@ -125,7 +134,10 @@ class CoreBridge(Protocol):
         """Idempotently release a commit-log output and its temporary spool."""
 
 
-class NativeModule(Protocol):
+class NativeClientHost(Protocol):
+    """One ``Client``'s native host: the native entries, and the limit,
+    cancellation and cleanup of its network operations."""
+
     def call(
         self,
         method: str,
@@ -143,6 +155,17 @@ class NativeModule(Protocol):
         request_bytes: bytes,
     ) -> NativeBytePayload:
         """Submit one native gwz-core operation and return encoded accepted response bytes."""
+
+    def cancel_operation(self, operation_id: str) -> tuple[int, bool]:
+        """Cancel one network operation; its cleanup report."""
+
+    def close(self) -> tuple[int, bool]:
+        """Cancel and join the host's network operations; its cleanup report."""
+
+
+class NativeModule(Protocol):
+    def ClientHost(self) -> NativeClientHost:  # noqa: N802 - the native class
+        """Create one ``Client``'s native host."""
 
     def subscribe_events(self, operation_id: str) -> Iterable[NativeBytePayload]:
         """Return encoded OperationEvent records for a submitted operation."""
@@ -191,7 +214,14 @@ class NativeModule(Protocol):
 
 
 class NativeCoreBridge:
-    """Loader for the future PyO3 extension that embeds gwz-core."""
+    """The ``Client``'s bridge to the PyO3 extension that embeds gwz-core.
+
+    Each bridge creates one native ``ClientHost`` (gwz-py
+    dev-docs/GwzPyPerOperationTransportDesign.md §2.4). Every ``call`` and
+    ``submit`` goes through it, and gwz-core's transport scope, which gwz-cli
+    shares, decides which are network operations: at most 8 of those run at
+    once for this ``Client``, a further one waits, and each can be cancelled.
+    """
 
     def __init__(self, native: NativeModule | None = None) -> None:
         if native is None:
@@ -204,29 +234,41 @@ class NativeCoreBridge:
                 ) from exc
             native = _gwz_core
         self._native = native
+        self._host = native.ClientHost()
         self._closed = False
         self._close_result: TransportCleanup | None = None
         self._close_guard = Lock()
-        self._legacy_network_locks: WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Lock] = WeakKeyDictionary()
-
-    def _legacy_network_lock(self) -> asyncio.Lock:
-        loop = asyncio.get_running_loop()
-        lock = self._legacy_network_locks.get(loop)
-        if lock is None:
-            lock = asyncio.Lock()
-            self._legacy_network_locks[loop] = lock
-        return lock
 
     def _ensure_open(self) -> None:
         if self._closed:
             raise GwzBridgeError("client is closed", code="InvalidRequest")
 
     async def close(self) -> TransportCleanup:
-        """Close the bridge. Until the session host serves it, there is no cleanup to report."""
+        """Cancel this client's network operations and join them, up to the
+        cleanup bound (design §2.6). The report counts what was cancelled and
+        leaves cleanup unconfirmed for any operation that has not finished;
+        every later close returns it."""
+        with self._close_guard:
+            self._closed = True
+        worker = asyncio.create_task(_on_own_thread("gwz-py-close", self._host.close))
+        try:
+            report = await asyncio.shield(worker)
+        except asyncio.CancelledError:
+            # The host's close is bounded: keep its report, then honour the
+            # caller's cancellation.
+            try:
+                self._keep_close_report(await _await_completion(worker))
+            except Exception:
+                pass
+            raise
+        except Exception as exc:
+            raise _native_bridge_error("native client close failed", exc) from exc
+        return self._keep_close_report(report)
+
+    def _keep_close_report(self, report: tuple[int, bool]) -> TransportCleanup:
         with self._close_guard:
             if self._close_result is None:
-                self._closed = True
-                self._close_result = TransportCleanup(0, False)
+                self._close_result = TransportCleanup(*report)
             return self._close_result
 
     @property
@@ -234,8 +276,20 @@ class NativeCoreBridge:
         return self._close_result
 
     async def cancel_operation(self, operation_id: str) -> TransportCleanup:
-        """Unavailable until the session host serves this bridge (contract §10)."""
-        raise GwzBridgeError("transport cancellation is unavailable", code="UnsupportedOperation")
+        """Cancel one of this client's network operations (design §2.5). A
+        waiting one is refused with ``Cancelled``; a running one is cancelled,
+        and its cleanup report returns once it ends or the cleanup bound
+        passes. A wrong, foreign, completed or non-network operation fails
+        without cancelling anything."""
+        try:
+            report = await _on_own_thread(
+                "gwz-py-cancel", lambda: self._host.cancel_operation(operation_id)
+            )
+        except GwzBridgeError:
+            raise
+        except Exception as exc:
+            raise _native_bridge_error(f"native cancel failed for {operation_id}", exc) from exc
+        return TransportCleanup(*report)
 
     async def release_operation(self, operation_id: str) -> None:
         """Unavailable until the session host serves this bridge (contract §10)."""
@@ -271,17 +325,9 @@ class NativeCoreBridge:
         self._ensure_open()
         request_bytes = encode_message(request_message, request)
         try:
-            native_call = self._native.call
-            if _needs_transport(method, request):
-                async with self._legacy_network_lock():
-                    self._ensure_open()
-                    response_bytes = await self._run_native(
-                        native_call, method, request_message, response_message, request_bytes,
-                    )
-            else:
-                response_bytes = await self._run_native(
-                    native_call, method, request_message, response_message, request_bytes,
-                )
+            response_bytes = await self._run_native(
+                self._host.call, method, request_message, response_message, request_bytes,
+            )
         except GwzBridgeError:
             raise
         except Exception as exc:
@@ -298,19 +344,9 @@ class NativeCoreBridge:
         self._ensure_open()
         request_bytes = encode_message(request_message, request)
         try:
-            submit = getattr(self._native, "submit")
-            if _needs_transport(method, request):
-                async with self._legacy_network_lock():
-                    self._ensure_open()
-                    response_bytes = await self._run_native(
-                        submit, method, request_message, response_message, request_bytes,
-                    )
-            else:
-                response_bytes = await self._run_native(
-                    submit, method, request_message, response_message, request_bytes,
-                )
-        except AttributeError:
-            return await self.call(method, request_message, response_message, request)
+            response_bytes = await self._run_native(
+                self._host.submit, method, request_message, response_message, request_bytes,
+            )
         except GwzBridgeError:
             raise
         except Exception as exc:
