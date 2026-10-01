@@ -285,3 +285,4 @@ disabled branches as required by workspace policy.
 
 - 2026-09-27: the planned S1.1 revision retired, and the NO-GO's closing condition re-pointed, by [`GwzTransportReleasePlan.md`](../../gwz-core/dev-docs/GwzTransportReleasePlan.md) §4.
 - 2026-09-28: superseded by the core session contract's §9, §10 and §14, as TR1.2 and TR1.4b leave them, on TR1.4b's acceptance ([`GwzTransportReleasePlan.md`](../../gwz-core/dev-docs/GwzTransportReleasePlan.md) TR1.7; [the session plan's Verdict-2](../../dev-docs/GwzCoreSessionPlan-Verdict-2.md)). Status and changelog only.
+- 2026-10-01: for 1.1.0, the per-operation stage this design's planned S1.1 revision would have described is written as [`GwzPyPerOperationTransportDesign.md`](GwzPyPerOperationTransportDesign.md), on the operator's decision OD14 ([release plan amendment 2](../../gwz-core/dev-docs/GwzTransportReleasePlanAmendment-2.md) §3.17).
