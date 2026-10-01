@@ -17,16 +17,40 @@ source:
 - **`main` (dev):** `gwz-core = { path = "../gwz-core" }` - builds against the
   local sibling checkout, so `../gwz-core` must be checked out next to this repo.
   **Do not cut release tags here.**
-- **`release`:** `gwz-core = { git = ".../gwz-core", tag = "vX.Y.Z" }` - pinned
-  to the matching published gwz-core release, so wheel builds are reproducible.
-  **Release tags are cut off `release`.**
+- **`release`:** `gwz-core = "=X.Y.Z"` - exactly the gwz-core release of the
+  same version, from crates.io, as gwz-cli's `release` branch pins it, so wheel
+  builds are reproducible. **Release tags are cut off `release`.**
 
-gwz-py builds its core from the gwz-core git tag, while the gwz-cli it tests
-against builds its core from crates.io and so reports `revision=unavailable`
-(gwz-core `dev-docs/GwzCratesIoPlan.md` D7). In that case
-`test_native_module_reports_compiled_core_provenance` compares the gwz-core
-version and build kind instead of the whole core provenance, which it still
-requires when both sides report a git revision, as development builds do.
+Releases through 1.0.17 pinned gwz-core by git tag (gwz-core
+`dev-docs/GwzCratesIoPlan.md` D7). From 1.1.0 the registry pin replaces it
+(TR3.4 of gwz-core `dev-docs/GwzTransportReleasePlanAmendment-2.md`), and
+`scripts/release.py` migrates the old pin once.
+
+## Native dependency pins
+
+The native extension's dependencies, as `release` pins them. Every one comes
+from crates.io; none is a `git` or `path` dependency.
+
+| Crate | Pin on `release` |
+|---|---|
+| `gwz-core` | `gwz-core = "=X.Y.Z"`: gwz-py's own version, exactly. Not a git tag, and not main's sibling path |
+| `pyo3`, `tokio`, `cfg-if` | main's crates.io version requirement, unchanged |
+| gwz-core's own dependencies: the git2-rs fork's `gwz-git2` and `gwz-libgit2-sys`, gwz-core's internal `gwz-*` crates and, once the transport is in the ordinary build, `gwz-transport` | the versions the published gwz-core X.Y.Z requires |
+
+`Cargo.lock` on `release` fixes each version, with its crates.io checksum.
+`scripts/release.py` and the publish workflow run the same check: it refuses any
+other gwz-core pin, any `git` or `path` dependency, and any locked package but
+gwz-py itself that does not come from crates.io, and it names every native
+dependency pin in the log, with the version the lock resolved. OpenSSL and
+pkg-config are build prerequisites that each CI runner installs; they are not
+pinned here.
+
+The extension and the gwz-cli it tests against both build gwz-core X.Y.Z from
+crates.io, so both report `revision=unavailable` and the published package's
+source digest. `test_native_module_reports_compiled_core_provenance` then
+compares their whole core provenance (its registry rule), as it does when both
+sides are built from git. Only a pair of one git build and one registry build,
+which no release makes now, falls back to the gwz-core version and build kind.
 
 ## One-Time Release Branch Bootstrap
 
@@ -37,11 +61,12 @@ script:
 python scripts/release.py vX.Y.Z --bootstrap-release
 ```
 
-This creates `release` from `main`, rewrites the `gwz-core` dependency to the
-git + tag form, runs the release gates, commits the initialized `release` branch,
-and creates tag `vX.Y.Z`.
+This creates `release` from `main`, rewrites the `gwz-core` dependency to
+`gwz-core = "=X.Y.Z"` from crates.io, runs the release gates, commits the
+initialized `release` branch, and creates tag `vX.Y.Z`.
 
-If the gwz-core release dependency should use a non-default URL, pass it
+Every release checks that gwz-core's tag exists and checks it out beside the
+worktree for the protocol checks. If that should use a non-default URL, pass it
 explicitly:
 
 ```sh
@@ -55,8 +80,9 @@ need `--bootstrap-release`.
 ## Local Release Process
 
 1. **Release matching gwz-core and gwz-cli first** - tag them using the shared
-   tag `vX.Y.Z`. The Python release uses the core tag as its native dependency
-   and the CLI tag for cross-driver parity tests.
+   tag `vX.Y.Z`, and let gwz-core's crates.io publish job finish. The Python
+   release builds against gwz-core `X.Y.Z` from crates.io, reads gwz-core's
+   protocol at its tag, and uses the CLI tag for cross-driver parity tests.
 2. Make sure gwz-py `main` contains the changes to release.
 3. Commit or stash local changes. The release script refuses to run from a dirty
    working tree because it creates the release branch from committed refs.
@@ -72,8 +98,9 @@ need `--bootstrap-release`.
    - Creates a temporary worktree for the gwz-py `release` branch.
    - Merges `main` into `release`.
    - Sets the Cargo package version to `X.Y.Z`.
-   - Pins `gwz-core` to git tag `vX.Y.Z`.
-   - Checks the `Cargo.lock` gwz-core git pin.
+   - Pins `gwz-core = "=X.Y.Z"` from crates.io.
+   - Resolves `Cargo.lock` from crates.io and checks the native dependency
+     pins (above).
    - Verifies the PyPI distribution is `gwz` and the installed console script is
      `gwz-py`.
    - Checks out the matching gwz-core and gwz-cli tags beside the temporary
@@ -109,13 +136,16 @@ workflow manually with the same tag.
 The workflow:
 
 - Checks out gwz-py at tag `vX.Y.Z`.
-- Checks out `owebeeone/gwz-core` at the same tag beside it.
+- Checks out `owebeeone/gwz-core` at the same tag beside it, for the protocol
+  checks and fixtures. The build takes gwz-core from crates.io.
 - Checks out `owebeeone/gwz-cli` at the same tag for cross-driver tests.
 - Verifies `Cargo.toml` version is `X.Y.Z`.
-- Verifies `Cargo.toml` and `Cargo.lock` pin gwz-core to tag `vX.Y.Z`.
+- Verifies the native dependency pins (above) with the release script's check:
+  it refuses a git-tag pin and accepts `gwz-core = "=X.Y.Z"` from crates.io.
 - Verifies `pyproject.toml` publishes distribution `gwz` and installs
   `gwz-py = "gwz.cli:main"`.
-- Runs protocol drift, protocol regeneration, `cargo check`, and Python tests.
+- Runs protocol drift, protocol regeneration, `cargo check --locked`, which
+  builds from the lock it verified, and Python tests.
 - Builds Linux amd64, Linux arm64, macOS amd64, macOS arm64, and Windows amd64
   wheels.
 - Builds the Linux source distribution.
@@ -146,12 +176,18 @@ python scripts/package_smoke.py
 ## The Merge Gotcha
 
 `main` always carries the sibling `path` dependency, while `release` always
-carries the `git` + `tag` dependency. Do not manually leave the release branch
+carries `gwz-core = "=X.Y.Z"`. Do not manually leave the release branch
 pointing back at `../gwz-core`.
 
 `scripts/release.py` reconciles this intentionally different line every release.
-If the `Cargo.lock` merge conflicts, the script accepts the merged-in lock file
-and refreshes it with `cargo check` after the release dependency pin is restored.
+If the merge conflicts in `Cargo.toml` or `Cargo.lock`, the script takes main's
+file, then pins gwz-core and the version again and resolves the lock from
+crates.io. A conflict in any other file stops the release.
+
+The first registry release, 1.1.0, needs no hand edit: `release` still carries
+1.0.17's git + tag pin, which the script migrates to `gwz-core = "=1.1.0"`, and
+its merge conflicts in `Cargo.toml`, since main added `cfg-if = "1"` beside that
+line, which the script resolves as above.
 
 ## Recovery Notes
 

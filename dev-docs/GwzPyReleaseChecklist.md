@@ -12,11 +12,13 @@ Status: pre-release checklist
 - First-line wheels do not bundle or dispatch to the Rust `gwz` CLI binary.
 
 `main` keeps the development dependency `gwz-core = { path = "../gwz-core" }`.
-The local `release` branch pins `gwz-core` through a git tag. For the first
-release, use `python scripts/release.py vX.Y.Z --bootstrap-release` to create
+The local `release` branch pins `gwz-core = "=X.Y.Z"` from crates.io, which from
+1.1.0 replaces the git tag pin of earlier releases (`RELEASE.md`, Native
+dependency pins). For the first release, use
+`python scripts/release.py vX.Y.Z --bootstrap-release` to create
 `release` from `main`. For later releases, use `python scripts/release.py
 vX.Y.Z` to merge `main` into `release`, set the `gwz` package version to
-`X.Y.Z`, pin `gwz-core` to tag `vX.Y.Z`, run the release gates, commit the
+`X.Y.Z`, pin `gwz-core = "=X.Y.Z"`, run the release gates, commit the
 reconciled branch, and create the matching tag.
 
 ## Required Local Gates
@@ -51,9 +53,9 @@ run `gwz-py status` in the clone.
 - macOS/Linux/Windows validation.
 - macOS/Linux repaired-wheel package smoke.
 - Windows installed-wheel package smoke.
-- Release-tag metadata guard that verifies `Cargo.toml`, `Cargo.lock`, and
-  `pyproject.toml` point at the shared release tag, `gwz` distribution, and
-  `gwz-py` console script.
+- Release-tag metadata guard that verifies `Cargo.toml` and `Cargo.lock` take
+  gwz-core `=X.Y.Z` and every other native dependency from crates.io, and that
+  `pyproject.toml` names the `gwz` distribution and `gwz-py` console script.
 
 ## Release Blockers
 

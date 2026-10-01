@@ -52,10 +52,14 @@ def test_native_module_health() -> None:
 # provenance reads `revision=<commit|unavailable> dirty=<true|false|unknown> source-sha256=<hex>
 # build=cargo` (gwz-core build_support/provenance.rs). A build from a git checkout reports its
 # commit; a build of the crates.io package reports `revision=unavailable` and a digest of the
-# packaged sources. A gwz-py release builds its extension from the gwz-core git tag, while the
-# gwz-cli it tests against links gwz-core from crates.io (gwz-core dev-docs/GwzCratesIoPlan.md D7,
-# S3.4), so the whole provenance can only be compared when both sides were built from git.
+# packaged sources, the same for every build of that package. A gwz-py release builds its
+# extension from gwz-core `=X.Y.Z` on crates.io, as the gwz-cli it tests against does (TR3.4 of
+# gwz-core dev-docs/GwzTransportReleasePlanAmendment-2.md), so the whole provenance is compared
+# whenever both sides were built from one kind of source. Only a pair of one git build and one
+# registry build, which no release makes since TR3.4, compares the version and the build kind
+# (gwz-core dev-docs/GwzCratesIoPlan.md D7, S3.4).
 STRICT_RULE = "strict rule"
+REGISTRY_RULE = "registry rule"
 VERSION_AND_BUILD_RULE = "version and build kind rule"
 CORE_LINE = re.compile(r"^core (?P<version>\S+): (?P<provenance>.*)$", re.MULTILINE)
 
@@ -70,10 +74,12 @@ def compare_core_provenance(
     """Compare the extension's gwz-core with the core line of the CLI's `--build-info`.
 
     Returns the rule that applied and a failure message, or None when the rule holds. When both
-    sides report a git revision, the extension's whole core provenance must appear in the CLI's
-    core line. When either reports `revision=unavailable`, the gwz-core version and the `build=`
-    kind must match instead, which proves the same core release rather than the same core build.
-    A side without a `revision=` field never selects the weaker rule.
+    sides report a git revision (the strict rule), or both report `revision=unavailable` and so
+    built the published crates.io package (the registry rule), the extension's whole core
+    provenance must appear in the CLI's core line. When exactly one reports
+    `revision=unavailable`, the gwz-core version and the `build=` kind must match instead, which
+    proves the same core release rather than the same core build. A side without a `revision=`
+    field never selects the weaker rule.
     """
     extension = f"core {native_version}: {native_provenance}"
     match = CORE_LINE.search(build_info)
@@ -81,11 +87,18 @@ def compare_core_provenance(
     native_fields = provenance_fields(native_provenance)
     cli_fields = provenance_fields(match.group("provenance")) if match else {}
     sides = f"\n  extension: {extension}\n  CLI:       {cli}"
-    if "unavailable" not in (native_fields.get("revision"), cli_fields.get("revision")):
+    revisions = (native_fields.get("revision"), cli_fields.get("revision"))
+    registry_sides = revisions.count("unavailable")
+    if registry_sides != 1:
+        rule, kind = (
+            (REGISTRY_RULE, "build gwz-core from crates.io")
+            if registry_sides == 2
+            else (STRICT_RULE, "report a git revision")
+        )
         if extension in cli:
-            return STRICT_RULE, None
-        return STRICT_RULE, (
-            f"gwz-core differs under the {STRICT_RULE}: both sides report a git revision, so the "
+            return rule, None
+        return rule, (
+            f"gwz-core differs under the {rule}: both sides {kind}, so the "
             "extension's whole core provenance must appear in the CLI's core line" + sides
         )
     cli_version = match.group("version") if match else None
@@ -156,6 +169,27 @@ def test_core_provenance_without_a_revision_passes_on_same_version_and_build_kin
         VERSION_AND_BUILD_RULE,
         None,
     )
+
+
+def test_core_provenance_of_two_registry_builds_passes_the_registry_rule() -> None:
+    # A gwz-py release and the gwz-cli it tests against both build gwz-core `=X.Y.Z` from
+    # crates.io (TR3.4), so both report the published package's provenance.
+    build_info = cli_build_info("1.1.0", REGISTRY_CORE)
+
+    assert compare_core_provenance("1.1.0", REGISTRY_CORE, build_info) == (REGISTRY_RULE, None)
+
+
+def test_core_provenance_of_registry_builds_of_different_sources_fails_the_registry_rule() -> None:
+    other_registry_core = REGISTRY_CORE.replace("2" * 64, "4" * 64)
+    build_info = cli_build_info("1.1.0", other_registry_core)
+
+    rule, failure = compare_core_provenance("1.1.0", REGISTRY_CORE, build_info)
+
+    assert rule == REGISTRY_RULE
+    assert failure is not None
+    assert REGISTRY_RULE in failure
+    assert f"extension: core 1.1.0: {REGISTRY_CORE}" in failure
+    assert f"CLI:       core 1.1.0: {other_registry_core}" in failure
 
 
 def test_core_provenance_without_a_revision_fails_on_a_different_version() -> None:

@@ -155,14 +155,13 @@ jobs:
         working-directory: gwz-py
         shell: python
         run: |
+          import importlib.util
           import pathlib
           import re
           import sys
 
-          tag = "${{ needs.resolve.outputs.tag }}"
           version = "${{ needs.resolve.outputs.version }}"
           cargo = pathlib.Path("Cargo.toml").read_text(encoding="utf-8")
-          lock = pathlib.Path("Cargo.lock").read_text(encoding="utf-8")
           pyproject = pathlib.Path("pyproject.toml").read_text(encoding="utf-8")
 
           def require(condition, message):
@@ -175,14 +174,6 @@ jobs:
               f"Cargo.toml package version must be {version}",
           )
           require(
-              re.search(
-                  rf'gwz-core\s*=\s*\{{[^\n}}]*\bgit\s*=\s*"[^"]+"'
-                  rf'[^\n}}]*\btag\s*=\s*"{re.escape(tag)}"',
-                  cargo,
-              ),
-              f"Cargo.toml must pin gwz-core to git tag {tag}",
-          )
-          require(
               re.search(r'^name = "gwz"$', pyproject, re.M),
               "pyproject.toml must publish the Python distribution as gwz",
           )
@@ -190,14 +181,14 @@ jobs:
               re.search(r'^gwz-py = "gwz\.cli:main"$', pyproject, re.M),
               "pyproject.toml must install gwz-py = gwz.cli:main",
           )
-          require(
-              re.search(
-                  rf'\[\[package\]\]\nname = "gwz-core"\n'
-                  rf'version = "[^"]+"\nsource = "git\+[^"]*tag={re.escape(tag)}',
-                  lock,
-              ),
-              f"Cargo.lock must pin gwz-core through git tag {tag}",
-          )
+          # The release pins (TR3.4), checked as scripts/release.py checks them: Cargo.toml pins
+          # gwz-core = "=X.Y.Z" and refuses the git-tag pin of 1.0.17 and earlier, no dependency
+          # is a git or path one, and Cargo.lock takes every package but gwz-py from crates.io.
+          # It names every native dependency pin as it goes.
+          spec = importlib.util.spec_from_file_location("release", "scripts/release.py")
+          release = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(release)
+          release.verify_release_pins(pathlib.Path("."), version)
 
       - name: Check protocol drift against matching gwz-core tag
         working-directory: gwz-py
@@ -209,7 +200,8 @@ jobs:
 
       - name: Check native extension crate
         working-directory: gwz-py
-        run: cargo check
+        # --locked: the build uses the Cargo.lock whose pins the metadata step verified.
+        run: cargo check --locked
 
       - name: Run Python tests
         working-directory: gwz-py

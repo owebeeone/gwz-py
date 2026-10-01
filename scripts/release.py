@@ -3,27 +3,33 @@
 
 gwz-py ships from a ``release`` branch that differs from ``main`` in the same
 way as gwz-cli: on ``main`` the native crate depends on a sibling
-``../gwz-core`` checkout, while on ``release`` it depends on ``gwz-core`` via a
-pinned ``git`` + ``tag`` source.
+``../gwz-core`` checkout, while on ``release`` it depends on exactly the
+gwz-core release of its own version from crates.io, ``gwz-core = "=X.Y.Z"``
+(TR3.4 of gwz-core dev-docs/GwzTransportReleasePlanAmendment-2.md, which
+replaces the git + tag pin of 1.0.17 and earlier, GwzCratesIoPlan.md D7).
 
 For a release tag ``vX.Y.Z`` this script:
 
-  1. Verifies the matching gwz-core and gwz-cli tags exist. The core tag is
-     read from the release branch's configured dependency URL; the CLI tag
-     supplies the cross-driver release fixtures and binary.
+  1. Verifies the matching gwz-core and gwz-cli tags exist: the protocol
+     checks read gwz-core at its tag, and the CLI tag supplies the cross-driver
+     release fixtures and binary.
   2. Creates a temporary worktree on ``release`` and merges ``main`` into it.
-  3. Sets the gwz-py Cargo package version to ``X.Y.Z`` and pins the gwz-core
-     dependency tag to ``vX.Y.Z``.
-  4. Checks protocol drift against gwz-core at the same tag, runs cargo/Python
-     and Rust/Python cross-driver tests, builds an installable wheel, and
+     A conflict in Cargo.toml or Cargo.lock takes main's file: step 3 rewrites
+     the only lines in which ``release`` differs, and cargo refreshes the lock.
+  3. Sets the gwz-py Cargo package version to ``X.Y.Z`` and pins
+     ``gwz-core = "=X.Y.Z"``, migrating the git + tag pin once.
+  4. Resolves Cargo.lock from crates.io, where gwz-core X.Y.Z must already be
+     published, checks that every native dependency comes from there, checks
+     protocol drift against gwz-core at the same tag, runs cargo/Python and
+     Rust/Python cross-driver tests, builds an installable wheel, and
      smoke-tests the installed ``gwz-py`` command.
   5. Commits the reconciled release branch and creates the lightweight
      ``vX.Y.Z`` tag without ever moving an existing tag.
 
 The release branch advances only after all checks pass. Pushing is explicit via
 ``--push``. For the first release, pass ``--bootstrap-release`` to create the
-``release`` branch from ``main`` and initialize its git-pinned ``gwz-core``
-dependency before cutting the tag.
+``release`` branch from ``main`` and pin its ``gwz-core`` dependency before
+cutting the tag.
 """
 
 from __future__ import annotations
@@ -47,6 +53,17 @@ RELEASE_PYTHON_DEPS = (
     "setuptools-scm>=8",
     "taut-proto==0.10.0",
 )
+CRATES_IO_SOURCE = "registry+https://github.com/rust-lang/crates.io-index"
+# The gwz-core lines a release may start from, each matched against the whole line: main's
+# sibling path (bootstrap, or a Cargo.toml merge conflict resolved toward main), the git + tag
+# pin of 1.0.17 and earlier (migrated once), and the registry pin this script writes.
+CORE_PINS = (
+    re.compile(r'gwz-core\s*=\s*\{\s*path\s*=\s*"\.\./gwz-core"\s*\}'),
+    re.compile(r'gwz-core\s*=\s*\{\s*git\s*=\s*"[^"]+"\s*,\s*tag\s*=\s*"[^"]+"\s*\}'),
+    re.compile(r'gwz-core\s*=\s*"=[^"\s]+"'),
+)
+DEPENDENCY_TABLE = re.compile(r"\[(?:target\..+\.)?(?:dev-|build-)?dependencies\]")
+LOCK_FIELD = re.compile(r'([A-Za-z0-9_-]+)\s*=\s*"([^"]*)"')
 
 
 def fail(message: str) -> None:
@@ -157,14 +174,6 @@ def warn_if_behind_upstream(branch: str) -> None:
         )
 
 
-def gwz_core_url(release: str) -> str:
-    toml = git(["show", f"{release}:Cargo.toml"], capture=True).stdout
-    match = re.search(r'gwz-core\s*=\s*\{[^}\n]*\bgit\s*=\s*"([^"]+)"', toml)
-    if not match:
-        fail(f"no git-sourced gwz-core dependency found on branch '{release}'")
-    return match.group(1)
-
-
 def verify_remote_tag(project: str, url: str, tag: str) -> None:
     result = run(["git", "ls-remote", "--tags", url, f"refs/tags/{tag}"], capture=True)
     if not result.stdout.strip():
@@ -207,13 +216,16 @@ def do_merge(worktree: Path, main: str, release: str) -> None:
         if path
     ]
     if conflicts:
-        other = [path for path in conflicts if path != "Cargo.lock"]
+        other = [path for path in conflicts if path not in ("Cargo.toml", "Cargo.lock")]
         if other:
             git_wt(worktree, ["merge", "--abort"], check=False)
-            fail("merge conflicts beyond Cargo.lock:\n  " + "\n  ".join(other))
-        git_wt(worktree, ["checkout", "--theirs", "--", "Cargo.lock"], check=False)
-        git_wt(worktree, ["add", "Cargo.lock"])
-        log("resolved Cargo.lock merge conflict; cargo check will refresh it")
+            fail("merge conflicts beyond Cargo.toml and Cargo.lock:\n  " + "\n  ".join(other))
+        # release differs from main in Cargo.toml only by the version and the gwz-core pin,
+        # which reconcile_cargo_toml rewrites, and in Cargo.lock, which cargo then refreshes.
+        for path in conflicts:
+            git_wt(worktree, ["checkout", "--theirs", "--", path], check=False)
+            git_wt(worktree, ["add", path])
+        log(f"resolved merge conflicts in {', '.join(conflicts)} toward {main}")
     elif not merge_head_exists(worktree):
         if already:
             log(f"{release} already contains {main}; reconciling release metadata only")
@@ -222,48 +234,64 @@ def do_merge(worktree: Path, main: str, release: str) -> None:
             fail(f"`git merge {main}` did not produce a merge:\n{merge.stdout}{merge.stderr}")
 
 
-def reconcile_cargo_toml(
-    worktree: Path,
-    tag: str,
-    version: str,
-    *,
-    core_url: str | None = None,
-) -> bool:
+def manifest_entries(text: str) -> list[tuple[int, str, str]]:
+    """Each key line of a Cargo.toml: its index, its table's header and the stripped line."""
+    entries, table = [], ""
+    for index, line in enumerate(text.split("\n")):
+        stripped = line.strip()
+        if stripped.startswith("["):
+            table = stripped
+        elif stripped and not stripped.startswith("#"):
+            entries.append((index, table, stripped))
+    return entries
+
+
+def entry_key(line: str) -> str:
+    return line.split("=", 1)[0].strip()
+
+
+def reconcile_cargo_toml(worktree: Path, version: str) -> bool:
+    """Pin gwz-core to exactly `version` from crates.io, and set the package version to it.
+
+    Accepts the gwz-core lines in CORE_PINS and refuses every other shape, a `branch` pin, extra
+    keys such as `features` or a requirement that is not exact, since rewriting one would
+    silently change what the release builds. Returns whether it changed Cargo.toml.
+    """
     path = worktree / "Cargo.toml"
     text = path.read_text(encoding="utf-8")
-    updated = re.sub(
-        r'^(version\s*=\s*)"[^"]*"',
-        rf'\g<1>"{version}"',
-        text,
-        count=1,
-        flags=re.M,
-    )
-    if core_url is None:
-        updated = re.sub(
-            r'(gwz-core\s*=\s*\{[^}\n]*\btag\s*=\s*)"[^"]*"',
-            rf'\g<1>"{tag}"',
-            updated,
+    entries = manifest_entries(text)
+    cores = [
+        (index, table, line)
+        for index, table, line in entries
+        if DEPENDENCY_TABLE.fullmatch(table) and entry_key(line) == "gwz-core"
+    ]
+    if (
+        len(cores) != 1
+        or cores[0][1] != "[dependencies]"
+        or not any(pin.fullmatch(cores[0][2]) for pin in CORE_PINS)
+    ):
+        found = ", ".join(f"`{line}` in {table}" for _, table, line in cores) or "none"
+        fail(
+            "Cargo.toml must declare gwz-core on one line of [dependencies], as main's sibling "
+            '`path`, the git + tag pin of 1.0.17 and earlier or `gwz-core = "=X.Y.Z"` from '
+            f"crates.io (found: {found}) -- did main edit the dependency line?"
         )
-    else:
-        dependency = f'gwz-core = {{ git = "{core_url}", tag = "{tag}" }}'
-        updated, count = re.subn(
-            r'^gwz-core\s*=\s*\{[^}\n]*\}\s*$',
-            dependency,
-            updated,
-            count=1,
-            flags=re.M,
-        )
-        if count != 1:
-            fail("Cargo.toml did not contain exactly one gwz-core dependency line")
+    versions = [
+        index
+        for index, table, line in entries
+        if table == "[package]" and entry_key(line) == "version"
+    ]
+    if len(versions) != 1:
+        fail(f"expected one `version` line in Cargo.toml's [package] table, found {len(versions)}")
+    lines = text.split("\n")
+    lines[cores[0][0]] = f'gwz-core = "={version}"'
+    lines[versions[0]] = re.sub(r'"[^"]*"', f'"{version}"', lines[versions[0]], count=1)
+    updated = "\n".join(lines)
     if updated == text:
-        if f'version = "{version}"' in updated and f'tag = "{tag}"' in updated:
-            log("Cargo.toml already has matching version and gwz-core tag")
-            return False
-        fail("Cargo.toml did not contain the expected version and gwz-core git tag fields")
-    if f'version = "{version}"' not in updated or f'tag = "{tag}"' not in updated:
-        fail(f"Cargo.toml reconcile did not yield version={version} and gwz-core tag={tag}")
+        log(f'Cargo.toml already reconciled (version = {version}, gwz-core = "={version}")')
+        return False
     path.write_text(updated, encoding="utf-8", newline="\n")
-    log(f"reconciled Cargo.toml: version = {version}, gwz-core tag = {tag}")
+    log(f'reconciled Cargo.toml: version = {version}, gwz-core = "={version}" from crates.io')
     return True
 
 
@@ -275,24 +303,81 @@ def verify_pyproject_metadata(worktree: Path) -> None:
         fail("pyproject.toml must install the Python CLI as `gwz-py`")
 
 
-def verify_locked_git_pin(worktree: Path, tag: str, core_sha: str) -> None:
-    lock = (worktree / "Cargo.lock").read_text(encoding="utf-8")
-    match = re.search(
-        r'\[\[package\]\]\nname = "gwz-core"\nversion = "[^"]*"\n(?:source = "([^"]+)"\n)?',
-        lock,
-    )
-    source = match.group(1) if match else None
-    if (
-        not source
-        or "git+" not in source
-        or f"tag={tag}" not in source
-        or not source.endswith(f"#{core_sha}")
-    ):
+def lock_packages(lock: str) -> list[dict[str, str]]:
+    """The `[[package]]` entries of a Cargo.lock, each as its quoted string fields."""
+    packages: list[dict[str, str]] = []
+    current: dict[str, str] | None = None
+    for line in lock.splitlines():
+        stripped = line.strip()
+        if stripped == "[[package]]":
+            current = {}
+            packages.append(current)
+        elif stripped.startswith("["):
+            current = None
+        elif current is not None and (field := LOCK_FIELD.fullmatch(stripped)):
+            current[field.group(1)] = field.group(2)
+    return packages
+
+
+def verify_release_pins(worktree: Path, version: str) -> None:
+    """Refuse a release whose native dependencies do not all come from crates.io.
+
+    Cargo.toml must pin `gwz-core = "=X.Y.Z"`, gwz-py's own version, and declare no `git` or
+    `path` dependency; Cargo.lock must take gwz-core X.Y.Z with its checksum, and every package
+    but gwz-py itself, from crates.io. The publish workflow runs this check too. Each native
+    dependency pin is logged with what the lock resolved for it.
+    """
+    pin = f'gwz-core = "={version}"'
+    manifest = (worktree / "Cargo.toml").read_text(encoding="utf-8")
+    dependencies = [
+        (table, line)
+        for _, table, line in manifest_entries(manifest)
+        if DEPENDENCY_TABLE.fullmatch(table)
+    ]
+    cores = [line for _, line in dependencies if entry_key(line) == "gwz-core"]
+    if cores != [pin] or ("[dependencies]", pin) not in dependencies:
+        tagged = any(re.search(r"\btag\s*=", line) for line in cores)
         fail(
-            f"Cargo.lock does not pin gwz-core via git tag {tag} at resolved "
-            f"commit {core_sha} (source={source!r})"
+            f"Cargo.toml must pin `{pin}` from crates.io, gwz-py's own version, in "
+            f"[dependencies]; found {cores or 'no gwz-core'}"
+            + (" -- the git tag pin of 1.0.17 and earlier is not a release form" if tagged else "")
         )
-    log(f"verified Cargo.lock pins gwz-core via {source}")
+    sourced = [line for _, line in dependencies if re.search(r"\b(?:git|path)\s*=", line)]
+    if sourced:
+        fail("Cargo.toml declares a git or path dependency: " + "; ".join(sourced))
+    packages = lock_packages((worktree / "Cargo.lock").read_text(encoding="utf-8"))
+    core = [package for package in packages if package.get("name") == "gwz-core"]
+    if [(entry.get("version"), entry.get("source")) for entry in core] != [
+        (version, CRATES_IO_SOURCE)
+    ]:
+        fail(f"Cargo.lock must take gwz-core {version} from crates.io; it holds {core}")
+    if not core[0].get("checksum"):
+        fail(f"Cargo.lock has no checksum for gwz-core {version}")
+    stray = [
+        f"{package.get('name')} {package.get('version')} ({package.get('source', 'a path')})"
+        for package in packages
+        if package.get("name") != "gwz-py" and package.get("source") != CRATES_IO_SOURCE
+    ]
+    if stray:
+        fail("Cargo.lock takes packages from somewhere other than crates.io: " + "; ".join(stray))
+    for _, line in dependencies:
+        renamed = re.search(r'\bpackage\s*=\s*"([^"]+)"', line)
+        name = renamed.group(1) if renamed else entry_key(line)
+        locked = [entry.get("version", "?") for entry in packages if entry.get("name") == name]
+        if not locked:
+            fail(f"Cargo.lock has no {name} for Cargo.toml's `{line}`; refresh the lock")
+        log(f"native dependency pin: {line} -> {name} {', '.join(locked)} from crates.io")
+
+
+def resolve_release_lock(worktree: Path, version: str) -> None:
+    """Resolve Cargo.lock for the reconciled manifest. `--workspace` re-resolves only what the
+    manifest changed and leaves every other locked version alone, also when the merge took
+    main's lock, whose gwz-core is the sibling path."""
+    if run(["cargo", "update", "--workspace"], cwd=worktree, check=False).returncode != 0:
+        fail(
+            f"cargo could not resolve the release pins: gwz-core {version} must be on crates.io "
+            "before gwz-py's release (release gwz-core first and let its publish job finish)"
+        )
 
 
 def checkout_release_dependency(url: str, tag: str, target: Path) -> None:
@@ -308,20 +393,13 @@ def create_release_python(worktree: Path) -> Path:
     return python
 
 
-def run_release_checks(
-    worktree: Path,
-    args: argparse.Namespace,
-    *,
-    tag: str,
-    version: str,
-    core_sha: str,
-) -> None:
+def run_release_checks(worktree: Path, args: argparse.Namespace, *, version: str) -> None:
     python = create_release_python(worktree)
     verify_pyproject_metadata(worktree)
     run([python, "scripts/check_protocol_drift.py"], cwd=worktree)
     run([python, "scripts/regen_protocol.py", "--check"], cwd=worktree)
     run(["cargo", "check"], cwd=worktree)
-    verify_locked_git_pin(worktree, tag, core_sha)
+    verify_release_pins(worktree, version)
     if not args.no_test:
         run([python, "run_tests.py"], cwd=worktree)
     if not args.no_package_smoke:
@@ -373,8 +451,7 @@ def bootstrap_release(args: argparse.Namespace, tag: str, version: str) -> int:
     if existing is not None:
         fail(f"tag {tag} already exists at {existing[:10]}; refusing to bootstrap")
 
-    core_url = args.gwz_core_url
-    verify_remote_tag("gwz-core", core_url, tag)
+    verify_remote_tag("gwz-core", args.gwz_core_url, tag)
     verify_remote_tag("gwz-cli", args.gwz_cli_url, tag)
 
     temp_root = Path(tempfile.mkdtemp(prefix=f"gwz-py-{tag}-bootstrap-"))
@@ -387,14 +464,11 @@ def bootstrap_release(args: argparse.Namespace, tag: str, version: str) -> int:
     try:
         release_branch_is_free(args.release)
         git(["worktree", "add", worktree, args.release])
-        reconcile_cargo_toml(worktree, tag, version, core_url=core_url)
-        checkout_release_dependency(core_url, tag, core_checkout)
+        reconcile_cargo_toml(worktree, version)
+        checkout_release_dependency(args.gwz_core_url, tag, core_checkout)
         checkout_release_dependency(args.gwz_cli_url, tag, cli_checkout)
-        core_sha = git_wt(core_checkout, ["rev-parse", "HEAD"], capture=True).stdout.strip()
-        run(["cargo", "update", "-p", "gwz-core"], cwd=worktree)
-        run_release_checks(
-            worktree, args, tag=tag, version=version, core_sha=core_sha
-        )
+        resolve_release_lock(worktree, version)
+        run_release_checks(worktree, args, version=version)
         git_wt(worktree, ["add", "Cargo.toml", "Cargo.lock"])
         staged = git_wt(
             worktree,
@@ -403,11 +477,14 @@ def bootstrap_release(args: argparse.Namespace, tag: str, version: str) -> int:
         ).stdout.split()
         if not staged:
             fail("bootstrap produced no release metadata changes")
-        message = f"chore(release): initialize gwz-py {version} (pins gwz-core {tag})"
+        message = (
+            f"chore(release): initialize gwz-py {version} "
+            f"(pins gwz-core {version} from crates.io)"
+        )
         git_wt(worktree, ["commit", "-m", message])
         committed = True
         target = git_wt(worktree, ["rev-parse", "HEAD"], capture=True).stdout.strip()
-        log(f"{args.release} initialized -> {target[:10]} (gwz-py {version}, gwz-core {tag})")
+        log(f"{args.release} initialized -> {target[:10]} (gwz-py {version}, gwz-core {version})")
         ensure_tag(tag, target)
         if args.push:
             push_release(args.release, tag)
@@ -439,7 +516,7 @@ def main() -> int:
     parser.add_argument(
         "--gwz-core-url",
         default=DEFAULT_GWZ_CORE_URL,
-        help="gwz-core git URL used when bootstrapping the release branch",
+        help="gwz-core git URL whose matching tag is verified and checked out for the checks",
     )
     parser.add_argument(
         "--gwz-cli-url",
@@ -475,8 +552,7 @@ def main() -> int:
     warn_if_behind_upstream(args.main)
     warn_if_behind_upstream(args.release)
 
-    core_url = gwz_core_url(args.release)
-    verify_remote_tag("gwz-core", core_url, tag)
+    verify_remote_tag("gwz-core", args.gwz_core_url, tag)
     verify_remote_tag("gwz-cli", args.gwz_cli_url, tag)
 
     existing = tag_commit(tag)
@@ -497,36 +573,20 @@ def main() -> int:
     try:
         do_merge(worktree, args.main, args.release)
         merged = merge_head_exists(worktree)
-        changed = reconcile_cargo_toml(worktree, tag, version)
-        checkout_release_dependency(core_url, tag, core_checkout)
+        changed = reconcile_cargo_toml(worktree, version)
+        checkout_release_dependency(args.gwz_core_url, tag, core_checkout)
         checkout_release_dependency(args.gwz_cli_url, tag, cli_checkout)
-        core_sha = git_wt(core_checkout, ["rev-parse", "HEAD"], capture=True).stdout.strip()
-        # Refresh even if the manifest already names this tag. A corrected release tag can
-        # otherwise leave Cargo.lock at the provisional Git revision indefinitely.
-        #
-        # When `do_merge` resolved a Cargo.lock conflict toward `main`, the lock's gwz-core
-        # entry is main's PATH entry (no `source`), and `cargo update -p gwz-core` then refuses
-        # with "did not match any packages" because no locked package matches the manifest's
-        # git source (v0.13.0 cut, 2026-09-03). Re-resolve the workspace conservatively first --
-        # `--workspace` re-resolves only what the reconciled manifest changed and leaves every
-        # other locked version alone, the same refresh `cargo build` performs in gwz-cli's
-        # script -- then pin the tag's revision explicitly.
-        run(["cargo", "update", "--workspace"], cwd=worktree)
-        run(["cargo", "update", "-p", "gwz-core"], cwd=worktree)
+        resolve_release_lock(worktree, version)
         changed = changed or bool(git_wt(worktree, ["status", "--porcelain"], capture=True).stdout)
         if merged or changed:
-            run_release_checks(
-                worktree, args, tag=tag, version=version, core_sha=core_sha
-            )
+            run_release_checks(worktree, args, version=version)
             git_wt(worktree, ["add", "-A"])
-            message = f"chore(release): gwz-py {version} (pins gwz-core {tag})"
+            message = f"chore(release): gwz-py {version} (pins gwz-core {version} from crates.io)"
             git_wt(worktree, ["commit", "-m", message])
             sha = git_wt(worktree, ["rev-parse", "HEAD"], capture=True).stdout.strip()
-            log(f"{args.release} reconciled -> {sha[:10]} (gwz-py {version}, gwz-core {tag})")
+            log(f"{args.release} reconciled -> {sha[:10]} (gwz-py {version}, gwz-core {version})")
         else:
-            run_release_checks(
-                worktree, args, tag=tag, version=version, core_sha=core_sha
-            )
+            run_release_checks(worktree, args, version=version)
             log(f"{args.release} already reconciled for {tag}; no new commit needed")
 
         target = git_wt(worktree, ["rev-parse", "HEAD"], capture=True).stdout.strip()
