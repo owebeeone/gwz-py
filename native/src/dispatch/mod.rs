@@ -458,7 +458,9 @@ fn submit_accepted(
     network: Option<Network>,
 ) -> PyResult<Vec<u8>> {
     let operation_id = shims::operation_id(&meta.request_id);
-    let recorder = operations::begin(&operation_id);
+    // Refused before any effect while another operation with this request
+    // ID is live (the core session contract, §4.3).
+    let recorder = operations::begin(&operation_id).map_err(error::model)?;
     cfg_if::cfg_if! {
         if #[cfg(all(unix, gwz_transport_candidate))] {
             let response_meta = gwz_core::ResponseMeta {
@@ -535,12 +537,14 @@ fn spawn_call(
                     backend,
                 )
             };
-            let outcome = catch_unwind(AssertUnwindSafe(|| match network {
-                None => Submitted::Ran(run(&shims::Backend::own())),
-                Some(network) => {
-                    Submitted::from(network.run(|backend| run(&shims::Backend::given(backend))))
-                }
-            }));
+            // The handler reports to the record this submit began.
+            let outcome =
+                catch_unwind(AssertUnwindSafe(|| match network {
+                    None => Submitted::Ran(run(&shims::Backend::own().reporting_to(&recorder))),
+                    Some(network) => Submitted::from(network.run(|backend| {
+                        run(&shims::Backend::given(backend).reporting_to(&recorder))
+                    })),
+                }));
             record(&recorder, &meta, action, outcome);
         })
         .map_err(|err| worker_spawn_failure(failure_recorder, err))?;
@@ -620,7 +624,8 @@ cfg_if::cfg_if! {
                 use pyo3::types::PyAnyMethods;
                 pyo3::Python::initialize();
                 let operation_id = "spawn-failure-test";
-                let recorder = operations::begin(operation_id);
+                let recorder = operations::begin(operation_id)
+                    .expect("a new operation ID begins a record");
                 let error = worker_spawn_failure(
                     recorder,
                     std::io::Error::other("injected spawn failure"),

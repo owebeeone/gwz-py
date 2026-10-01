@@ -560,24 +560,61 @@ def test_failed_merge_completes_once_with_the_original_structured_error(
         native.merge_operation_response(operation_id)
 
 
-def test_duplicate_merge_operation_id_is_rejected_without_overwriting_result(
-    tmp_path: Path,
+def test_a_merge_whose_request_id_matches_a_live_merge_is_refused_without_touching_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """A request whose request_id matches a live operation's is refused with
+    InvalidRequest before any effect (dev-docs/GwzCoreSessionDesign.md
+    §4.3), through either entry, and the live merge's record is untouched."""
     native = native_module()
     client = native_client(tmp_path)
     asyncio.run(client.create_workspace(workspace_id="ws_merge_duplicate"))
+    monkeypatch.setenv("GWZ_PY_TEST_EVENT_DELAY_MS", "1000")
     request = merge_request(tmp_path, "req_duplicate", MergeOp.status)
     first = submit(native, request)
     operation_id = first.response.meta.operation_id
     assert operation_id is not None
-    first_result = bytes(native.operation_result(operation_id))
 
-    with pytest.raises(RuntimeError, match="already exists"):
+    with pytest.raises(RuntimeError) as submitted:
         submit(native, request)
+    with pytest.raises(RuntimeError) as called:
+        native.ClientHost().call(
+            "merge", "MergeRequest", "MergeResponse", encode_message("MergeRequest", request)
+        )
+    for refused in (submitted, called):
+        assert getattr(refused.value, "code", None) == "InvalidRequest", refused.value
 
-    assert bytes(native.operation_result(operation_id)) == first_result
-    events = list(native.subscribe_events(operation_id))
-    assert len(events) == 2
+    assert terminal_result(native, operation_id).aggregate_status is AggregateStatus.noop
+    assert [event.kind for event in operation_events(native, operation_id)] == [
+        EventKind.operation_started,
+        EventKind.operation_finished,
+    ]
+
+
+def test_a_merge_that_reuses_an_ended_merges_request_id_gets_a_fresh_record(
+    tmp_path: Path,
+) -> None:
+    """A request ID need be unique only among live operations (§4.3): a merge
+    that reuses an ended merge's runs, under the same operation ID, on a
+    record of its own."""
+    native = native_module()
+    client = native_client(tmp_path)
+    asyncio.run(client.create_workspace(workspace_id="ws_merge_reuse"))
+    request = merge_request(tmp_path, "req_reuse", MergeOp.status)
+    first = submit(native, request)
+    operation_id = first.response.meta.operation_id
+    assert operation_id is not None
+    first_result = terminal_result(native, operation_id)
+
+    second = submit(native, request)
+    assert second.response.meta.operation_id == operation_id
+    second_result = terminal_result(native, operation_id)
+    assert second_result.aggregate_status is AggregateStatus.noop
+    assert second_result.started_at_ms >= first_result.finished_at_ms
+    assert [event.kind for event in operation_events(native, operation_id)] == [
+        EventKind.operation_started,
+        EventKind.operation_finished,
+    ]
 
 
 def test_submitted_preflight_failure_retains_member_context(tmp_path: Path) -> None:

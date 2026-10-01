@@ -1,20 +1,23 @@
 use std::collections::HashMap;
-use std::sync::{Arc, Condvar, Mutex, OnceLock};
+use std::sync::{Arc, Condvar, Mutex, OnceLock, PoisonError};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use gwz_core::model::{ErrorCode, ModelError, ModelResult};
 use pyo3::PyResult;
 
 use crate::error;
 
 static STORE: OnceLock<OperationStore> = OnceLock::new();
 
-pub(crate) fn begin(operation_id: &str) -> OperationRecorder {
+/// Begins an operation's record, under the operation ID its request ID
+/// names. A request ID is unique among live operations (the core session
+/// contract, dev-docs/GwzCoreSessionDesign.md §4.3): one that matches a live
+/// operation's is refused with `InvalidRequest` before any effect, and one
+/// that matches an ended operation's begins a fresh record, which replaces
+/// the ended one.
+pub(crate) fn begin(operation_id: &str) -> ModelResult<OperationRecorder> {
     store().begin(operation_id)
-}
-
-pub(crate) fn begin_exclusive(operation_id: &str) -> PyResult<OperationRecorder> {
-    store().begin_exclusive(operation_id)
 }
 
 pub(crate) fn events(operation_id: &str) -> PyResult<Vec<gwz_core::OperationEvent>> {
@@ -51,31 +54,22 @@ pub(crate) struct OperationStore {
 }
 
 impl OperationStore {
-    fn begin(&self, operation_id: &str) -> OperationRecorder {
+    fn begin(&self, operation_id: &str) -> ModelResult<OperationRecorder> {
         let mut records = self.records.lock().expect("operation store poisoned");
-        let record = records
-            .entry(operation_id.to_owned())
-            .or_insert_with(|| Arc::new(OperationRecord::new()))
-            .clone();
-        OperationRecorder {
-            operation_id: operation_id.to_owned(),
-            record,
-        }
-    }
-
-    fn begin_exclusive(&self, operation_id: &str) -> PyResult<OperationRecorder> {
-        let mut records = self.records.lock().expect("operation store poisoned");
-        if records.contains_key(operation_id) {
-            return Err(error::runtime(format!(
-                "operation {operation_id} already exists"
-            )));
+        if records
+            .get(operation_id)
+            .is_some_and(|record| record.is_live())
+        {
+            return Err(ModelError::new(
+                ErrorCode::InvalidRequest,
+                format!(
+                    "operation {operation_id} is still running: a request's request_id must not match a live operation's"
+                ),
+            ));
         }
         let record = Arc::new(OperationRecord::new());
         records.insert(operation_id.to_owned(), Arc::clone(&record));
-        Ok(OperationRecorder {
-            operation_id: operation_id.to_owned(),
-            record,
-        })
+        Ok(OperationRecorder::new(operation_id, record))
     }
 
     fn record(&self, operation_id: &str) -> PyResult<Arc<OperationRecord>> {
@@ -140,6 +134,29 @@ impl OperationRecord {
             drop(state);
             self.changed.notify_all();
         }
+    }
+
+    /// Ends a record that its operation left without an outcome, as a
+    /// handler that panicked outside `catch_unwind` does: its readers stop
+    /// waiting, and its request ID is free again. It runs from a drop, so it
+    /// takes a poisoned lock rather than panic.
+    fn abandon(&self) {
+        let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
+        if state.result.is_none() && state.refusal.is_none() {
+            state.refusal = Some(ModelError::new(
+                ErrorCode::InternalError,
+                "the operation ended without recording its outcome",
+            ));
+            drop(state);
+            self.changed.notify_all();
+        }
+    }
+
+    /// Whether the operation may still record into this: it has neither a
+    /// result nor a refusal.
+    fn is_live(&self) -> bool {
+        let state = self.state.lock().expect("operation state poisoned");
+        state.result.is_none() && state.refusal.is_none()
     }
 
     fn new() -> Self {
@@ -401,13 +418,33 @@ fn unseen_events(
         .collect()
 }
 
+/// What an operation records its events and outcome through. Its clones
+/// share one writer: when the last is dropped the operation has ended, and a
+/// record it left without an outcome ends too.
 #[derive(Clone)]
 pub(crate) struct OperationRecorder {
     operation_id: String,
     record: Arc<OperationRecord>,
+    _writer: Arc<Writer>,
+}
+
+struct Writer(Arc<OperationRecord>);
+
+impl Drop for Writer {
+    fn drop(&mut self) {
+        self.0.abandon();
+    }
 }
 
 impl OperationRecorder {
+    fn new(operation_id: &str, record: Arc<OperationRecord>) -> Self {
+        Self {
+            operation_id: operation_id.to_owned(),
+            _writer: Arc::new(Writer(Arc::clone(&record))),
+            record,
+        }
+    }
+
     pub(crate) fn refuse(&self, reason: gwz_core::model::ModelError) {
         self.record.refuse(reason);
     }
@@ -507,8 +544,8 @@ mod tests {
     fn session_stores_isolate_identical_operation_ids() {
         let a = OperationStore::default();
         let b = OperationStore::default();
-        let a_recorder = a.begin_exclusive("same-id").unwrap();
-        let b_recorder = b.begin_exclusive("same-id").unwrap();
+        let a_recorder = a.begin("same-id").unwrap();
+        let b_recorder = b.begin("same-id").unwrap();
         a_recorder
             .finish_error(
                 "request-a".into(),
@@ -530,9 +567,94 @@ mod tests {
     }
 
     #[test]
+    fn a_request_id_that_matches_a_live_operation_is_refused_and_an_ended_one_begins_afresh() {
+        let store = OperationStore::default();
+        let first = store.begin("op_req").unwrap();
+        let refused = store
+            .begin("op_req")
+            .err()
+            .expect("a live operation's ID is refused");
+        assert_eq!(refused.code, ErrorCode::InvalidRequest);
+        assert!(
+            store.try_result("op_req").unwrap().is_none(),
+            "the live record is untouched"
+        );
+        first
+            .finish_error(
+                "req".into(),
+                "gwz.protocol/v0".into(),
+                gwz_core::ActionKind::Fetch,
+                "first".into(),
+            )
+            .unwrap();
+
+        let second = store
+            .begin("op_req")
+            .expect("an ended operation's ID begins a fresh record");
+        assert!(
+            store.try_result("op_req").unwrap().is_none(),
+            "the fresh record has no outcome yet"
+        );
+        second
+            .finish_error(
+                "req".into(),
+                "gwz.protocol/v0".into(),
+                gwz_core::ActionKind::Fetch,
+                "second".into(),
+            )
+            .unwrap();
+        assert_eq!(store.result("op_req").unwrap().errors[0].message, "second");
+        assert_eq!(
+            first.record.try_result().unwrap().unwrap().errors[0].message,
+            "first",
+            "the ended record keeps its own outcome"
+        );
+    }
+
+    #[test]
+    fn a_record_its_operation_left_without_an_outcome_ends_when_the_operation_does() {
+        let store = OperationStore::default();
+        let recorder = store.begin("op_left").unwrap();
+        let copy = recorder.clone();
+        drop(recorder);
+        assert!(
+            !store.wait_events("op_left", 0, Duration::ZERO).unwrap().1,
+            "a copy may still record its outcome"
+        );
+        drop(copy);
+        assert!(store.wait_events("op_left", 0, Duration::ZERO).unwrap().1);
+        let records = store.records.lock().unwrap();
+        let refusal = records["op_left"].state.lock().unwrap().refusal.clone();
+        assert_eq!(
+            refusal.map(|error| error.code),
+            Some(ErrorCode::InternalError)
+        );
+        drop(records);
+        store
+            .begin("op_left")
+            .expect("its request ID is free again");
+    }
+
+    #[test]
+    fn a_recorded_outcome_stands_when_the_operation_ends() {
+        let store = OperationStore::default();
+        let recorder = store.begin("op_done").unwrap();
+        recorder
+            .finish_error(
+                "req".into(),
+                "gwz.protocol/v0".into(),
+                gwz_core::ActionKind::Push,
+                "failed".into(),
+            )
+            .unwrap();
+        drop(recorder);
+        assert_eq!(store.result("op_done").unwrap().errors[0].message, "failed");
+    }
+
+    #[test]
     fn a_panicked_operation_publishes_its_failure() {
         let store = OperationStore::default();
-        let recorder = store.begin_exclusive("panic-id").unwrap();
+        let recorder = store.begin("panic-id").unwrap();
         recorder
             .finish_panic_error(
                 "request".into(),
@@ -552,7 +674,7 @@ mod tests {
     #[test]
     fn a_panic_after_a_published_result_leaves_it() {
         let store = OperationStore::default();
-        let recorder = store.begin_exclusive("done-id").unwrap();
+        let recorder = store.begin("done-id").unwrap();
         let mut response = merge_response("request").response;
         response.meta.operation_id = Some("done-id".into());
         recorder.finish(&response).unwrap();

@@ -16,7 +16,7 @@ pub(crate) fn call(
     let request = decode_request(method, request_message, response_message, request_bytes)?;
     let start = caller_cwd;
     let operation_id = shims::operation_id(&request.meta.request_id);
-    let recorder = operations::begin_exclusive(&operation_id)?;
+    let recorder = operations::begin(&operation_id).map_err(error::model)?;
     let response = run(backend, request, start, &operation_id, &recorder)?;
     codec::encode_message("encode MergeResponse", || response.to_cbor())
 }
@@ -31,7 +31,7 @@ pub(crate) fn submit(
     let request = decode_request(method, request_message, response_message, request_bytes)?;
     let start = caller_cwd;
     let operation_id = shims::operation_id(&request.meta.request_id);
-    let recorder = operations::begin_exclusive(&operation_id)?;
+    let recorder = operations::begin(&operation_id).map_err(error::model)?;
     let accepted = accepted_response(&request.meta, &operation_id);
     let accepted_bytes =
         codec::encode_message("encode accepted MergeResponse", || accepted.to_cbor())?;
