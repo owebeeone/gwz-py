@@ -7,7 +7,7 @@
 //! | --- | --- |
 //! | `call` and `submit` are the native entries. gwz-core's transport scope decides which requests are network operations; only those take a snapshot, register with the host and count against its limit | §2.1, §2.3, §2.4 |
 //! | The route and the snapshot are captured while the caller holds the GIL; the operation then runs with it released: a `call` on the caller's thread, a `submit` on its own `gwz-py-operation` thread, which is where a waiting operation waits | §2.3, §2.4 |
-//! | `cancel_operation` and `close` wait with the GIL released, bounded by the cleanup bound, and so does the exit hook: an operation's thread needs the GIL to build its Python error | §2.5, §2.6 "No wait holds the GIL" |
+//! | `cancel_operation` and `close` wait with the GIL released, bounded by the cleanup bound, and so does the exit hook. An operation needs no GIL to end: its Python error is built only where it is raised or read (`error.rs`) | §2.5, §2.6 "No wait holds the GIL" |
 //! | Each host registers its own exit callback with `atexit` when it is created, holding only a weak reference to the host's operations; `close` unregisters it once no operation is left running, and until then the callback marks the host as exiting and waits for them again | §2.6 "Interpreter exit" |
 //! | An operation that ends after a close at exit records its outcome in the host and then attaches to no interpreter | §2.6 |
 

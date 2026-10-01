@@ -21,6 +21,7 @@ from pathlib import Path
 
 import pytest
 
+from gwz.protocol.codec import decode_message
 from gwz.protocol.generated import AggregateStatus, GwzErrorCode
 from host_helpers import (
     CLEANUP_BOUND,
@@ -178,9 +179,9 @@ def test_close_cancels_waiting_operations_refuses_new_ones_and_joins_the_running
 def test_close_with_a_failing_operation_in_flight_returns_within_the_bound(
     native, monkeypatch, tmp_path: Path
 ) -> None:
-    """No wait holds the GIL (design §2.6): the failing operation's thread
-    builds its Python error while close waits, so close returns as soon as
-    the operation ends, not at the bound with the operation unfinished."""
+    """No wait holds the GIL (design §2.6): the failing operation ends while
+    close waits, so close returns as soon as it ends, not at the bound with
+    the operation unfinished."""
     monkeypatch.setenv(DELAY_VARIABLE, "1000")
     host = native.ClientHost()
     failing = submit(host, init_request(tmp_path, "req_failing"))
@@ -219,12 +220,14 @@ EXIT_CHILD = textwrap.dedent(
 )
 
 
-def run_exit_child(tmp_path: Path, hold_ms: int) -> tuple[subprocess.CompletedProcess[str], float]:
+def run_exit_child(
+    tmp_path: Path, hold_ms: int, script: str = EXIT_CHILD, *args: str
+) -> tuple[subprocess.CompletedProcess[str], float]:
     environment = {**os.environ, DELAY_VARIABLE: str(hold_ms)}
     tests = str(Path(__file__).resolve().parent)
     begun = time.monotonic()
     process = subprocess.Popen(
-        [sys.executable, "-c", EXIT_CHILD, str(tmp_path), tests],
+        [sys.executable, "-c", script, str(tmp_path), tests, *args],
         env=environment,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -262,3 +265,83 @@ def test_interpreter_exit_does_not_wait_past_the_bound_for_an_operation_that_out
     # The exit callback waits out the bound, then finalization goes on
     # without the operation, which is still asleep.
     assert CLEANUP_BOUND - 0.5 < elapsed < 12
+
+
+FAILS_AFTER_EXIT_CHILD = textwrap.dedent(
+    """
+    import os, sys, time
+    from pathlib import Path
+
+    sys.path.insert(0, sys.argv[2])
+    from host_helpers import DELAY_VARIABLE, call, init_request, started, submit, wait_until
+    import gwz._gwz_core as native
+
+    class Finalizer:
+        # Collected when finalization clears this module, after the host's
+        # exit callback has waited out its bound and the interpreter has
+        # begun to finalize. It waits for the operation's outcome with the
+        # GIL released, so the operation's thread could take it.
+
+        def __init__(self, operation):
+            self.operation = operation
+            self.try_result = native.try_operation_result
+            self.sleep = time.sleep
+            self.clock = time.monotonic
+            self.write = os.write
+
+        def __del__(self):
+            deadline = self.clock() + 8
+            outcome = self.try_result(self.operation)
+            while outcome is None and self.clock() < deadline:
+                self.sleep(0.05)
+                outcome = self.try_result(self.operation)
+            line = "unrecorded" if outcome is None else "recorded " + bytes(outcome).hex()
+            self.write(1, (line + "\\n").encode())
+
+    base = Path(sys.argv[1])
+    host = native.ClientHost()
+    if sys.argv[3] == "after-an-earlier-failure":
+        # An operation that fails while the interpreter runs builds its error
+        # on a thread of its own. Once one has, PyO3 takes the interpreter
+        # as initialized, and a later attach goes straight to CPython.
+        hold = os.environ.pop(DELAY_VARIABLE)
+        try:
+            call(host, init_request(base, "req_fails_before_exit"))
+        except RuntimeError:
+            pass
+        os.environ[DELAY_VARIABLE] = hold
+    operation = submit(host, init_request(base, "req_fails_after_exit"))
+    wait_until(lambda: started(native, operation), 5, "the operation starting")
+    finalizer = Finalizer(operation)
+    print("exiting", flush=True)
+    """
+)
+
+
+@pytest.mark.parametrize("history", ["first-failure", "after-an-earlier-failure"])
+def test_an_operation_that_fails_after_the_exit_bound_records_its_outcome_without_the_interpreter(
+    native, tmp_path: Path, history: str
+) -> None:
+    """Design §2.6: an operation that outlives the bound at exit records its
+    outcome without attaching to the interpreter. This one fails about a
+    second after the exit callback gives up on it, while the interpreter
+    finalizes. If building its error attaches, the interpreter, which
+    reports itself uninitialized by then, is touched anyway: PyO3 panics on
+    the process's first attach, and after an earlier one CPython ends the
+    thread there (before 3.14; 3.14 parks it), so its outcome is never
+    recorded."""
+    child, elapsed = run_exit_child(
+        tmp_path, int((CLEANUP_BOUND + 1) * 1000), FAILS_AFTER_EXIT_CHILD, history
+    )
+    print(f"exit with an operation failing after the bound took {elapsed:.2f} s")
+    assert child.returncode == 0, child.stderr
+    lines = child.stdout.split("\n")
+    assert lines[0] == "exiting", child.stdout
+    state, _, payload = lines[1].partition(" ")
+    assert state == "recorded", (
+        "the operation's thread ended when its failure attached to the finalizing interpreter"
+    )
+    outcome = decode_message("OperationResult", bytes.fromhex(payload))
+    assert outcome.aggregate_status is AggregateStatus.failed
+    assert [error.code for error in outcome.errors] == [GwzErrorCode.internal_error]
+    assert "closed at interpreter exit" in outcome.errors[0].message
