@@ -9,6 +9,7 @@ from gwz import Client, MergeOperationHandle
 from gwz.bridge import NativeCoreBridge, _EVENT_WAIT_TIMEOUT_MS
 from gwz.errors import GwzBridgeError, GwzOperationError, GwzProtocolError
 from gwz.protocol.codec import decode_message, encode_message
+from fake_host import FakeModule
 from gwz.protocol.generated import (
     ActionKind,
     AggregateStatus,
@@ -139,7 +140,7 @@ def merge_response(
     )
 
 
-class FakeNative:
+class FakeNative(FakeModule):
     def __init__(self) -> None:
         self.calls: list[tuple[str, str, str, bytes]] = []
         self.subscriptions: list[str] = []

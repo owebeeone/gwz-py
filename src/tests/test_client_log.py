@@ -31,6 +31,7 @@ from gwz.protocol.generated import (
     ResponseMeta,
     SourceKind,
 )
+from fake_host import FakeModule
 
 
 def _response(status: AggregateStatus = AggregateStatus.ok) -> LogResponse:
@@ -366,7 +367,7 @@ def test_log_output_releases_when_consumer_closes_early() -> None:
     assert bridge.releases == ["commitlog_cancelled"]
 
 
-class _PagedNativeLog:
+class _PagedNativeLog(FakeModule):
     def __init__(self, pages: list[tuple[list[LogOutputRecord], int, str]]) -> None:
         self.pages = list(pages)
         self.reads: list[tuple[str, int | None, int | None]] = []

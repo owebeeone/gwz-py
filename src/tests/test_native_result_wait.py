@@ -46,7 +46,7 @@ CHILD = textwrap.dedent(
         target=None,
         workspace_id=None,
     )
-    accepted = native.submit(
+    accepted = native.ClientHost().submit(
         "init_from_sources",
         "InitFromSourcesRequest",
         "InitFromSourcesResponse",

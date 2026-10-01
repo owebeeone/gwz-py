@@ -11,12 +11,13 @@ pub(crate) fn call(
     response_message: &str,
     request_bytes: &[u8],
     caller_cwd: &std::path::Path,
+    backend: &shims::Backend<'_>,
 ) -> PyResult<Vec<u8>> {
     let request = decode_request(method, request_message, response_message, request_bytes)?;
     let start = caller_cwd;
     let operation_id = shims::operation_id(&request.meta.request_id);
     let recorder = operations::begin_exclusive(&operation_id)?;
-    let response = run(request, start, &operation_id, &recorder)?;
+    let response = run(backend, request, start, &operation_id, &recorder)?;
     codec::encode_message("encode MergeResponse", || response.to_cbor())
 }
 
@@ -38,7 +39,13 @@ pub(crate) fn submit(
     let start = start.to_path_buf();
     let thread_operation_id = operation_id.clone();
     thread::spawn(move || {
-        let _ = run(request, &start, &thread_operation_id, &recorder);
+        let _ = run(
+            &shims::Backend::own(),
+            request,
+            &start,
+            &thread_operation_id,
+            &recorder,
+        );
     });
     Ok(accepted_bytes)
 }
@@ -57,6 +64,7 @@ fn decode_request(
 }
 
 fn run(
+    backend: &shims::Backend<'_>,
     request: gwz_core::MergeRequest,
     start: &Path,
     operation_id: &str,
@@ -67,8 +75,11 @@ fn run(
     // request without `local_source_name` reaches the engine exactly as
     // before; one with the selector takes the family wrapper, which refuses
     // as unsupported at this checkpoint before any effect.
-    let result =
-        shims::backend_with_recorder(operation_id, recorder, |backend, operation_id, events| {
+    let result = shims::backend_with_recorder(
+        backend,
+        operation_id,
+        recorder,
+        |backend, operation_id, events| {
             gwz_core::workspace_ops::handle_merge_with_local_family(
                 backend,
                 start,
@@ -76,7 +87,8 @@ fn run(
                 operation_id,
                 events,
             )
-        });
+        },
+    );
 
     match result {
         Ok(response) => {

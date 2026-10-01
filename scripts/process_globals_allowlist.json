@@ -9,6 +9,8 @@
     {"path": "native/src/operations.rs", "kind": "env", "name": "env::var", "disposition": "debt",
      "reason": "Test event-delay hook (GWZ_PY_TEST_EVENT_DELAY_MS) read from the environment in production builds; move it behind a test-only hook."},
     {"path": "native/src/operations.rs", "kind": "static", "name": "STORE", "disposition": "debt", "owner": "CS4.8 (session plan §5.4)",
-     "reason": "Process-global legacy operation store; becomes a member of the session context (RemPlan B5)."}
+     "reason": "Process-global legacy operation store; becomes a member of the session context (RemPlan B5)."},
+    {"path": "native/src/route/transport.rs", "kind": "env", "name": "env::vars_os", "disposition": "permanent", "imposed_by": "the process interface: a host process's environment is its own, and the extension is its driver, which captures it and passes it in (GwzCoreSessionDesign §5.6)",
+     "reason": "The per-operation transport's environment snapshot (1.1.0 S6.2): read once for each network operation at the native entry, in call and submit, while the caller holds the GIL, so no Python thread's os.environ write can race it; the operation's runtime then reads no process environment (gwz-py dev-docs/GwzPyPerOperationTransportDesign.md §2.3)."}
   ]
 }

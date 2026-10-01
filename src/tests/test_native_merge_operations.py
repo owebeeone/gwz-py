@@ -60,7 +60,7 @@ def merge_request(root: Path, request_id: str, op: MergeOp) -> MergeRequest:
 
 
 def submit(native, request: MergeRequest):
-    payload = native.submit(
+    payload = native.ClientHost().submit(
         "merge",
         "MergeRequest",
         "MergeResponse",
@@ -258,7 +258,7 @@ def test_invalid_attribution_failure_has_one_lifecycle_and_original_error(
         assert accepted.response.meta.operation_id == operation_id
     else:
         with pytest.raises(RuntimeError) as failure:
-            native.call("merge", "MergeRequest", "MergeResponse", encoded)
+            native.ClientHost().call("merge", "MergeRequest", "MergeResponse", encoded)
         assert getattr(failure.value, "code") == "InvalidRequest"
         assert "git_identity.name" in getattr(failure.value, "machine_message")
 
@@ -308,7 +308,7 @@ def test_open_operation_failure_completes_after_one_lifecycle_without_mutation(
         assert accepted.response.meta.operation_id == operation_id
     else:
         with pytest.raises(RuntimeError) as failure:
-            native.call(
+            native.ClientHost().call(
                 "merge",
                 "MergeRequest",
                 "MergeResponse",
@@ -360,7 +360,7 @@ def test_pre_014_open_record_is_a_third_occupancy(
         assert accepted.response.meta.operation_id == operation_id
     else:
         with pytest.raises(RuntimeError) as failure:
-            native.call(
+            native.ClientHost().call(
                 "merge",
                 "MergeRequest",
                 "MergeResponse",
@@ -438,7 +438,7 @@ def test_backend_and_store_failures_complete_with_structured_errors_without_muta
         assert accepted.response.meta.operation_id == operation_id
     else:
         with pytest.raises(RuntimeError) as failure:
-            native.call(
+            native.ClientHost().call(
                 "merge",
                 "MergeRequest",
                 "MergeResponse",
@@ -543,7 +543,7 @@ def test_failed_merge_completes_once_with_the_original_structured_error(
         assert accepted.response.meta.operation_id == operation_id
     else:
         with pytest.raises(RuntimeError) as failure:
-            native.call("merge", "MergeRequest", "MergeResponse", encoded)
+            native.ClientHost().call("merge", "MergeRequest", "MergeResponse", encoded)
         assert getattr(failure.value, "code") == "MergeValidationFailed"
 
     result = terminal_result(native, operation_id)

@@ -45,6 +45,7 @@ pub(crate) fn call(
     response_message: &str,
     request_bytes: &[u8],
     caller_cwd: &std::path::Path,
+    backend: &shims::Backend<'_>,
 ) -> PyResult<Vec<u8>> {
     match method {
         "remote_identity" => {
@@ -56,9 +57,9 @@ pub(crate) fn call(
                 })?;
             let request_id = request.meta.request_id.clone();
             let start = caller_cwd;
-            let response = shims::no_backend(&request_id, |operation_id| {
+            let response = shims::backend(backend, &request_id, |backend, operation_id| {
                 gwz_core::workspace_ops::handle_remote_identity(
-                    &gwz_core::git::Git2Backend::new(),
+                    backend,
                     start,
                     request,
                     operation_id,
@@ -75,6 +76,7 @@ pub(crate) fn call(
             response_message,
             request_bytes,
             caller_cwd,
+            backend,
         ),
         "add_existing_repo" => call_add_existing_repo(
             method,
@@ -82,6 +84,7 @@ pub(crate) fn call(
             response_message,
             request_bytes,
             caller_cwd,
+            backend,
         ),
         "create_repo" => call_create_repo(
             method,
@@ -89,6 +92,7 @@ pub(crate) fn call(
             response_message,
             request_bytes,
             caller_cwd,
+            backend,
         ),
         "repo_sync" => call_repo_sync(
             method,
@@ -96,6 +100,7 @@ pub(crate) fn call(
             response_message,
             request_bytes,
             caller_cwd,
+            backend,
         ),
         "detach_repo_member" => call_detach_repo_member(
             method,
@@ -103,6 +108,7 @@ pub(crate) fn call(
             response_message,
             request_bytes,
             caller_cwd,
+            backend,
         ),
         "status" => call_status(
             method,
@@ -110,6 +116,7 @@ pub(crate) fn call(
             response_message,
             request_bytes,
             caller_cwd,
+            backend,
         ),
         "ls" | "resolve_forall_targets" => call_ls(
             method,
@@ -154,6 +161,7 @@ fn call_init_from_sources(
     response_message: &str,
     request_bytes: &[u8],
     caller_cwd: &std::path::Path,
+    backend: &shims::Backend<'_>,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "InitFromSourcesRequest")?;
     codec::require_response(method, response_message, "InitFromSourcesResponse")?;
@@ -164,7 +172,7 @@ fn call_init_from_sources(
     let request_id = request.meta.request_id.clone();
     let start = caller_cwd;
     let (response, recorder) =
-        shims::backend_with_events(&request_id, |backend, operation_id, events| {
+        shims::backend_with_events(backend, &request_id, |backend, operation_id, events| {
             gwz_core::workspace_ops::handle_init_from_sources(
                 backend,
                 start,
@@ -183,6 +191,7 @@ fn call_add_existing_repo(
     response_message: &str,
     request_bytes: &[u8],
     caller_cwd: &std::path::Path,
+    backend: &shims::Backend<'_>,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "AddExistingRepoRequest")?;
     codec::require_response(method, response_message, "AddExistingRepoResponse")?;
@@ -192,7 +201,7 @@ fn call_add_existing_repo(
     })?;
     let request_id = request.meta.request_id.clone();
     let start = caller_cwd;
-    let response = shims::backend(&request_id, |backend, operation_id| {
+    let response = shims::backend(backend, &request_id, |backend, operation_id| {
         gwz_core::workspace_ops::handle_add_existing_repo(backend, start, request, operation_id)
     })?;
     codec::encode_message("encode AddExistingRepoResponse", || response.to_cbor())
@@ -204,6 +213,7 @@ fn call_create_repo(
     response_message: &str,
     request_bytes: &[u8],
     caller_cwd: &std::path::Path,
+    backend: &shims::Backend<'_>,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "CreateRepoRequest")?;
     codec::require_response(method, response_message, "CreateRepoResponse")?;
@@ -213,7 +223,7 @@ fn call_create_repo(
     })?;
     let request_id = request.meta.request_id.clone();
     let start = caller_cwd;
-    let response = shims::backend(&request_id, |backend, operation_id| {
+    let response = shims::backend(backend, &request_id, |backend, operation_id| {
         gwz_core::workspace_ops::handle_create_repo(backend, start, request, operation_id)
     })?;
     codec::encode_message("encode CreateRepoResponse", || response.to_cbor())
@@ -225,6 +235,7 @@ fn call_repo_sync(
     response_message: &str,
     request_bytes: &[u8],
     caller_cwd: &std::path::Path,
+    backend: &shims::Backend<'_>,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "RepoSyncRequest")?;
     codec::require_response(method, response_message, "RepoSyncResponse")?;
@@ -234,7 +245,7 @@ fn call_repo_sync(
     })?;
     let request_id = request.meta.request_id.clone();
     let start = caller_cwd;
-    let response = shims::backend(&request_id, |backend, operation_id| {
+    let response = shims::backend(backend, &request_id, |backend, operation_id| {
         gwz_core::workspace_ops::handle_repo_sync(backend, start, request, operation_id)
     })?;
     codec::encode_message("encode RepoSyncResponse", || response.to_cbor())
@@ -246,6 +257,7 @@ fn call_detach_repo_member(
     response_message: &str,
     request_bytes: &[u8],
     caller_cwd: &std::path::Path,
+    backend: &shims::Backend<'_>,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "DetachRepoMemberRequest")?;
     codec::require_response(method, response_message, "DetachRepoMemberResponse")?;
@@ -255,7 +267,7 @@ fn call_detach_repo_member(
     })?;
     let request_id = request.meta.request_id.clone();
     let start = caller_cwd;
-    let response = shims::backend(&request_id, |backend, operation_id| {
+    let response = shims::backend(backend, &request_id, |backend, operation_id| {
         gwz_core::workspace_ops::handle_detach_repo_member(backend, start, request, operation_id)
     })?;
     codec::encode_message("encode DetachRepoMemberResponse", || response.to_cbor())
@@ -267,6 +279,7 @@ fn call_status(
     response_message: &str,
     request_bytes: &[u8],
     caller_cwd: &std::path::Path,
+    backend: &shims::Backend<'_>,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "StatusRequest")?;
     codec::require_response(method, response_message, "StatusResponse")?;
@@ -276,7 +289,7 @@ fn call_status(
     })?;
     let request_id = request.meta.request_id.clone();
     let start = caller_cwd;
-    let response = shims::backend(&request_id, |backend, operation_id| {
+    let response = shims::backend(backend, &request_id, |backend, operation_id| {
         gwz_core::status::handle_status(backend, start, request, operation_id)
     })?;
     codec::encode_message("encode StatusResponse", || response.to_cbor())

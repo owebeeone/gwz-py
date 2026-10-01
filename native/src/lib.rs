@@ -2,12 +2,14 @@ use std::time::Duration;
 
 use pyo3::prelude::*;
 
+mod client_host;
 mod codec;
 mod diff_logs;
 mod dispatch;
 mod error;
 mod log_outputs;
 mod operations;
+mod route;
 mod shims;
 
 #[pyfunction]
@@ -23,43 +25,6 @@ fn version() -> &'static str {
 #[pyfunction]
 fn provenance() -> &'static str {
     gwz_core::BUILD_PROVENANCE
-}
-
-#[pyfunction]
-fn call(
-    py: Python<'_>,
-    method: &str,
-    request_message: &str,
-    response_message: &str,
-    request_bytes: &[u8],
-) -> PyResult<Vec<u8>> {
-    let method = method.to_owned();
-    let request_message = request_message.to_owned();
-    let response_message = response_message.to_owned();
-    let request_bytes = request_bytes.to_vec();
-
-    py.detach(move || {
-        // Dispatch takes the caller's directory from the request itself.
-        dispatch::call(&method, &request_message, &response_message, &request_bytes, None)
-    })
-}
-
-#[pyfunction]
-fn submit(
-    py: Python<'_>,
-    method: &str,
-    request_message: &str,
-    response_message: &str,
-    request_bytes: &[u8],
-) -> PyResult<Vec<u8>> {
-    let method = method.to_owned();
-    let request_message = request_message.to_owned();
-    let response_message = response_message.to_owned();
-    let request_bytes = request_bytes.to_vec();
-
-    py.detach(move || {
-        dispatch::submit(&method, &request_message, &response_message, &request_bytes)
-    })
 }
 
 #[pyfunction]
@@ -189,8 +154,8 @@ fn _gwz_core(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(health, module)?)?;
     module.add_function(wrap_pyfunction!(version, module)?)?;
     module.add_function(wrap_pyfunction!(provenance, module)?)?;
-    module.add_function(wrap_pyfunction!(call, module)?)?;
-    module.add_function(wrap_pyfunction!(submit, module)?)?;
+    // Each Client's network operations run through its own host (1.1.0 S6.2).
+    module.add_class::<client_host::ClientHost>()?;
     module.add_function(wrap_pyfunction!(subscribe_events, module)?)?;
     module.add_function(wrap_pyfunction!(wait_events, module)?)?;
     module.add_function(wrap_pyfunction!(operation_result, module)?)?;
