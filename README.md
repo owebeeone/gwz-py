@@ -126,6 +126,17 @@ python -m maturin develop
 python -m pytest src/tests/test_native_bridge.py -q
 ```
 
+The transport rows (`src/tests/test_client_host_transport.py`) run against the
+candidate extension, built with `--cfg gwz_transport_candidate` on the `gwz-core`
+and `gwz-transport` checkouts beside this one, and skip without it.
+`scripts/build_candidate_extension.py DIR` builds it in `DIR`, a new directory
+outside the workspace, and prints the module's path, which
+`GWZ_PY_NATIVE_MODULE` names to the suite. The runner does both:
+
+```sh
+python run_tests.py --candidate /tmp/gwz-py-candidate
+```
+
 Check or regenerate the protocol API against the sibling `gwz-core` checkout:
 
 ```sh

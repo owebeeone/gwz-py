@@ -5,7 +5,9 @@ They run against a candidate extension, which ``GWZ_PY_NATIVE_MODULE`` names,
 and the disposable loopback SSH and HTTPS fixtures, and each asserts through
 its operation's transport observations, or where an open never completed its
 transport's own failure, that it took the transport route. Without the
-variable they skip. The rows that need no network fixture are in
+variable they skip. ``scripts/build_candidate_extension.py`` builds the
+extension, and ``python run_tests.py --candidate DIR`` builds it and runs the
+suite with it named. The rows that need no network fixture are in
 ``test_client_host.py``; the off switch's seam is a unit test of the route
 (``native/src/route/transport_tests.rs``).
 """
@@ -72,7 +74,10 @@ def load(path: str) -> Any:
 def candidate() -> Any:
     path = os.environ.get("GWZ_PY_NATIVE_MODULE")
     if not path:
-        pytest.skip("GWZ_PY_NATIVE_MODULE names no candidate extension to take the transport route")
+        pytest.skip(
+            "GWZ_PY_NATIVE_MODULE names no candidate extension to take the transport route; "
+            "run_tests.py --candidate DIR builds one (scripts/build_candidate_extension.py)"
+        )
     return load(path)
 
 

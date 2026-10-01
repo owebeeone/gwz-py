@@ -10,13 +10,21 @@ of the cargo workspace above it is built into the *workspace* ``target/``, and a
 standalone ``gwz-cli`` into its own. The runner looks in that order and prints
 the binary it chose with the reason, so a stale copy in the other directory is
 never picked up silently.
+
+``--candidate DIR`` also builds the candidate extension in ``DIR``, a new
+directory outside the workspace, with the committed recipe,
+``scripts/build_candidate_extension.py``, and runs the suite with
+``GWZ_PY_NATIVE_MODULE`` naming it, so the transport rows run too. Without it
+they skip, unless ``GWZ_PY_NATIVE_MODULE`` already names a module.
 """
 
 from __future__ import annotations
 
+import argparse
 import os
 import subprocess
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Callable
 
@@ -150,18 +158,53 @@ def provision_rust_cli(
     return rust_bin
 
 
+def candidate_extension(
+    destination: Path,
+    env: dict[str, str],
+    *,
+    root: Path = ROOT,
+    run_command: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+) -> Path:
+    """Builds the candidate extension in `destination` with the committed
+    recipe and names it to the suite in `env`; the recipe prints the module
+    last."""
+
+    command = [sys.executable, str(root / "scripts" / "build_candidate_extension.py"), str(destination)]
+    print("+", " ".join(command), flush=True)
+    built = run_command(command, check=True, cwd=root, env=env, stdout=subprocess.PIPE, text=True)
+    print(built.stdout, end="", flush=True)
+    lines = built.stdout.strip().splitlines()
+    module = Path(lines[-1]) if lines else None
+    if module is None or not module.is_file():
+        raise RuntimeError(f"the candidate recipe printed no extension module: {built.stdout!r}")
+    env["GWZ_PY_NATIVE_MODULE"] = str(module)
+    print(f"+ candidate extension: {module}", flush=True)
+    return module
+
+
 def run(cmd: list[str], *, env: dict[str, str]) -> None:
     print("+", " ".join(cmd), flush=True)
     subprocess.run(cmd, check=True, cwd=ROOT, env=env)
 
 
-def main() -> None:
+def main(argv: Sequence[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
+    parser.add_argument(
+        "--candidate",
+        type=Path,
+        metavar="DIR",
+        help="also build the candidate extension in DIR, a new directory outside the "
+        "workspace, and run the suite with GWZ_PY_NATIVE_MODULE naming it",
+    )
+    options = parser.parse_args(argv)
     env = command_environment()
     # `provision_rust_cli` prints the binary it chose and why.
     provision_rust_cli(env)
     # Never let a stale editable native extension satisfy the Python parity gate.
     run([sys.executable, "-m", "maturin", "develop"], env=env)
     run([sys.executable, "scripts/regen_protocol.py", "--check"], env=env)
+    if options.candidate is not None:
+        candidate_extension(options.candidate, env)
     run([sys.executable, "-m", "pytest", "src/tests", "-q"], env=env)
 
 
