@@ -12,7 +12,7 @@ path = "native/src/lib.rs"
 crate-type = ["cdylib"]
 
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(gwz_transport_candidate)'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(gwz_transport_candidate)', 'cfg(gwz_session_candidate)'] }
 
 [dependencies]
 cfg-if = "1"
