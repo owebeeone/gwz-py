@@ -5,15 +5,25 @@
 use gwz_core::RequestMeta;
 use gwz_core::git::Git2Backend;
 use gwz_core::model::ModelResult;
+use gwz_core::transport_scope::Operation;
 use pyo3::PyResult;
 
 use crate::client_host::{Canceller, Cleanup};
 
 pub(crate) struct Route;
 
+#[derive(Default)]
+pub(crate) struct Notices {}
+
 /// The route of a network operation: always the native one here, which
 /// leaves the request as it is.
-pub(crate) fn capture(_request_bytes: &mut Vec<u8>, _meta: &mut RequestMeta) -> PyResult<Route> {
+pub(crate) fn capture(
+    _py: pyo3::Python<'_>,
+    _request_bytes: &mut Vec<u8>,
+    _meta: &mut RequestMeta,
+    _operation: Operation,
+    _ignored_files: &Notices,
+) -> PyResult<Route> {
     Ok(Route)
 }
 

@@ -4,7 +4,9 @@ import argparse
 from typing import Any
 
 from . import cli_local
-from .cli_shared import CliUsageError, CommandContext, CommandRegistry, global_options_parent
+from .cli_shared import (
+    CliUsageError, CommandContext, CommandRegistry, TRANSPORT_HELP, global_options_parent,
+)
 from .errors import GwzBridgeError
 from .protocol.generated import CloneRepoMemberResponse
 
@@ -143,6 +145,7 @@ def configure_repo(parser: argparse.ArgumentParser) -> None:
     clone = subparsers.add_parser(
         "clone",
         help="Clone and register a new repository member",
+        epilog=TRANSPORT_HELP,
         parents=[nested_global],
         conflict_handler="resolve",
     )

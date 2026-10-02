@@ -183,18 +183,24 @@ def _merge_policy(
 
 
 class Client:
-    """Async Python facade over gwz-core protocol requests."""
+    """Async Python facade over gwz-core protocol requests.
+
+    ``max_connections_per_host=None`` leaves the limit unset: 32 on gwz's
+    transport, or 8 when native is selected in the transport candidate.
+    An explicit positive value is honoured; a per-call value overrides it.
+    """
 
     def __init__(
         self,
         root: str | Path | None = None,
         bridge: CoreBridge | None = None,
         *,
-        max_connections_per_host: int = 32,
+        max_connections_per_host: int | None = None,
     ) -> None:
-        if (isinstance(max_connections_per_host, bool)
-                or not isinstance(max_connections_per_host, int)
-                or max_connections_per_host <= 0):
+        if (max_connections_per_host is not None
+                and (isinstance(max_connections_per_host, bool)
+                     or not isinstance(max_connections_per_host, int)
+                     or max_connections_per_host <= 0)):
             raise ValueError("max_connections_per_host must be a positive integer")
         self.root = Path(root) if root is not None else None
         self._bridge = bridge
@@ -291,7 +297,7 @@ class Client:
                 or len(selected_request_id.encode("utf-8")) > 128
                 or any(unicodedata.category(char) == "Cc" for char in selected_request_id)):
             raise GwzBridgeError("invalid request_id", code="InvalidRequest")
-        if max_connections_per_host is None and self._max_connections_per_host != 32:
+        if max_connections_per_host is None:
             max_connections_per_host = self._max_connections_per_host
         if progress_min_interval_ms is None:
             progress_min_interval_ms = DEFAULT_PROGRESS_MIN_INTERVAL_MS

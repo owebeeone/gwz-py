@@ -14,6 +14,16 @@ from .protocol.generated import SyncBehavior, RemoteSshIdentity, TransportOption
 CommandHandler = Callable[["CommandContext"], Awaitable[Any]]
 ConfigureParser = Callable[[argparse.ArgumentParser], None]
 
+TRANSPORT_HELP = (
+    "In the 1.1.0 transport candidate, network operations select gwz (default) "
+    "or native. GWZ_TRANSPORT overrides the global gwz.transport setting. "
+    "Try native once: GWZ_TRANSPORT=native gwz-py fetch. Persist it: "
+    "git config --global gwz.transport native. Override it: "
+    "GWZ_TRANSPORT=gwz gwz-py fetch. Remove the setting: "
+    "git config --global --unset-all gwz.transport. Remove an exported override: "
+    "unset GWZ_TRANSPORT."
+)
+
 
 GLOBAL_LIST_ATTRS = ("targets", "exclude_targets", "member_paths", "remote_identities")
 GLOBAL_BOOL_ATTRS = (
@@ -172,6 +182,8 @@ class CommandRegistry:
             parser = subparsers.add_parser(command.name, help=command.help, **kwargs)
             if command.configure is not None:
                 command.configure(parser)
+            if command.name in {"fetch", "push", "pull", "clone", "materialize"}:
+                parser.epilog = TRANSPORT_HELP
             parser.set_defaults(command_handler=command.handler)
 
 
@@ -301,14 +313,18 @@ def add_global_options(
         dest=f"{dest_prefix}jobs",
         type=positive_int,
         default=scalar_default,
-        help="Global ceiling on concurrent member operations",
+        help=("Global ceiling on concurrent member operations; when omitted, "
+              "100 on gwz or 50 on native in the transport candidate; "
+              "an explicit positive value overrides the default"),
     )
     parser.add_argument(
         "--max-per-host",
         dest=f"{dest_prefix}max_connections_per_host",
         type=positive_int,
         default=scalar_default,
-        help="Max concurrent connections to any one host",
+        help=("Max concurrent connections to any one host; when omitted, "
+              "32 on gwz or 8 on native in the transport candidate; "
+              "an explicit positive value overrides the default"),
     )
     parser.add_argument(
         "--progress-interval",
@@ -344,7 +360,9 @@ def add_global_options(
         type=non_negative_int,
         default=scalar_default,
         metavar="secs",
-        help="Abort a stalled SSH/network read after N seconds (0 = no timeout)",
+        help=("Abort a stalled SSH/network read after N seconds, on gwz's transport "
+              "and, with GWZ_TRANSPORT=native, as libgit2's connect and read timeout "
+              "(0 = no timeout, default 9 on either transport)"),
     )
 
 
