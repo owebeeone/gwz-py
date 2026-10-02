@@ -341,7 +341,12 @@ def test_without_configure_transport_runtime_a_stalled_setup_fails_on_the_defaul
 ) -> None:
     """S3.3's stall regression through gwz-py's path: no timeout is
     configured, and a setup stage that stalls expires with reason `stall` at
-    the default 9 s, while the aggregate is still ahead."""
+    the default 9 s, while the aggregate is still ahead. Since TR2.1 a stalled
+    setup is retried: gwz-py has no `--max-retries` in 1.1.0
+    (dev-docs/GwzPyPerOperationTransportDesign.md §2.8), so the default 3
+    retries give four attempts, one connection each, with waits of 1, 2 and
+    4 s and under 1 s of jitter between them, and only the fourth attempt's
+    stall fails the operation, about 44 s in."""
     with StallServer() as stall:
         host = candidate.ClientHost()
         begun = time.monotonic()
@@ -350,7 +355,8 @@ def test_without_configure_transport_runtime_a_stalled_setup_fails_on_the_defaul
         took = time.monotonic() - begun
         print(f"the stalled setup failed after {took:.2f} s: {stalled.value}")
         assert "ssh setup timeout: stall" in str(stalled.value)
-        assert 8 < took < 15
+        assert stall.accepted == 4, "one connection for each of the four attempts"
+        assert 4 * 9 + 7 - 1 < took < 4 * 9 + 7 + 15
         host.close()
 
 
