@@ -499,7 +499,8 @@ def test_both_clis_share_the_check_remotes_help_text(tmp_path: Path) -> None:
 
 # Partial results (TR2.3): a `partial` result lists each failed member's error in
 # its top-level `errors`, and `GwzOperationError.member_errors` is that list
-# (`gwz-cli/docs/MachineOutput.md`, "Partial results").
+# (`gwz-cli/docs/MachineOutput.md`, "Failed, rejected and partial results").
+# test_member_error_copies.py has the `failed` and `rejected` results.
 
 
 def test_a_partial_push_raises_with_each_failed_members_error(tmp_path: Path) -> None:

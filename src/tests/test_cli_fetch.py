@@ -200,8 +200,9 @@ def test_a_dry_run_row_says_it_would_contact_and_never_says_no_change() -> None:
 
 def test_a_failed_row_carries_its_reason() -> None:
     """Core repeats a partial result's member failures in `errors` (gwz-cli
-    docs/MachineOutput.md, "Partial results"); the report prints the copy no
-    second time, so it reads as it did before core sent copies."""
+    docs/MachineOutput.md, "Failed, rejected and partial results"); the report
+    prints the copy no second time, so it reads as it did before core sent
+    copies."""
     error = GwzError(
         code=GwzErrorCode.remote_rejected,
         message="connection refused",

@@ -32,10 +32,10 @@ def status_line(response: Any) -> str:
 
 def errors_not_on_members(envelope: Any) -> list[Any]:
     """The top-level errors a human report prints after its rows: every one that
-    is not a copy of a member entry's error. A `partial` result copies each
-    failed member's error into `errors` for machine readers (gwz-cli
-    docs/MachineOutput.md, "Partial results"); a report prints no copy, as the
-    Rust CLI's reports do."""
+    is not a copy of a member entry's error. A `partial`, `failed` or `rejected`
+    result copies each failed or refused member's error into `errors` for
+    machine readers (gwz-cli docs/MachineOutput.md, "Failed, rejected and
+    partial results"); a report prints no copy, as the Rust CLI's reports do."""
     members = getattr(envelope, "members", None) or []
     copied = [member.error for member in members if getattr(member, "error", None) is not None]
     return [error for error in getattr(envelope, "errors", None) or [] if error not in copied]

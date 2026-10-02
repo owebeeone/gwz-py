@@ -122,8 +122,9 @@ def test_stash_push_rejects_untracked_and_ignored() -> None:
 
 def test_a_partial_stash_report_prints_no_copied_member_error() -> None:
     """A partial result repeats each failed member's error in `errors` (gwz-cli
-    docs/MachineOutput.md, "Partial results"). The stash report shows member
-    statuses only, and like the Rust CLI's it prints no copy."""
+    docs/MachineOutput.md, "Failed, rejected and partial results"). The stash
+    report shows member statuses only, and like the Rust CLI's it prints no
+    copy."""
     error = GwzError(
         code=GwzErrorCode.git_command_failed, message="stash failed", detail=None,
         member_id="mem_lib", member_path="lib", target_kind=TargetKind.member, record_context=None,
