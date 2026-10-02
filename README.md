@@ -43,9 +43,10 @@ to receive every update.
 Every method except `log` raises `gwz.GwzOperationError` when the aggregate
 status is not `ok`, `noop` or `accepted`. The exception keeps the typed
 response in `response`. Its `member_errors` is the response's top-level
-`errors`: on a `partial` result, some members succeeded and it holds the error
-of each member that failed or was refused
-([Partial results](https://owebeeone.github.io/gwz-cli/MachineOutput/#partial-results)).
+`errors`: on a `partial`, `failed` or `rejected` result it holds, first, the
+error of each member that failed or was refused; on a `partial` result, the
+other members succeeded
+([Failed, rejected and partial results](https://owebeeone.github.io/gwz-cli/MachineOutput/#failed-rejected-and-partial-results)).
 
 ## Python CLI
 

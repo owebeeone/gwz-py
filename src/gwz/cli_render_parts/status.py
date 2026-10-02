@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .common import enum_label, push_blank
+from .common import enum_label, errors_not_on_members, push_blank
 
 
 def render_status_porcelain(workspace_status: Any) -> str:
@@ -251,7 +251,7 @@ def append_status_issues(lines: list[str], response: Any) -> None:
             issues.append(issue)
     issues.extend(
         f"{enum_label(error.code)}: {error.message}"
-        for error in getattr(envelope, "errors", [])
+        for error in errors_not_on_members(envelope)
     )
     if not issues:
         return
