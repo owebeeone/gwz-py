@@ -18,10 +18,12 @@ TRANSPORT_HELP = (
     "In the 1.1.0 transport candidate, network operations select gwz (default) "
     "or native. GWZ_TRANSPORT overrides the global gwz.transport setting. "
     "Try native once: GWZ_TRANSPORT=native gwz-py fetch. Persist it: "
-    "git config --global gwz.transport native. Override it: "
+    "git config --file \"$HOME/.gitconfig\" gwz.transport native. Override it: "
     "GWZ_TRANSPORT=gwz gwz-py fetch. Remove the setting: "
-    "git config --global --unset-all gwz.transport. Remove an exported override: "
-    "unset GWZ_TRANSPORT."
+    "git config --file \"$HOME/.gitconfig\" --unset-all gwz.transport. Remove an exported override: "
+    "unset GWZ_TRANSPORT. The paired --file commands address the conventional "
+    "global file GWZ reads even when GIT_CONFIG_GLOBAL names another file; "
+    "Git --global would instead edit that other file, which GWZ ignores."
 )
 
 

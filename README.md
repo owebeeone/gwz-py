@@ -183,16 +183,18 @@ In the 1.1.0 transport candidate, each network operation reads `GWZ_TRANSPORT`
 (`gwz` or `native`) when it starts. With the variable unset, `gwz.transport` in
 `~/.gitconfig` and `$XDG_CONFIG_HOME/git/config` (default
 `~/.config/git/config`) selects the transport; the default is `gwz`.
-For example, `git config --global gwz.transport native` selects libgit2's
+For example, `git config --file "$HOME/.gitconfig" gwz.transport native` selects libgit2's
 native transport, as gwz 1.0 used. Remove it with
-`git config --global --unset-all gwz.transport`, or set `GWZ_TRANSPORT=gwz`
+`git config --file "$HOME/.gitconfig" --unset-all gwz.transport`, or set `GWZ_TRANSPORT=gwz`
 for the process. Unset `GWZ_TRANSPORT` to remove that override. `Client` takes
 no transport parameter. Environment and file changes apply to the next
 operation, including operations on an existing Client.
 
 The resolver follows unconditional `include.path`, but applies no `includeIf`;
 it reads neither system Git configuration nor a file named by
-`GIT_CONFIG_GLOBAL`. Invalid environment or global values refuse a network
+`GIT_CONFIG_GLOBAL`. The paired `--file` commands above address the conventional
+global file even when that variable names another file; Git's `--global` form
+would edit the other file, which GWZ ignores. Invalid environment or global values refuse a network
 operation with `GwzBridgeError(code="InvalidRequest")`. Unreadable global
 files are skipped. Repository `.git/config` and `config.worktree` values are
 ignored: logger `gwz` emits a `WARNING` record once per file per Client.
