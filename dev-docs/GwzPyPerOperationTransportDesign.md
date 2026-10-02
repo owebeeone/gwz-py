@@ -2,6 +2,7 @@
 
 Date: 2026-10-01. Status: **draft. The operator decided OD14 on 2026-10-01 and directed that this design be skim-reviewed for obvious issues, without the full review loop**.
 - The [skim review](../../gwz-core/dev-docs/GwzTransportReleasePlanAmendment-2-ReviewSkim.md) found six P2 and three P3 text defects, and all are applied. Its [re-check](../../gwz-core/dev-docs/GwzTransportReleasePlanAmendment-2-ReviewSkim-1.md) reported GO with every finding closed. It filed four new P3s, which are applied as it specified.
+- Erratum, 2026-10-02: §2.6's first bullet gives as its reason that an operation's thread needs the GIL to build its Python error. Since gwz-py `a671054` that error is lazy: it is built only where Python raises or reads it (`native/src/error.rs`), so no operation's thread attaches to build it. The rule stands for a narrower reason: a failed `submit`'s worker still takes the GIL to render its error's text into the record that `operation_result` waits for, so a wait that held the GIL could deadlock with that worker. §2.6 is left as reviewed.
 
 ## Decision and scope
 

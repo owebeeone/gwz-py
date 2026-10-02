@@ -53,8 +53,12 @@ ROW_ENDPOINT, ROW_CONNECTION = 9, 10
 # Time for a cancelled operation's own I/O to fail; it would otherwise wait
 # out the transport's 9 s stall.
 PROMPT = 3.0
-# Slack on top of the cleanup bound for a wait that the bound ends.
-SLACK = 2.0
+# Since TR2.17 the endpoint answers a Cancel on an attached SSH stream, so a
+# cancel or close mid-exchange returns, and its operation ends, in tens of
+# milliseconds (0.01 to 0.13 s measured on 2026-10-02, on a heavily loaded
+# host), where before they waited out the 5 s cleanup bound. 1 s leaves a
+# loaded runner room and still fails an entry that waits the bound out again.
+PROMPT_CLEANUP = 1.0
 PROXY_VARIABLES = (
     "https_proxy", "HTTPS_PROXY", "all_proxy", "ALL_PROXY", "no_proxy", "NO_PROXY",
     "GIT_SSL_CAINFO", "SSL_CERT_FILE", "SSH_AUTH_SOCK",
@@ -233,11 +237,12 @@ def test_a_cancel_during_setup_returns_promptly_with_its_cleanup_report(
 def test_cancelling_a_running_network_operation_returns_its_cleanup_report(
     candidate: Any, stalling: SshFixture, tmp_path: Path
 ) -> None:
-    """A cancel mid-exchange fails the operation's read at once. The entry
-    then waits out the host's 5 s cleanup bound before it returns (S6.1), and
-    the cancel's own wait is that bound too, so the report is the
-    operation's, or, if the bound ended first, one pending job; peer cleanup
-    is never confirmed in 1.1.0."""
+    """A cancel mid-exchange fails the operation's read at once, and since
+    TR2.17 the endpoint answers the Cancel on the attached stream, so the
+    entry no longer waits out the host's 5 s cleanup bound: the cancel
+    returns the operation's own report, and the call ends, within
+    PROMPT_CLEANUP. No pending job is left; peer cleanup is never confirmed
+    in 1.1.0."""
     host = candidate.ClientHost()
     with ThreadPoolExecutor(max_workers=1) as threads:
         running = threads.submit(
@@ -248,11 +253,12 @@ def test_cancelling_a_running_network_operation_returns_its_cleanup_report(
         report = host.cancel_operation("op_req_mid_cancel")
         took = time.monotonic() - begun
         with pytest.raises(RuntimeError) as failed:
-            running.result(timeout=CLEANUP_BOUND + SLACK)
+            running.result(timeout=CLEANUP_BOUND)
         ended = time.monotonic() - begun
     print(f"cancel mid-exchange returned after {took:.2f} s with {report}; the call ended after {ended:.2f} s")
-    assert took < CLEANUP_BOUND + SLACK
-    assert report in ((0, False), (1, False))
+    assert took < PROMPT_CLEANUP
+    assert ended < PROMPT_CLEANUP
+    assert report == (0, False)
     assert "Cancelled" in str(failed.value)
     assert error_receipts(failed.value), "it took the transport route"
     host.close()
@@ -291,9 +297,10 @@ def test_close_with_a_running_network_operation_cancels_it_and_counts_it(
     report = host.close()
     took = time.monotonic() - begun
     print(f"close with a running network operation returned after {took:.2f} s with {report}")
-    assert took < CLEANUP_BOUND + SLACK
-    # Counted: its own report, or one pending job if it outlived the bound.
-    assert report in ((0, False), (1, False))
+    # The operation ends at once (TR2.17), so close counts it with its own
+    # report, and no operation outlives the bound to leave a pending job.
+    assert took < PROMPT_CLEANUP
+    assert report == (0, False)
     result = raw_result(candidate, running)
     assert result[4] == 5
     assert "Cancelled" in result[8][0][2]
@@ -386,7 +393,11 @@ def test_interpreter_exit_cancels_a_running_network_operation_and_leaves_no_proc
     print(f"exit with a running network operation took {took:.2f} s")
     assert process.returncode == 0, stderr
     assert stdout.split() == ["exiting"]
-    assert took < CLEANUP_BOUND + 2 * SLACK
+    # The child's whole run, its start included, ends within the cleanup
+    # bound, which an exit that waited the bound out again could not (5.7 s
+    # before TR2.17; 0.9 to 2.3 s measured on 2026-10-02, on a heavily loaded
+    # host).
+    assert took < CLEANUP_BOUND
     try:
         os.killpg(process.pid, 0)
     except ProcessLookupError:
