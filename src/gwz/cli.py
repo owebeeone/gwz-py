@@ -21,6 +21,7 @@ from .cli_shared import (
     CommandContext,
     CommandRegistry,
     GwzArgumentParser,
+    TRANSPORT_HELP,
     add_global_options,
     exit_code_for_error,
     exit_code_for_response,
@@ -41,6 +42,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="gwz-py",
         description="Manage GWZ multi-repository workspaces",
         allow_abbrev=False,
+        epilog=TRANSPORT_HELP,
     )
     add_global_options(parser)
     parser.add_argument(
