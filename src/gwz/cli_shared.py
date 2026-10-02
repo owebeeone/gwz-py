@@ -344,7 +344,9 @@ def add_global_options(
         type=non_negative_int,
         default=scalar_default,
         metavar="secs",
-        help="Abort a stalled SSH/network read after N seconds (0 = no timeout)",
+        help=("Abort a stalled SSH/network read after N seconds, on gwz's transport "
+              "and, with GWZ_TRANSPORT=native, as libgit2's connect and read timeout "
+              "(0 = no timeout, default 9 on either transport)"),
     )
 
 

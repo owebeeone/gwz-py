@@ -17,9 +17,9 @@
 cfg_if::cfg_if! {
     if #[cfg(all(unix, gwz_transport_candidate))] {
         mod transport;
-        pub(crate) use transport::{Route, capture};
+        pub(crate) use transport::{Notices, Route, capture};
     } else {
         mod native;
-        pub(crate) use native::{Route, capture};
+        pub(crate) use native::{Notices, Route, capture};
     }
 }

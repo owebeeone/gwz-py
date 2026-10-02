@@ -32,6 +32,8 @@ use crate::{codec, dispatch, error, shims};
 #[pyclass(module = "gwz._gwz_core", frozen)]
 pub(crate) struct ClientHost {
     operations: Arc<Operations>,
+    /// Repository configuration files already reported for this Client.
+    ignored_transport_files: route::Notices,
     /// The `atexit` callback, until `close` unregisters it.
     exit_hook: Mutex<Option<Py<PyAny>>>,
 }
@@ -44,6 +46,7 @@ impl ClientHost {
         let exit_hook = register_exit_hook(py, Arc::downgrade(&operations))?;
         Ok(Self {
             operations,
+            ignored_transport_files: route::Notices::default(),
             exit_hook: Mutex::new(Some(exit_hook)),
         })
     }
@@ -59,7 +62,7 @@ impl ClientHost {
         request_bytes: &[u8],
     ) -> PyResult<Vec<u8>> {
         let mut request_bytes = request_bytes.to_vec();
-        let network = self.network(method, &mut request_bytes)?;
+        let network = self.network(py, method, &mut request_bytes)?;
         let (method, request_message, response_message) = (
             method.to_owned(),
             request_message.to_owned(),
@@ -98,7 +101,7 @@ impl ClientHost {
         request_bytes: &[u8],
     ) -> PyResult<Vec<u8>> {
         let mut request_bytes = request_bytes.to_vec();
-        let network = self.network(method, &mut request_bytes)?;
+        let network = self.network(py, method, &mut request_bytes)?;
         let (method, request_message, response_message) = (
             method.to_owned(),
             request_message.to_owned(),
@@ -150,11 +153,22 @@ impl ClientHost {
     /// The request as a network operation, if gwz-core's transport scope
     /// says it is one: its route captured and its registration made, here at
     /// the native entry, while the caller holds the GIL.
-    fn network(&self, method: &str, request_bytes: &mut Vec<u8>) -> PyResult<Option<Network>> {
+    fn network(
+        &self,
+        py: Python<'_>,
+        method: &str,
+        request_bytes: &mut Vec<u8>,
+    ) -> PyResult<Option<Network>> {
         let Some(mut meta) = transport_meta(method, request_bytes) else {
             return Ok(None);
         };
-        let route = route::capture(request_bytes, &mut meta)?;
+        let route = route::capture(
+            py,
+            request_bytes,
+            &mut meta,
+            Operation::from_method(method).expect("transport scope has a method"),
+            &self.ignored_transport_files,
+        )?;
         let operation_id = shims::operation_id(&meta.request_id);
         let ticket = self
             .operations

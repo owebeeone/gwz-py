@@ -176,3 +176,42 @@ If `gwz._gwz_core` is missing in a development checkout, run
 ## License
 
 `gwz-py` is licensed under GPL-2.0-only.
+
+### Choosing the network transport
+
+In the 1.1.0 transport candidate, each network operation reads `GWZ_TRANSPORT`
+(`gwz` or `native`) when it starts. With the variable unset, `gwz.transport` in
+`~/.gitconfig` and `$XDG_CONFIG_HOME/git/config` (default
+`~/.config/git/config`) selects the transport; the default is `gwz`.
+For example, `git config --global gwz.transport native` selects libgit2's
+native transport, as gwz 1.0 used. Remove it with
+`git config --global --unset-all gwz.transport`, or set `GWZ_TRANSPORT=gwz`
+for the process. Unset `GWZ_TRANSPORT` to remove that override. `Client` takes
+no transport parameter. Environment and file changes apply to the next
+operation, including operations on an existing Client.
+
+The resolver follows unconditional `include.path`, but applies no `includeIf`;
+it reads neither system Git configuration nor a file named by
+`GIT_CONFIG_GLOBAL`. Invalid environment or global values refuse a network
+operation with `GwzBridgeError(code="InvalidRequest")`. Unreadable global
+files are skipped. Repository `.git/config` and `config.worktree` values are
+ignored: logger `gwz` emits a `WARNING` record once per file per Client.
+Logging failures do not refuse the operation. Native selection emits a
+`UserWarning`, which normal Python warning filters can silence or turn into
+an error. The `gwz-py` CLI renders both diagnostics as notes on standard error.
+
+Native is a pre-operation escape hatch; an operation never switches transports
+on failure. With native selected, unset concurrency and host connection limits
+resolve to 50 and 8. With gwz selected they resolve to 100 and 32.
+`Client(max_connections_per_host=None)` leaves the host limit unset. Any explicit
+positive value, including 32, is honoured, and a per-call value overrides the
+constructor. Native has no pooling, setup retries or 30-second setup budget.
+`git://`, `http://` and `file://` remotes always use libgit2's native transport.
+
+Both transports use the process's one timeout clock: 9 seconds by default,
+or the value set by `await client.configure_transport_timeout(seconds)`
+before the first operation (`gwz-py --ssh-timeout seconds` in the CLI).
+For native it bounds libgit2 connect/read waits; for gwz it bounds stalled
+setup/body reads. Zero disables that clock. Changing routes does not reset
+it. Cancelling a running native operation returns `UnsupportedOperation`;
+close waits for native work for at most the established cleanup bound.

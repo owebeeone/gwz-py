@@ -9,7 +9,7 @@ use std::ffi::OsString;
 use gwz_core::model::ErrorCode;
 use gwz_core::{FetchRequest, RemoteSshIdentity, TransportOptions};
 
-use super::{Cleanup, EnvironmentSnapshot, RequestMeta, capture_with, transport_off};
+use super::{Cleanup, RequestMeta, capture_with, fill_native_defaults};
 
 /// A fetch whose invocation names `default_identity` and, for `origin`,
 /// `remote_identity`.
@@ -57,9 +57,35 @@ fn environment(home: Option<&str>) -> Vec<(OsString, OsString)> {
 }
 
 #[test]
-fn the_production_seam_leaves_the_off_switch_off_until_tr2_5() {
-    let snapshot = EnvironmentSnapshot::from_os_pairs(environment(Some("/home/user"))).unwrap();
-    assert!(!transport_off(&snapshot));
+fn native_defaults_are_written_to_request_and_explicit_limits_survive() {
+    let mut bytes = request(None, None);
+    let mut request_meta = meta(&bytes);
+    fill_native_defaults(&mut bytes, &mut request_meta);
+    assert_eq!(request_meta.policy.as_ref().unwrap().concurrency, Some(50));
+    assert_eq!(
+        request_meta
+            .policy
+            .as_ref()
+            .unwrap()
+            .max_connections_per_host,
+        Some(8)
+    );
+    assert_eq!(request_meta, meta(&bytes));
+
+    request_meta
+        .policy
+        .as_mut()
+        .unwrap()
+        .max_connections_per_host = Some(32);
+    fill_native_defaults(&mut bytes, &mut request_meta);
+    assert_eq!(
+        request_meta
+            .policy
+            .as_ref()
+            .unwrap()
+            .max_connections_per_host,
+        Some(32)
+    );
 }
 
 /// With the seam on, the operation takes libgit2's native route: the snapshot

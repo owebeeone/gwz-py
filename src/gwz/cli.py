@@ -30,6 +30,7 @@ from .cli_shared import (
     _silence_broken_stdout,
     validate_args,
 )
+from ._transport_notices import cli_notices
 from .client import Client
 from .errors import GwzError, GwzOperationError
 from .protocol.generated import MergeResponse, PushResponse
@@ -140,7 +141,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
-        return asyncio.run(run(args))
+        with cli_notices():
+            return asyncio.run(run(args))
     except (CliUsageError, GwzError) as exc:
         machine = args.json or getattr(args, "jsonl", False)
         if getattr(args, "command", None) == "log":

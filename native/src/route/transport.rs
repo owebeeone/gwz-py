@@ -8,21 +8,28 @@
 //! | Otherwise the operation runs inside gwz-core's cancellable entry, on a runtime of its own built from the snapshot, with a token whose controls the host keeps as the operation's canceller | §2.2, §2.4 "No sharing", §2.5 |
 //! | An invocation identity named `~` or `~/…` resolves against the snapshot's `HOME`, so the operation's key, like its known hosts, comes from the environment it captured | §2.8 "Changed in documented behaviour" |
 
+use std::collections::BTreeSet;
 use std::ffi::{OsStr, OsString};
-use std::path::Path;
-use std::sync::Arc;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use gwz_core::git::Git2Backend;
 use gwz_core::model::ModelResult;
 use gwz_core::session_host::EnvironmentSnapshot;
 use gwz_core::transport_host::{CallControls, CancellationToken, with_cancellable_local_transport};
+use gwz_core::transport_scope::Operation;
+use gwz_core::transport_setting::{self, Driver, Source, Transport};
 use gwz_core::{Cbor, RequestMeta};
-use pyo3::PyResult;
+use pyo3::types::PyAnyMethods;
+use pyo3::{PyResult, Python};
 
 use crate::client_host::{Canceller, Cleanup};
 use crate::error;
 
 pub(crate) struct Route(Inner);
+
+/// The repository files already reported by this Client.
+pub(crate) type Notices = Mutex<BTreeSet<PathBuf>>;
 
 enum Inner {
     /// The off switch is on: libgit2's native route, and no runtime.
@@ -39,17 +46,81 @@ enum Inner {
 /// caller holds the GIL. `meta` is the request's metadata, which the entry
 /// takes and checks against the handler's: anything this resolves in it, it
 /// resolves in `request_bytes` too.
-pub(crate) fn capture(request_bytes: &mut Vec<u8>, meta: &mut RequestMeta) -> PyResult<Route> {
-    capture_with(request_bytes, meta, std::env::vars_os(), transport_off)
-}
-
-/// Whether the off switch is on for an operation. TR1.5 designs its
-/// environment and user-configuration forms, which govern gwz-py resolved
-/// from the operation's snapshot and the user configuration at the
-/// operation's start (amendment 2 §3.17, design §2.2), and TR2.5 implements
-/// them. Until then the switch has no form, and it is off.
-fn transport_off(_environment: &EnvironmentSnapshot) -> bool {
-    false
+pub(crate) fn capture(
+    py: Python<'_>,
+    request_bytes: &mut Vec<u8>,
+    meta: &mut RequestMeta,
+    operation: Operation,
+    ignored_files: &Notices,
+) -> PyResult<Route> {
+    // Capture before releasing the GIL; file reads and the bounded target
+    // scan can then let another Python thread run.
+    let pairs: Vec<_> = std::env::vars_os().collect();
+    let environment = EnvironmentSnapshot::from_os_pairs(pairs.clone()).map_err(error::model)?;
+    let start = gwz_core::workspace_ops::caller_directory(meta).ok();
+    let scan_meta = meta.clone();
+    let (setting, ignored) = py.detach(move || {
+        let setting = transport_setting::resolve(None, &environment);
+        let ignored = start
+            .as_deref()
+            .map(|start| transport_setting::ignored_values(operation, start, &scan_meta))
+            .unwrap_or_default();
+        (setting, ignored)
+    });
+    let setting = setting.map_err(|refusal| {
+        error::model(gwz_core::model::ModelError::new(
+            gwz_core::model::ErrorCode::InvalidRequest,
+            refusal.message(Driver::Python),
+        ))
+    })?;
+    for value in ignored {
+        let is_new = ignored_files
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(value.location.file.clone());
+        if is_new {
+            let message = format!(
+                "gwz: ignoring {} in {} ({}): only GWZ_TRANSPORT and your global git configuration select the transport; {}",
+                value.entry_text(),
+                value.location.where_text(),
+                value.scope.text(),
+                value.location.remove_text()
+            );
+            // Logging failures never turn an ignored repository value into a refusal.
+            if let Ok(logging) = py.import("logging")
+                && let Ok(logger) = logging.call_method1("getLogger", ("gwz",))
+            {
+                let _ = logger.call_method1("warning", (message,));
+            }
+        }
+    }
+    if setting.transport == Transport::Native {
+        let source = match &setting.source {
+            Source::Environment => "GWZ_TRANSPORT=native".to_owned(),
+            Source::GlobalConfiguration(location) => {
+                format!("gwz.transport in {}", location.where_text())
+            }
+            Source::Default | Source::Flag => unreachable!("native requires a Python setting"),
+        };
+        let remedy = match &setting.source {
+            Source::Environment => "set GWZ_TRANSPORT=gwz, or unset it".to_owned(),
+            Source::GlobalConfiguration(location) => {
+                format!("{}, or set GWZ_TRANSPORT=gwz", location.remove_text())
+            }
+            Source::Default | Source::Flag => unreachable!("native requires a Python setting"),
+        };
+        let message = format!(
+            "gwz: using libgit2's native transport (from {source}), as gwz 1.0 did; {remedy}, to use gwz's transport"
+        );
+        py.import("gwz._transport_notices")?
+            .call_method1("native_notice", (message,))?;
+    }
+    let native = setting.transport == Transport::Native;
+    let route = capture_with(request_bytes, meta, pairs, |_| native)?;
+    if native {
+        fill_native_defaults(request_bytes, meta);
+    }
+    Ok(route)
 }
 
 fn capture_with(
@@ -162,6 +233,24 @@ fn resolve_identity_home(
     if !resolved {
         return;
     }
+    rewrite_request_meta(request_bytes, meta, resolved_meta);
+}
+
+/// Native uses the 1.0.17 concurrency defaults only where the caller left
+/// them unset. The request and the metadata passed to the route stay equal.
+fn fill_native_defaults(request_bytes: &mut Vec<u8>, meta: &mut RequestMeta) {
+    let mut resolved_meta = meta.clone();
+    let policy = resolved_meta.policy.get_or_insert_with(Default::default);
+    policy.concurrency.get_or_insert(50);
+    policy.max_connections_per_host.get_or_insert(8);
+    rewrite_request_meta(request_bytes, meta, resolved_meta);
+}
+
+fn rewrite_request_meta(
+    request_bytes: &mut Vec<u8>,
+    meta: &mut RequestMeta,
+    resolved_meta: RequestMeta,
+) {
     let Ok(mut request) = gwz_core::try_decode(request_bytes) else {
         return;
     };

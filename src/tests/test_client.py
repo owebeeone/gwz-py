@@ -292,6 +292,8 @@ def test_create_workspace_without_root_defaults_to_cwd(tmp_path: Path, monkeypat
 
 
 def test_client_host_capacity_default_is_inherited_and_can_be_overridden() -> None:
+    assert Client().meta().policy.max_connections_per_host is None
+    assert Client(max_connections_per_host=32).meta().policy.max_connections_per_host == 32
     client = Client(max_connections_per_host=16)
     assert client.meta().policy.max_connections_per_host == 16
     assert client.meta(max_connections_per_host=32).policy.max_connections_per_host == 32
