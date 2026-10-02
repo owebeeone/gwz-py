@@ -357,12 +357,13 @@ def test_log_addition_preserves_every_pre_existing_wire_shape_and_slot() -> None
         if added != [expected]:
             raise ValueError(f"{name}.private must be the optional boolean at tag {tag}")
         message["fields"].remove(added[0])
-    # Python session v2 (2026-09-24) appends only two terminal codes,
-    # GwzErrorCode.cancelled (73) and transport_record_limit (74). Remove exactly
-    # those members to retain the prior wire pin, as gwz-core's
-    # protocol/check_log_additive.py does.
+    # Session v2 appends cancelled (73) and transport_record_limit (74);
+    # accepted credential helpers append credential_helper_timeout (75).
+    # Require their exact slots, then remove only these additive members to
+    # retain the historical wire pin, matching check_protocol_drift.py.
     error_codes = next(enum for enum in projected["enums"] if enum["name"] == "GwzErrorCode")
-    for name, value in (("cancelled", 73), ("transport_record_limit", 74)):
+    for name, value in (("cancelled", 73), ("transport_record_limit", 74),
+                        ("credential_helper_timeout", 75)):
         if error_codes["members"].pop(name, None) != value:
             raise ValueError(f"GwzErrorCode.{name} must occupy additive slot {value}")
     encoded = json.dumps(projected, sort_keys=True, separators=(",", ":")).encode()

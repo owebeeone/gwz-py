@@ -315,12 +315,18 @@ def test_a_gh_failure_and_an_unsupported_proxy_refuse_without_credential_materia
         clean.setenv("GIT_SSL_CAINFO", str(https.ca))
         clean.setenv("PATH", f"{gh.parent}{os.pathsep}{os.environ['PATH']}")
         clean.setenv("HOME", str(tmp_path))
+        # gh is invoked only when Git's conventional configuration names it.
+        # Clear inherited helpers before selecting this disposable fixture.
+        (tmp_path / ".gitconfig").write_text(
+            "[credential]\n\thelper =\n\thelper = !gh auth git-credential\n"
+        )
         host = candidate.ClientHost()
         with pytest.raises(RuntimeError) as gh_failure:
             call(host, init_request(tmp_path, "req_gh", https.url))
-        # The transport asked gh for the server's credential, which gh refused.
+        # Git asked the configured gh helper for the credential, which gh refused.
         assert https.requests == 1 and https.gh_calls() == ["auth git-credential get"]
-        assert "Authentication" in str(gh_failure.value)
+        assert error_code(gh_failure.value) == "RemoteRejected"
+        assert "no credential helper gave one" in str(gh_failure.value)
 
         clean.setenv("https_proxy", f"http://fixture:{secret}@127.0.0.1:9/")
         with pytest.raises(RuntimeError) as proxy_refusal:
