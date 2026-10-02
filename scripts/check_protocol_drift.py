@@ -396,11 +396,13 @@ def pre_log_projection(value: dict[str, Any]) -> dict[str, Any]:
             raise ValueError(f"{name}.private must be the optional boolean at tag {tag}")
         message["fields"].remove(added[0])
     # Python session v2 (2026-09-24) appends only two terminal codes,
-    # GwzErrorCode.cancelled (73) and transport_record_limit (74). Remove exactly
+    # GwzErrorCode.cancelled (73), transport_record_limit (74), and accepted
+    # TR1.6 OQ5(a) credential_helper_timeout (75). Remove exactly
     # those members to retain the prior wire pin, as gwz-core's
     # protocol/check_log_additive.py does.
     error_codes = next(enum for enum in projected["enums"] if enum["name"] == "GwzErrorCode")
-    for name, value in (("cancelled", 73), ("transport_record_limit", 74)):
+    for name, value in (("cancelled", 73), ("transport_record_limit", 74),
+                        ("credential_helper_timeout", 75)):
         if error_codes["members"].pop(name, None) != value:
             raise ValueError(f"GwzErrorCode.{name} must occupy additive slot {value}")
     return projected

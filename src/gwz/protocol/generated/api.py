@@ -492,6 +492,7 @@ class GwzErrorCode(Enum):
     url_scheme_unavailable = 72
     cancelled = 73
     transport_record_limit = 74
+    credential_helper_timeout = 75
 
 class MergeRecordRequiredWave(Enum):
     a1 = 0

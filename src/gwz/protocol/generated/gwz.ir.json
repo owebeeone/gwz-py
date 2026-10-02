@@ -1377,7 +1377,8 @@
         "disposal_incomplete": 71,
         "url_scheme_unavailable": 72,
         "cancelled": 73,
-        "transport_record_limit": 74
+        "transport_record_limit": 74,
+        "credential_helper_timeout": 75
       },
       "member_options": {
         "ok": {},
@@ -1454,7 +1455,8 @@
         "disposal_incomplete": {},
         "url_scheme_unavailable": {},
         "cancelled": {},
-        "transport_record_limit": {}
+        "transport_record_limit": {},
+        "credential_helper_timeout": {}
       }
     },
     {
