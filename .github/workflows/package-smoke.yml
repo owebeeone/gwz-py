@@ -103,9 +103,61 @@ jobs:
         working-directory: gwz-py
         run: cargo check
 
+      - name: Resolve gwz-cli's lock against the checkouts beside it
+        # In a workspace gwz-cli builds in the workspace's lock. Its own
+        # Cargo.lock is refreshed at its releases, so it can lag gwz-core's main,
+        # and run_tests.py builds the CLI with --locked. Resolving it here first,
+        # in CI only, as gwz-core's candidate job resolves its candidate
+        # manifest, lets that build use the lock as resolved.
+        shell: bash
+        working-directory: gwz-cli
+        run: cargo metadata --format-version 1 > /dev/null
+
       - name: Run Python tests
         working-directory: gwz-py
         run: python run_tests.py
+
+  rust-tests:
+    # The extension's Rust unit tests (native/src), on the ordinary build.
+    # Cargo.toml leaves PyO3's extension-module feature to maturin, so the
+    # test binary links the libpython of the interpreter setup-python
+    # installs, which that action puts on LD_LIBRARY_PATH. The candidate
+    # build's unit tests run in transport-candidate.yml.
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout gwz-py
+        uses: actions/checkout@v5
+        with:
+          path: gwz-py
+
+      - name: Checkout gwz-core
+        uses: actions/checkout@v5
+        with:
+          repository: owebeeone/gwz-core
+          path: gwz-core
+
+      - name: Check out git2-rs beside gwz-core
+        # gwz-core builds against the git2-rs fork by path (`../git2-rs`, package
+        # `gwz-git2`), at the commit gwz-core's .github/git2-rs.commit pins.
+        shell: bash
+        working-directory: gwz-core
+        run: bash .github/checkout-git2-rs.sh
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux native build prerequisites
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev
+
+      - name: Run Rust unit tests
+        working-directory: gwz-py
+        run: cargo test
 
   package-smoke:
     runs-on: ${{ matrix.os }}

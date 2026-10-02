@@ -1,0 +1,173 @@
+name: Transport candidate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PIP_NO_CACHE_DIR: "1"
+
+# Until S7.1 (1.1.0) activates the transport, gwz-py's network operations take
+# it only in the candidate extension, built with `--cfg gwz_transport_candidate`
+# on the gwz-core and gwz-transport checkouts beside gwz-py
+# (dev-docs/GwzPyPerOperationTransportDesign.md), so the CI workflow's jobs skip
+# the transport rows (src/tests/test_client_host_transport.py). This job builds
+# that extension with the committed recipe, scripts/build_candidate_extension.py,
+# through `run_tests.py --candidate`, runs the whole suite on it, transport rows
+# included, and then the candidate build's Rust unit tests.
+jobs:
+  candidate:
+    name: Candidate suite (${{ matrix.leg }})
+    runs-on: ubuntu-24.04
+    strategy:
+      # Rule (a) of gwz-core dev-docs/GwzTransportReleasePlanAmendment-2.md §3.13
+      # (TR2.12): until S7.1 (1.1.0) removes gwz_transport_candidate, CI keeps two
+      # candidate shapes green, the transport switch alone and both switches, one
+      # leg each, as gwz-core's transport candidate job does. A leg's rustflags
+      # are the switches the recipe builds it with.
+      fail-fast: false
+      matrix:
+        include:
+          - leg: transport
+            session: ""
+            rustflags: --cfg gwz_transport_candidate
+          - leg: transport-and-session
+            session: --session
+            rustflags: --cfg gwz_transport_candidate --cfg gwz_session_candidate
+    env:
+      # The job builds gwz-core several times over: for the ordinary extension,
+      # the gwz CLI and the candidate extension. Without debug info or
+      # incremental state they link faster and take less of the runner's disk.
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+
+    steps:
+      - name: Checkout gwz-py
+        uses: actions/checkout@v5
+        with:
+          path: gwz-py
+          persist-credentials: false
+
+      - name: Checkout gwz-core
+        uses: actions/checkout@v5
+        with:
+          repository: owebeeone/gwz-core
+          path: gwz-core
+          persist-credentials: false
+
+      - name: Check out git2-rs beside gwz-core
+        # gwz-core builds against the git2-rs fork by path (`../git2-rs`, package
+        # `gwz-git2`), at the commit gwz-core's .github/git2-rs.commit pins.
+        shell: bash
+        working-directory: gwz-core
+        run: bash .github/checkout-git2-rs.sh
+
+      - id: pins
+        name: Read the gwz-transport commit gwz-core's candidate builds against, and gwz-py's taut release
+        shell: bash
+        run: |
+          transport="$(grep -m1 -E '^[0-9a-f]{40}$' gwz-core/.github/gwz-transport.commit)"
+          echo "gwz-transport=$transport" >> "$GITHUB_OUTPUT"
+          release="$(grep -m1 -oE 'taut-proto==[0-9]+\.[0-9]+\.[0-9]+' gwz-py/pyproject.toml)"
+          echo "taut=v${release#taut-proto==}" >> "$GITHUB_OUTPUT"
+
+      - name: Check out gwz-transport at its pin, beside gwz-core
+        # The recipe builds on gwz-core's own candidate manifest
+        # (tests/transport_backend/prepare.py), which adds gwz-transport from the
+        # checkout beside gwz-core: here the commit gwz-core's transport candidate
+        # job builds against, whose protocol module gwz-core's candidate protocol
+        # matches.
+        uses: actions/checkout@v5
+        with:
+          repository: owebeeone/gwz-transport
+          ref: ${{ steps.pins.outputs.gwz-transport }}
+          path: gwz-transport
+          persist-credentials: false
+
+      - name: Check out taut at the release tag, beside gwz-core
+        # run_tests.py puts the workspace's taut checkout on the suite's
+        # PYTHONPATH, and a workspace keeps it at the tag of the taut-proto
+        # release gwz-py pins.
+        uses: actions/checkout@v5
+        with:
+          repository: owebeeone/taut
+          ref: ${{ steps.pins.outputs.taut }}
+          path: taut
+          persist-credentials: false
+
+      - name: Checkout gwz-cli
+        # run_tests.py builds the gwz CLI that the cross-driver rows compare with.
+        uses: actions/checkout@v5
+        with:
+          repository: owebeeone/gwz-cli
+          path: gwz-cli
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Create Python virtual environment
+        shell: python
+        run: |
+          import os
+          import pathlib
+          import venv
+
+          root = pathlib.Path(".venv").resolve()
+          venv.EnvBuilder(with_pip=True).create(root)
+          scripts = root / ("Scripts" if os.name == "nt" else "bin")
+
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env_file:
+              print(f"VIRTUAL_ENV={root}", file=env_file)
+          with open(os.environ["GITHUB_PATH"], "a", encoding="utf-8") as path_file:
+              print(scripts, file=path_file)
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux native build prerequisites
+        # The transport rows' loopback fixtures use the image's OpenSSH server
+        # and client (/usr/sbin/sshd, ssh-keygen), openssl and git, as gwz-core's
+        # candidate job runs its SSH fixture suites on the image's.
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev
+
+      - name: Install Python dependencies
+        working-directory: gwz-py
+        run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]"
+
+      - name: Resolve gwz-cli's lock against the checkouts beside it
+        # In a workspace gwz-cli builds in the workspace's lock. Its own
+        # Cargo.lock is refreshed at its releases, so it can lag gwz-core's main,
+        # and run_tests.py builds the CLI with --locked. Resolving it here first,
+        # in CI only, as gwz-core's candidate job resolves its candidate
+        # manifest, lets that build use the lock as resolved.
+        shell: bash
+        working-directory: gwz-cli
+        run: cargo metadata --format-version 1 > /dev/null
+
+      - name: Run the whole suite on the candidate extension
+        # run_tests.py builds the ordinary extension and the gwz CLI, then the
+        # candidate extension with the recipe in RUNNER_TEMP/candidate, a new
+        # directory outside the workspace, and runs the suite with
+        # GWZ_PY_NATIVE_MODULE naming it, so the transport rows run, not skip.
+        working-directory: gwz-py
+        run: python run_tests.py --candidate "$RUNNER_TEMP/candidate" ${{ matrix.session }}
+
+      - name: Run the candidate build's Rust unit tests
+        # The recipe left the candidate manifest, with its lock resolved, in
+        # RUNNER_TEMP/candidate/py, and built into RUNNER_TEMP/candidate/target
+        # with the leg's switches. The tests build there with the same switches,
+        # and include the route's, which only a candidate build compiles.
+        working-directory: gwz-py
+        env:
+          RUSTFLAGS: ${{ matrix.rustflags }}
+          CARGO_TARGET_DIR: ${{ runner.temp }}/candidate/target
+        run: cargo test --locked --manifest-path "$RUNNER_TEMP/candidate/py/Cargo.toml"

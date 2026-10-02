@@ -15,7 +15,9 @@ never picked up silently.
 directory outside the workspace, with the committed recipe,
 ``scripts/build_candidate_extension.py``, and runs the suite with
 ``GWZ_PY_NATIVE_MODULE`` naming it, so the transport rows run too. Without it
-they skip, unless ``GWZ_PY_NATIVE_MODULE`` already names a module.
+they skip, unless ``GWZ_PY_NATIVE_MODULE`` already names a module. With
+``--session`` the recipe adds ``gwz_session_candidate`` to the transport switch,
+the second candidate shape CI keeps green until S7.1 (1.1.0).
 """
 
 from __future__ import annotations
@@ -162,14 +164,17 @@ def candidate_extension(
     destination: Path,
     env: dict[str, str],
     *,
+    session: bool = False,
     root: Path = ROOT,
     run_command: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
 ) -> Path:
     """Builds the candidate extension in `destination` with the committed
-    recipe and names it to the suite in `env`; the recipe prints the module
-    last."""
+    recipe, with `gwz_session_candidate` too if `session`, and names it to
+    the suite in `env`; the recipe prints the module last."""
 
     command = [sys.executable, str(root / "scripts" / "build_candidate_extension.py"), str(destination)]
+    if session:
+        command.append("--session")
     print("+", " ".join(command), flush=True)
     built = run_command(command, check=True, cwd=root, env=env, stdout=subprocess.PIPE, text=True)
     print(built.stdout, end="", flush=True)
@@ -196,7 +201,15 @@ def main(argv: Sequence[str] | None = None) -> None:
         help="also build the candidate extension in DIR, a new directory outside the "
         "workspace, and run the suite with GWZ_PY_NATIVE_MODULE naming it",
     )
+    parser.add_argument(
+        "--session",
+        action="store_true",
+        help="with --candidate, build the candidate extension with gwz_session_candidate "
+        "too, as gwz-core's second candidate leg does",
+    )
     options = parser.parse_args(argv)
+    if options.session and options.candidate is None:
+        parser.error("--session needs --candidate")
     env = command_environment()
     # `provision_rust_cli` prints the binary it chose and why.
     provision_rust_cli(env)
@@ -204,7 +217,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     run([sys.executable, "-m", "maturin", "develop"], env=env)
     run([sys.executable, "scripts/regen_protocol.py", "--check"], env=env)
     if options.candidate is not None:
-        candidate_extension(options.candidate, env)
+        candidate_extension(options.candidate, env, session=options.session)
     run([sys.executable, "-m", "pytest", "src/tests", "-q"], env=env)
 
 

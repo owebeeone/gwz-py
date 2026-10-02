@@ -17,7 +17,9 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(gwz_transport_candidate)',
 [dependencies]
 cfg-if = "1"
 gwz-core = { path = "../gwz-core" }
-pyo3 = { version = "0.28.3", features = ["abi3-py310", "extension-module"] }
+# No `extension-module` here, so that `cargo test` links libpython: maturin
+# enables it for the extension, from pyproject.toml's [tool.maturin] features.
+pyo3 = { version = "0.28.3", features = ["abi3-py310"] }
 tokio = { version = "1", features = ["rt-multi-thread", "time"] }
 
 [workspace]

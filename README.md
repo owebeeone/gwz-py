@@ -137,6 +137,14 @@ outside the workspace, and prints the module's path, which
 python run_tests.py --candidate /tmp/gwz-py-candidate
 ```
 
+With `--session` the runner builds it with `gwz_session_candidate` too. CI's
+transport candidate workflow runs the suite on Linux in both shapes, and the
+candidate build's Rust unit tests after it.
+
+`cargo test` runs the extension's Rust unit tests on the ordinary build. They
+link the libpython of the interpreter PyO3 finds, an active virtualenv's or the
+`python` on `PATH`; maturin builds the extension itself without libpython.
+
 Check or regenerate the protocol API against the sibling `gwz-core` checkout:
 
 ```sh
