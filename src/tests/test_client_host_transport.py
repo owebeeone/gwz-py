@@ -346,7 +346,7 @@ def test_without_configure_transport_runtime_a_stalled_setup_fails_on_the_defaul
     (dev-docs/GwzPyPerOperationTransportDesign.md §2.8), so the default 3
     retries give four attempts, one connection each, with waits of 1, 2 and
     4 s and under 1 s of jitter between them, and only the fourth attempt's
-    stall fails the operation, about 44 s in."""
+    stall fails the operation, about 44 s in, as `attempt 4 of 4`."""
     with StallServer() as stall:
         host = candidate.ClientHost()
         begun = time.monotonic()
@@ -354,7 +354,7 @@ def test_without_configure_transport_runtime_a_stalled_setup_fails_on_the_defaul
             call(host, init_request(tmp_path, "req_default_clock", stall.url(ssh.user), identity(ssh)))
         took = time.monotonic() - begun
         print(f"the stalled setup failed after {took:.2f} s: {stalled.value}")
-        assert "ssh setup timeout: stall" in str(stalled.value)
+        assert "ssh setup timeout: stall (attempt 4 of 4)" in str(stalled.value)
         assert stall.accepted == 4, "one connection for each of the four attempts"
         assert 4 * 9 + 7 - 1 < took < 4 * 9 + 7 + 15
         host.close()
