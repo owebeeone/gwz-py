@@ -16,7 +16,9 @@ use std::sync::{Arc, Mutex, PoisonError};
 use gwz_core::git::Git2Backend;
 use gwz_core::model::ModelResult;
 use gwz_core::session_host::EnvironmentSnapshot;
-use gwz_core::transport_host::{CallControls, CancellationToken, with_cancellable_local_transport};
+use gwz_core::transport_host::{
+    CallControls, CancellationToken, NativeCaller, with_cancellable_local_transport_native,
+};
 use gwz_core::transport_scope::Operation;
 use gwz_core::transport_setting::{self, Driver, Source, Transport};
 use gwz_core::{Cbor, RequestMeta};
@@ -37,6 +39,7 @@ enum Inner {
     /// The operation's own runtime, built from `environment` when it runs.
     Transport {
         environment: EnvironmentSnapshot,
+        native: Option<NativeCaller>,
         token: CancellationToken,
         canceller: Canceller,
     },
@@ -146,12 +149,18 @@ fn capture_with(
     let canceller: Canceller = Arc::new(move || controls.cancel());
     Ok(Route(Inner::Transport {
         environment,
+        native: None,
         token,
         canceller,
     }))
 }
 
 impl Route {
+    pub(crate) fn attach_native(&mut self, caller: NativeCaller) {
+        if let Inner::Transport { native, .. } = &mut self.0 {
+            *native = Some(caller);
+        }
+    }
     /// The token's controls, as the host keeps them: cancelling them cancels
     /// the operation's request, while it waits for its runtime or runs.
     pub(crate) fn canceller(&self) -> Option<Canceller> {
@@ -173,13 +182,17 @@ impl Route {
         match self.0 {
             Inner::Native => (Ok(action(&Git2Backend::new())), None),
             Inner::Transport {
-                environment, token, ..
+                environment,
+                token,
+                native,
+                ..
             } => {
-                let (result, report) = with_cancellable_local_transport(
+                let (result, report) = with_cancellable_local_transport_native(
                     meta,
                     operation_id,
                     &environment,
                     &token,
+                    native,
                     action,
                 );
                 let cleanup = Cleanup {

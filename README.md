@@ -217,3 +217,12 @@ For native it bounds libgit2 connect/read waits; for gwz it bounds stalled
 setup/body reads. Zero disables that clock. Changing routes does not reset
 it. Cancelling a running native operation returns `UnsupportedOperation`;
 close waits for native work for at most the established cleanup bound.
+
+The candidate native HTTPS composition captures its original host caller before
+fanout or executor handoff and uses the same retained Supervisor capacity for its
+Opens. Its one positive logical Open deadline includes discovery, helper work and
+native authentication. A zero connect timeout refuses native authentication
+before Begin. Anonymous, configured Basic and SSH do not require an available
+native worker. Nonempty initial Negotiate/NTLM tokens and Digest are refused
+before native Begin. Windows endpoint activation and installed native/provider
+qualification remain separate gates; this draft does not enable that endpoint.

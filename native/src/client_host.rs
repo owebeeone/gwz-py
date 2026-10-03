@@ -32,6 +32,7 @@ use crate::{codec, dispatch, error, shims};
 #[pyclass(module = "gwz._gwz_core", frozen)]
 pub(crate) struct ClientHost {
     operations: Arc<Operations>,
+    _native_supervisor: Result<Arc<gwz_sspi::Supervisor>, gwz_sspi::ErrorKind>,
     /// Repository configuration files already reported for this Client.
     ignored_transport_files: route::Notices,
     /// The `atexit` callback, until `close` unregisters it.
@@ -44,8 +45,14 @@ impl ClientHost {
     fn new(py: Python<'_>) -> PyResult<Self> {
         let operations = Arc::new(Operations::default());
         let exit_hook = register_exit_hook(py, Arc::downgrade(&operations))?;
+        let native_supervisor = crate::worker_host::descriptor().and_then(|descriptor| {
+            gwz_sspi::Supervisor::new(descriptor, gwz_sspi::Options::default())
+                .map(Arc::new)
+                .map_err(|error| error.kind())
+        });
         Ok(Self {
             operations,
+            _native_supervisor: native_supervisor,
             ignored_transport_files: route::Notices::default(),
             exit_hook: Mutex::new(Some(exit_hook)),
         })
@@ -162,6 +169,9 @@ impl ClientHost {
         let Some(mut meta) = transport_meta(method, request_bytes) else {
             return Ok(None);
         };
+        cfg_if::cfg_if! { if #[cfg(all(unix, gwz_transport_candidate))] {
+            let native_caller = gwz_core::transport_host::NativeCaller::capture(&self._native_supervisor);
+        } }
         let route = route::capture(
             py,
             request_bytes,
@@ -169,6 +179,7 @@ impl ClientHost {
             Operation::from_method(method).expect("transport scope has a method"),
             &self.ignored_transport_files,
         )?;
+        cfg_if::cfg_if! { if #[cfg(all(unix, gwz_transport_candidate))] { let mut route = route; route.attach_native(native_caller); } }
         let operation_id = shims::operation_id(&meta.request_id);
         let ticket = self
             .operations
