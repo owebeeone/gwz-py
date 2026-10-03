@@ -9,8 +9,12 @@ The producer is carried by the resolved SSPI package. It records source/contract
 lock, workspace configuration, compiler, target, profile, features and delegated
 packaging options. It is not a finished binary hash or signature.
 
-Worker and extension use fresh build-owned target directories under the output
-directory; provisioned builds do not capture artifacts from a shared mutable cache.
+Worker and extension use fresh build-owned target directories under the supplied
+build-time CARGO_TARGET_DIR scratch root, or under the wheel output directory
+when it is absent. The root is retained; each build's private subdirectories are
+disposed when the backend returns. Provisioned builds do not capture artifacts
+from a shared mutable target cache. Wheel transaction staging stays under the
+output directory, independently of the selected scratch filesystem.
 Subprocess environments are copied; the backend does not mutate process
 os.environ. The wheel contains the worker and a nonsecret receipt beside the
 extension, and regenerates RECORD hashes. The receipt never grants runtime trust.
@@ -79,13 +83,39 @@ AMD64 Windows default (`i686-pc-windows-msvc`), then the Rust compiler host.
 Candidates' `--python` launches this backend with that Python, so it remains the
 frontend interpreter. Custom JSON target paths are refused.
 
-Supported delegated options are `--profile dev|release`, `--release`,
-`--target TRIPLE`, `--interpreter`/`-i`, `--features`/`-F`, `--locked`, `--offline`,
-`--frozen`, `--strip`, `--no-default-features`, `--auditwheel`, `--compatibility`,
-`--manylinux`, and verbosity `-v`/`--verbose` or `-q`/`--quiet`. Value options take
-one value. Duplicate aliases, conflicting release/profile choices, missing
-values and other options refuse before provisioning. Locked resolution is
-always required. Frontend PEP517 config_settings use `maturin.build-args`
+The supported delegated options and their absence behavior are:
+
+| Option | Values and supplied behavior | When omitted |
+|---|---|---|
+| `--profile`, `--release` | `dev` or `release`; `--release` selects release | Configured profile or release, as above |
+| `--target` | One Rust triple | Target precedence above |
+| `--interpreter`, `-i` | One interpreter path | Frontend/base interpreter above |
+| `--features`, `-F` | One space/comma-separated feature list | Configured features and Cargo default features |
+| `--no-default-features` | Disable Cargo default features | Defaults enabled unless configuration disables them |
+| `--locked` | Require unchanged Cargo.lock | Always injected by this backend |
+| `--offline` | Refuse network access | Cargo may access the network, unless frozen/configuration prevents it |
+| `--frozen` | Require unchanged lock and cached dependencies; no network | Not imposed beyond locked resolution, unless configured |
+| `--strip` | Enable stripping | Configured `strip`/MATURIN_STRIP, otherwise no extra stripping |
+| `-v`, `--verbose`; `-q`, `--quiet` | Verbose Cargo output; suppress Cargo output | Normal build output |
+| `--auditwheel` | `repair`: audit and bundle external libraries; `check`: audit without repair; `warn`: warn without repair/failure; `skip`: omit manylinux audit | Configured auditwheel/skip-auditwheel policy, otherwise `repair` |
+| `--compatibility`, `--manylinux` | Same option: `pypi` checks PyPI-supported targets; `manylinux2014`/`2014`, `manylinux_MAJOR_MINOR`, or `musllinux_MAJOR_MINOR` select libc tags; `linux`/`off` select native Linux | Configured compatibility/manylinux value, otherwise lowest compatible manylinux tag, or native linux when none matches |
+
+Compatibility's libc tags apply to Linux; `pypi` applies across platforms.
+Legacy `manylinux1`/`1` and `manylinux2010`/`2010` parse upstream but are unsupported
+by the Rust compiler. Supplied `tool.maturin` policies apply when the corresponding
+compatibility/auditwheel option is absent; explicit selectors set those policies.
+This backend delegates the omitted compatibility policy
+to maturin's CLI. See the primary [distribution contract](https://www.maturin.rs/distribution.html#build-wheels)
+and [configuration reference](https://www.maturin.rs/config.html#configuration-keys),
+plus the pinned 1.15.0 [auditwheel default and modes](https://github.com/PyO3/maturin/blob/v1.15.0/src/auditwheel/audit.rs#L5-L19)
+and [compatibility alias/default](https://github.com/PyO3/maturin/blob/v1.15.0/src/build_options.rs#L32-L54).
+Unsupported values are refused by maturin. Repairing external Linux libraries
+requires patchelf; selecting a policy does not qualify a Windows worker.
+
+Value options take one value. Repeated value-option spellings, mixing the feature or
+interpreter aliases, conflicting release/profile choices, missing values and
+other options refuse before provisioning. Frontend
+PEP517 config_settings use `maturin.build-args`
 (the retained `build-args` alias and MATURIN_PEP517_ARGS apply to hook callers).
 A release wheel using host-native defaults:
 
@@ -99,9 +129,13 @@ profile, interpreter and delegated choices are recorded; worker and extension
 receive the same selected target/profile. Cross builds still need platform
 prerequisites; provisioning does not qualify Windows HTTP operation.
 
-Raw wheels and all Rust output are now owned by one staging directory under
-`--out`. CARGO_TARGET_DIR no longer supplies a shared mutable extension cache for
-provisioned wheel builds. Completed provisioning validates ZIP contents and the
+Raw wheel capture and provisioning use private transaction staging under
+`--out`. CARGO_TARGET_DIR selects a scratch root for unique worker/extension
+target directories, rather than a reusable mutable extension cache. Candidate
+`--target-dir` supplies this root and defaults to DESTINATION/target; the ordinary
+backend defaults to `--out` when CARGO_TARGET_DIR is absent. For separate build
+scratch, prefix the wheel recipe with `CARGO_TARGET_DIR=/absolute/external/scratch`.
+Completed provisioning validates ZIP contents and the
 complete RECORD before publication. Same-name outputs refuse explicitly; choose
 a fresh output directory for a replacement build, then install the completed
 wheel. Atomic no-replace publication uses a same-filesystem hard link: unsupported

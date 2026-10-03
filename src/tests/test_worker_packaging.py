@@ -206,6 +206,38 @@ def coherent_wheel(path):
                 assert size==str(len(data))
         return fingerprint
 
+@pytest.mark.parametrize('selection',['explicit','candidate-default','backend-default'])
+def test_candidate_and_backend_preserve_owned_scratch_root(tmp_path,monkeypatch,backend,real_artifacts,selection):
+    synthetic_handoff(monkeypatch,backend,real_artifacts,tmp_path)
+    run=backend.subprocess.run;targets=[]
+    def observed(command,**kwargs):
+        targets.append(Path(kwargs['env']['CARGO_TARGET_DIR']))
+        return run(command,**kwargs)
+    monkeypatch.setattr(backend.subprocess,'run',observed)
+    destination=tmp_path/'candidate';destination.mkdir()
+    if selection=='backend-default':
+        output=destination/'wheels'
+        expected=output
+        monkeypatch.delenv('CARGO_TARGET_DIR',raising=False)
+        wheel=output/backend.build_wheel(str(output))
+    else:
+        candidate=load(ROOT/'scripts/build_candidate_extension.py','scratch_candidate_recipe')
+        prepared=candidate.Prepared(destination,tmp_path/'core',destination/'py/Cargo.toml')
+        explicit=tmp_path/'another-volume' if selection=='explicit' else None
+        expected=explicit or destination/'target'
+        def handoff(command,*,env,**kwargs):
+            assert env['CARGO_TARGET_DIR']==str(expected)
+            with monkeypatch.context() as invocation:
+                invocation.setenv('CARGO_TARGET_DIR',env['CARGO_TARGET_DIR'])
+                backend.build_wheel(str(prepared.wheels))
+        wheel=candidate.build(prepared,target_dir=explicit,run=handoff)
+    assert len(targets)==2 and targets[0]!=targets[1]
+    assert all(target.is_relative_to(expected) and target!=expected for target in targets)
+    assert all(not target.exists() for target in targets),'all build-owned scratch is disposed'
+    assert not list(expected.glob('gwz-sspi-target-*'))
+    assert not list(wheel.parent.glob('.gwz-sspi-build-*'))
+    coherent_wheel(wheel)
+
 @pytest.mark.parametrize('same_output',[False,True])
 def test_real_handoff_and_bundler_isolate_same_name_builds(tmp_path,monkeypatch,backend,real_artifacts,same_output):
     import threading
@@ -246,6 +278,7 @@ def test_failed_real_handoff_never_replaces_complete_destination(tmp_path,monkey
     with pytest.raises(OSError,match='forced'):backend.build_wheel(str(output))
     if prior:assert destination.read_bytes()==saved
     else:assert not destination.exists()
+    assert not list((tmp_path/'shared-cache').iterdir())
 
 
 @pytest.mark.parametrize('arguments,expected_target,expected_interpreter',[

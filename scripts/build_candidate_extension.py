@@ -12,9 +12,11 @@ directory outside the workspace, and builds there:
 - py/: a copy of this repository's manifest whose gwz-core dependency names
   core/, its Cargo.lock, which resolving the copy extends with the
   transport's crates, and links to the sources it builds;
-- wheels/: the wheel maturin builds from py/ with RUSTFLAGS naming the
-  switches, into the cargo target directory, DESTINATION/target unless
-  --target-dir names another;
+- wheels/: the provisioned wheel built from py/ with RUSTFLAGS naming the
+  switches, staged privately here before publication;
+- target/: scratch root for unique build-owned worker and extension target
+  directories, unless --target-dir names another root; private subdirectories
+  are disposed after build, and the root is retained;
 - extension/gwz/: the extension module, unpacked from that wheel.
 
 The last line it prints is the module's path. The transport rows
@@ -195,7 +197,7 @@ def main(argv: Sequence[str] | None = None, *, run: Run = subprocess.run) -> Pat
     parser.add_argument(
         "--target-dir",
         type=Path,
-        help="the cargo target directory (default: DESTINATION/target)",
+        help="scratch root for unique build-owned Cargo targets (default: DESTINATION/target)",
     )
     options = parser.parse_args(argv)
     prepared = prepare(options.destination, core=options.core, python=options.python, run=run)

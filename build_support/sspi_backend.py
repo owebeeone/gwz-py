@@ -99,15 +99,16 @@ def build_wheel(wheel_directory,config_settings=None,metadata_directory=None):
     manifest=Path(config.get('manifest-path','Cargo.toml')).resolve();module=producer(manifest,args)
     identifier,worker,inputs=module.identify(manifest,target=target,profile=profile,features=features,options={'maturin_args':args,'maturin_config':config})
     output=Path(wheel_directory).resolve();output.mkdir(parents=True,exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix='.gwz-sspi-build-',dir=output) as temporary:
+    scratch_root=Path(os.environ.get('CARGO_TARGET_DIR',output)).resolve();scratch_root.mkdir(parents=True,exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='.gwz-sspi-build-',dir=output) as temporary, tempfile.TemporaryDirectory(prefix='gwz-sspi-target-',dir=scratch_root) as scratch:
         environment={**os.environ,'GWZ_SSPI_BUILD_FINGERPRINT':identifier}
         # The extension target and returned raw wheel are build-owned too.
-        # CARGO_TARGET_DIR is not a shared mutable capture/publication channel.
-        environment['CARGO_TARGET_DIR']=str(Path(temporary)/'extension-target')
+        # CARGO_TARGET_DIR selects the root, never a shared mutable target tree.
+        environment['CARGO_TARGET_DIR']=str(Path(scratch)/'extension-target')
         command=['cargo','build','--locked','--manifest-path',str(worker),'--features','worker-bin','--target',target,'--profile',profile]
         command += [arg for arg in args if arg in ('--offline','--frozen')]
         # Worker output is build-owned through Cargo completion and insertion.
-        worker_environment={**environment,'CARGO_TARGET_DIR':str(Path(temporary)/identifier/'worker')}
+        worker_environment={**environment,'CARGO_TARGET_DIR':str(Path(scratch)/identifier/'worker')}
         subprocess.run(command,env=worker_environment,check=True)
         name='gwz-sspi-worker.exe' if 'windows' in target else 'gwz-sspi-worker'
         binary=Path(worker_environment['CARGO_TARGET_DIR']).resolve()/target/('debug' if profile=='dev' else profile)/name
