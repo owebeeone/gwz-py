@@ -94,3 +94,45 @@ mod tests {
         assert_eq!(descriptor().err(), Some(ErrorKind::WorkerUnavailable));
     }
 }
+
+#[cfg(test)]
+mod filesystem_conversion_tests {
+    use pyo3::prelude::*;
+    cfg_if::cfg_if! {
+        if #[cfg(unix)] {
+            mod unix {
+                use super::*;
+                use std::os::unix::ffi::OsStringExt;
+                #[test]
+                fn public_descriptor_conversion_preserves_non_utf8_filesystem_bytes() {
+                    pyo3::Python::initialize();
+                    Python::attach(|py| {
+                        let bytes=b"/owned/invalid-\xff/worker".to_vec();
+                        let path=std::path::PathBuf::from(std::ffi::OsString::from_vec(bytes.clone()));
+                        let worker=gwz_sspi::WorkerExecutable::new(path,[0x42;32]).unwrap();
+                        let result=crate::worker_descriptor_path(Ok(worker)).unwrap().into_pyobject(py).unwrap();
+                        let actual:Vec<u8>=py.import("os").unwrap().call_method1("fsencode",(result,)).unwrap().extract().unwrap();
+                        assert_eq!(actual,bytes);
+                    });
+                }
+            }
+        } else if #[cfg(windows)] {
+            mod windows {
+                use super::*;
+                use std::os::windows::ffi::{OsStringExt,OsStrExt};
+                #[test]
+                fn public_descriptor_conversion_preserves_unpaired_surrogate() {
+                    pyo3::Python::initialize();
+                    Python::attach(|py| {
+                        let words=[b'C' as u16,b':' as u16,b'\\' as u16,0xd800,b'\\' as u16,b'w' as u16];
+                        let path=std::path::PathBuf::from(std::ffi::OsString::from_wide(&words));
+                        let worker=gwz_sspi::WorkerExecutable::new(path,[0x42;32]).unwrap();
+                        let result=crate::worker_descriptor_path(Ok(worker)).unwrap().into_pyobject(py).unwrap();
+                        let actual:std::ffi::OsString=result.extract().unwrap();
+                        assert_eq!(actual.encode_wide().collect::<Vec<_>>(),words);
+                    });
+                }
+            }
+        }
+    }
+}

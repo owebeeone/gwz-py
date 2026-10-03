@@ -16,9 +16,15 @@ mod worker_host;
 /// Installed descriptor only; HTTP composition remains deferred. Loader lookup
 /// cannot be redirected with Python __file__, cwd, PATH or environment values.
 #[pyfunction]
-fn sspi_worker_descriptor() -> PyResult<String> {
-    worker_host::descriptor()
-        .map(|worker| worker.path().to_string_lossy().into_owned())
+fn sspi_worker_descriptor() -> PyResult<std::ffi::OsString> {
+    worker_descriptor_path(worker_host::descriptor())
+}
+
+fn worker_descriptor_path(
+    result: Result<gwz_sspi::WorkerExecutable, gwz_sspi::ErrorKind>,
+) -> PyResult<std::ffi::OsString> {
+    result
+        .map(|worker| worker.path().as_os_str().to_owned())
         .map_err(|error| pyo3::exceptions::PyRuntimeError::new_err(format!("{error:?}")))
 }
 
