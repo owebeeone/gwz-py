@@ -11,6 +11,16 @@ mod log_outputs;
 mod operations;
 mod route;
 mod shims;
+mod worker_host;
+
+/// Installed descriptor only; HTTP composition remains deferred. Loader lookup
+/// cannot be redirected with Python __file__, cwd, PATH or environment values.
+#[pyfunction]
+fn sspi_worker_descriptor() -> PyResult<String> {
+    worker_host::descriptor()
+        .map(|worker| worker.path().to_string_lossy().into_owned())
+        .map_err(|error| pyo3::exceptions::PyRuntimeError::new_err(format!("{error:?}")))
+}
 
 #[pyfunction]
 fn health() -> &'static str {
@@ -153,6 +163,7 @@ fn merge_operation_response(py: Python<'_>, operation_id: &str) -> PyResult<Vec<
 #[pymodule]
 fn _gwz_core(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(health, module)?)?;
+    module.add_function(wrap_pyfunction!(sspi_worker_descriptor, module)?)?;
     module.add_function(wrap_pyfunction!(version, module)?)?;
     module.add_function(wrap_pyfunction!(provenance, module)?)?;
     // Each Client's network operations run through its own host (1.1.0 S6.2).

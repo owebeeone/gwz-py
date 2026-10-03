@@ -82,18 +82,11 @@ def parse_args() -> argparse.Namespace:
 def build_wheel(wheel_dir: Path, auditwheel: str | None) -> Path:
     wheel_dir.mkdir(parents=True, exist_ok=True)
     auditwheel = auditwheel or default_auditwheel()
-    cmd = [
-        sys.executable,
-        "-m",
-        "maturin",
-        "build",
-        "--release",
-        "-o",
-        str(wheel_dir),
-    ]
+    build_args = "--release --locked"
     if auditwheel is not None:
-        cmd.insert(5, f"--auditwheel={auditwheel}")
-    run(cmd, cwd=ROOT)
+        build_args += f" --auditwheel={auditwheel}"
+    run([sys.executable, "build_support/sspi_backend.py", "--out", str(wheel_dir),
+         "--build-args", build_args], cwd=ROOT)
     wheels = sorted(wheel_dir.glob(f"{WHEEL_PREFIX}-*.whl"), key=lambda path: path.stat().st_mtime)
     if not wheels:
         raise RuntimeError(f"maturin produced no {DIST_NAME} wheel in {wheel_dir}")

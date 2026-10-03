@@ -49,7 +49,7 @@ def test_the_recipe_builds_gwz_py_on_the_core_candidate_manifest(tmp_path: Path)
     assert prepared.manifest.read_text(encoding="utf-8") == ours.replace(
         'gwz-core = { path = "../gwz-core" }',
         "gwz-core = { path = " + json.dumps(str(prepared.core)) + " }",
-    )
+    ).replace('path = "../gwz-sspi"', "path = " + json.dumps(str(ROOT.parent / "gwz-sspi")))
     py = prepared.manifest.parent
     assert (py / "Cargo.lock").read_bytes() == (ROOT / "Cargo.lock").read_bytes()
     for name in ("native", "src", "pyproject.toml", "README.md"):
@@ -91,18 +91,20 @@ def test_the_recipe_builds_with_the_switches_and_unpacks_the_module(
 
     def maturin(command: list[str], **options: object) -> None:
         builds.append((command, options))
-        wheel = Path(command[command.index("-o") + 1]) / "gwz-0.0.0-cp310-abi3-test.whl"
+        wheel = Path(command[command.index("--out") + 1]) / "gwz-0.0.0-cp310-abi3-test.whl"
         with zipfile.ZipFile(wheel, "w") as archive:
             archive.writestr("gwz/__init__.py", "")
             archive.writestr("gwz/_gwz_core.abi3.so", b"module")
+            archive.writestr("gwz/gwz-sspi-worker", b"worker")
+            archive.writestr("gwz/sspi-artifact-set.json", b"receipt")
 
     wheel = recipe.build(
         prepared, python="/venv/python", session=session, target_dir=tmp_path / "target", run=maturin
     )
     [(command, options)] = builds
     assert command == [
-        "/venv/python", "-m", "maturin", "build",
-        "-m", str(prepared.manifest), "-i", "/venv/python", "-o", str(prepared.wheels),
+        "/venv/python", "build_support/sspi_backend.py", "--out", str(prepared.wheels),
+        "--build-args", "--profile dev --locked",
     ]
     env = options["env"]
     switches = "--cfg gwz_transport_candidate" + (" --cfg gwz_session_candidate" if session else "")
@@ -113,6 +115,8 @@ def test_the_recipe_builds_with_the_switches_and_unpacks_the_module(
     module = recipe.unpack(wheel, prepared.extension)
     assert module == prepared.extension / "gwz" / "_gwz_core.abi3.so"
     assert module.read_bytes() == b"module"
+    assert (module.parent / "gwz-sspi-worker").read_bytes() == b"worker"
+    assert (module.parent / "gwz-sspi-worker").stat().st_mode & 0o777 == 0o755
 
 
 def test_the_recipe_prints_the_module_it_built_last(

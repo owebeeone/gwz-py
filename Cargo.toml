@@ -15,6 +15,7 @@ crate-type = ["cdylib"]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(gwz_transport_candidate)', 'cfg(gwz_session_candidate)'] }
 
 [dependencies]
+gwz-sspi = { path = "../gwz-sspi", version = "=0.1.0" }
 cfg-if = "1"
 gwz-core = { path = "../gwz-core" }
 # No `extension-module` here, so that `cargo test` links libpython: maturin

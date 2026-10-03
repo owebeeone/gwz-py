@@ -34,12 +34,14 @@ gwz-py = "gwz.cli:main"
 
 [build-system]
 requires = ["maturin>=1.13,<2"]
-build-backend = "maturin"
+build-backend = "sspi_backend"
+backend-path = ["build_support"]
 
 [tool.maturin]
 python-source = "src"
 module-name = "gwz._gwz_core"
 features = ["pyo3/extension-module"]
+include = [{ path = "build_support/**", format = "sdist" }]
 
 [tool.setuptools_scm]
 tag_regex = "^v(?P<version>\\d+\\.\\d+\\.\\d+)$"

@@ -209,12 +209,24 @@ jobs:
 
       - name: Build wheel
         working-directory: gwz-py
-        run: python -m maturin build --release -o dist ${{ matrix.auditwheel }}
+        shell: python
+        run: |
+          import pathlib
+          import sys
+          sys.path.insert(0, "build_support")
+          import sspi_backend
+          pathlib.Path("dist").mkdir(exist_ok=True)
+          sspi_backend.build_wheel("dist", {"maturin.build-args": "--release --locked ${{ matrix.auditwheel }}"})
 
       - name: Build source distribution
         if: matrix.build-sdist
         working-directory: gwz-py
-        run: python -m maturin sdist -o dist
+        shell: python
+        run: |
+          import sys
+          sys.path.insert(0, "build_support")
+          import sspi_backend
+          sspi_backend.build_sdist("dist")
 
       - name: Smoke-test built wheel
         working-directory: gwz-py

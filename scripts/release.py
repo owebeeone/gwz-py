@@ -285,6 +285,15 @@ def reconcile_cargo_toml(worktree: Path, version: str) -> bool:
         fail(f"expected one `version` line in Cargo.toml's [package] table, found {len(versions)}")
     lines = text.split("\n")
     lines[cores[0][0]] = f'gwz-core = "={version}"'
+    sspi = [i for i, line in enumerate(lines) if line.strip().startswith("gwz-sspi =")]
+    if sspi:
+        if len(sspi) != 1 or lines[sspi[0]].strip() not in (
+            'gwz-sspi = { path = "../gwz-sspi", version = "=0.1.0" }',
+            'gwz-sspi = "=0.1.0"',
+        ):
+            fail("unexpected SSPI dependency; reviewed exact registry pin required")
+        lines[sspi[0]] = 'gwz-sspi = "=0.1.0"'
+
     lines[versions[0]] = re.sub(r'"[^"]*"', f'"{version}"', lines[versions[0]], count=1)
     updated = "\n".join(lines)
     if updated == text:

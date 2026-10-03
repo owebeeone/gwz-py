@@ -42,7 +42,7 @@ SESSION_SWITCH = "gwz_session_candidate"
 # registry version instead, and has no candidate build.
 CORE_DEPENDENCY = 'gwz-core = { path = "../gwz-core" }'
 # What maturin builds from: the manifest's library and the Python package.
-SOURCES = ("native", "src", "pyproject.toml", "README.md")
+SOURCES = ("native", "src", "build_support", "pyproject.toml", "README.md")
 EXTENSION_SUFFIXES = (".so", ".pyd")
 
 Run = Callable[..., object]
@@ -90,7 +90,7 @@ def prepare(
         raise SystemExit("use a new directory outside the workspace")
     manifest = candidate_manifest(
         (py_root / "Cargo.toml").read_text(encoding="utf-8"), destination / "core"
-    )
+    ).replace('path = "../gwz-sspi"', "path = " + json.dumps(str(py_root.resolve().parent / "gwz-sspi")))
     destination.mkdir(parents=True)
     run(
         [python, str(core / "tests" / "transport_backend" / "prepare.py"), str(destination / "core")],
@@ -145,21 +145,9 @@ def build(
         target_dir=target_dir or prepared.destination / "target",
     )
     run(
-        [
-            python,
-            "-m",
-            "maturin",
-            "build",
-            "-m",
-            str(prepared.manifest),
-            "-i",
-            python,
-            "-o",
-            str(prepared.wheels),
-        ],
-        check=True,
-        cwd=prepared.manifest.parent,
-        env=env,
+        [python, "build_support/sspi_backend.py", "--out", str(prepared.wheels),
+         "--build-args", "--profile dev --locked"],
+        check=True, cwd=prepared.manifest.parent, env=env,
     )
     wheels = sorted(prepared.wheels.glob("gwz-*.whl"), key=lambda wheel: wheel.stat().st_mtime)
     if not wheels:
@@ -177,7 +165,12 @@ def unpack(wheel: Path, extension: Path) -> Path:
         ]
         if len(modules) != 1:
             raise SystemExit(f"{wheel.name} holds {len(modules)} gwz extension modules, not one")
-        return Path(archive.extract(modules[0], extension))
+        for name in archive.namelist():
+            if name.startswith("gwz/"):
+                destination = Path(archive.extract(name, extension))
+                if destination.name in ("gwz-sspi-worker", "gwz-sspi-worker.exe"):
+                    destination.chmod(0o755)
+        return extension / modules[0]
 
 
 def main(argv: Sequence[str] | None = None, *, run: Run = subprocess.run) -> Path:
