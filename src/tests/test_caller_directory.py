@@ -17,7 +17,7 @@ from gwz.protocol.generated import InvocationContext, LsRequest, RequestMeta, Wo
 from native_helpers import native_module
 
 
-def write_workspace(root: Path) -> None:
+def write_workspace(root: Path, member: str = "mem_app") -> None:
     conf = root / "gwz.conf"
     conf.mkdir(parents=True)
     (conf / "gwz.yml").write_text(
@@ -25,7 +25,7 @@ def write_workspace(root: Path) -> None:
         "workspace:\n"
         "  id: ws_caller_directory\n"
         "members:\n"
-        "- id: mem_app\n"
+        f"- id: {member}\n"
         "  path: repos/app\n"
         "  type: git\n"
         "  source_id: src_app\n"
@@ -52,7 +52,8 @@ def ls_request(root: Path, caller_cwd: Path | None) -> LsRequest:
     )
 
 
-def test_core_ignores_the_host_working_directory(tmp_path: Path) -> None:
+@pytest.mark.skipif(os.name == "nt", reason="Windows cannot remove a process's working directory")
+def test_core_ignores_a_removed_host_working_directory(tmp_path: Path) -> None:
     bridge = NativeCoreBridge(native=native_module())
     root = tmp_path / "workspace"
     write_workspace(root)
@@ -66,6 +67,30 @@ def test_core_ignores_the_host_working_directory(tmp_path: Path) -> None:
     finally:
         os.chdir(previous)
     assert [member.id for member in response.members or []] == ["mem_app"]
+
+
+def test_core_answers_the_same_from_another_workspace(tmp_path: Path) -> None:
+    """Where the working directory cannot be removed (Windows), a decoy shows
+    the same property: the answer does not change when the host stands in
+    another workspace, whose member is materialized."""
+    bridge = NativeCoreBridge(native=native_module())
+    root = tmp_path / "workspace"
+    write_workspace(root)
+    decoy = tmp_path / "decoy"
+    write_workspace(decoy, member="mem_decoy")
+    (decoy / "repos" / "app").mkdir(parents=True)
+    responses = []
+    previous = os.getcwd()
+    try:
+        for directory in (root, decoy):
+            os.chdir(directory)
+            responses.append(
+                asyncio.run(bridge.call("ls", "LsRequest", "LsResponse", ls_request(root, root)))
+            )
+    finally:
+        os.chdir(previous)
+    assert [member.id for member in responses[1].members or []] == ["mem_app"]
+    assert responses[1].members == responses[0].members
 
 
 def test_request_without_caller_directory_is_refused(tmp_path: Path) -> None:
