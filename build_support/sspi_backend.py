@@ -82,9 +82,13 @@ def publish(staged,destination):
     try:os.link(staged,destination)
     except FileExistsError as error:raise RuntimeError('packaging output collision') from error
 
-def maturin_wheel(wheel_directory,args,environment,metadata_directory=None,editable=False):
+# The PEP517 hooks run maturin as maturin's own backend does, from PATH: pip's
+# build isolation installs it into an overlay on PATH, not beside
+# sys.executable, where `python -m maturin` looks for it. A direct run (main)
+# names the maturin installed with its interpreter instead.
+def maturin_wheel(wheel_directory,args,environment,metadata_directory=None,editable=False,maturin='maturin'):
     import shutil
-    command=[os.sys.executable,'-m','maturin','pep517','build-wheel',*args]
+    command=[maturin,'pep517','build-wheel',*args]
     if editable:command+=['--editable']
     if metadata_directory:environment={**environment,'MATURIN_PEP517_METADATA_DIR':metadata_directory}
     result=subprocess.run(command,env=environment,check=True,stdout=subprocess.PIPE)
@@ -94,7 +98,7 @@ def maturin_wheel(wheel_directory,args,environment,metadata_directory=None,edita
     if path.resolve()!=destination.resolve():shutil.copyfile(path,destination)
     return path.name
 
-def build_wheel(wheel_directory,config_settings=None,metadata_directory=None):
+def build_wheel(wheel_directory,config_settings=None,metadata_directory=None,*,maturin='maturin'):
     args,target,profile,features,config=settings(config_settings)
     manifest=Path(config.get('manifest-path','Cargo.toml')).resolve();module=producer(manifest,args)
     identifier,worker,inputs=module.identify(manifest,target=target,profile=profile,features=features,options={'maturin_args':args,'maturin_config':config})
@@ -112,7 +116,7 @@ def build_wheel(wheel_directory,config_settings=None,metadata_directory=None):
         subprocess.run(command,env=worker_environment,check=True)
         name='gwz-sspi-worker.exe' if 'windows' in target else 'gwz-sspi-worker'
         binary=Path(worker_environment['CARGO_TARGET_DIR']).resolve()/target/('debug' if profile=='dev' else profile)/name
-        filename=maturin_wheel(temporary,args,environment,metadata_directory)
+        filename=maturin_wheel(temporary,args,environment,metadata_directory,maturin=maturin)
         staged=Path(temporary)/filename
         module.bundle(staged,binary,identifier,inputs)
         publish(staged,output/filename)
@@ -133,7 +137,7 @@ def build_editable(wheel_directory,config_settings=None,metadata_directory=None)
 get_requires_for_build_editable=maturin.get_requires_for_build_editable
 def prepare_metadata_for_build_wheel(metadata_directory,config_settings=None):
     args,_,_,_,_=settings(config_settings)
-    result=subprocess.run([sys.executable,'-m','maturin','pep517','write-dist-info','--metadata-directory',metadata_directory,*args],env=dict(os.environ),check=True,stdout=subprocess.PIPE)
+    result=subprocess.run(['maturin','pep517','write-dist-info','--metadata-directory',metadata_directory,*args],env=dict(os.environ),check=True,stdout=subprocess.PIPE)
     return result.stdout.decode().strip().splitlines()[-1]
 
 prepare_metadata_for_build_editable=prepare_metadata_for_build_wheel
@@ -163,9 +167,17 @@ def build_sdist(sdist_directory,config_settings=None):
         publish(rewritten,output/filename)
         return filename
 
+def interpreter_maturin():
+    # The maturin installed with this interpreter, the one `python -m maturin`
+    # ran when package_smoke.py and build_candidate_extension.py called it.
+    import shutil,sysconfig
+    found=shutil.which('maturin',path=sysconfig.get_path('scripts'))
+    if found is None:raise RuntimeError('maturin is not installed with this interpreter')
+    return found
+
 def main():
     import argparse
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--out',required=True,help='wheel output directory; same-name publication refuses');parser.add_argument('--build-args',default='',help='delegated maturin options; default frontend interpreter/native target/release profile')
     args=parser.parse_args();Path(args.out).mkdir(parents=True,exist_ok=True)
-    print(build_wheel(args.out,{'maturin.build-args':args.build_args}))
+    print(build_wheel(args.out,{'maturin.build-args':args.build_args},maturin=interpreter_maturin()))
 if __name__=='__main__':main()

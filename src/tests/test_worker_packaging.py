@@ -330,6 +330,38 @@ def test_metadata_worker_and_extension_use_one_normalized_frontend_choice(tmp_pa
     backend.build_wheel(str(tmp_path),config)
     assert len(calls)==3
 
+@pytest.mark.skipif(sys.platform=='win32',reason='the PATH maturin fixture is a POSIX script')
+def test_hooks_run_the_maturin_on_path_as_maturins_own_backend_does(tmp_path,monkeypatch,backend):
+    # pip's build isolation installs maturin into an overlay that it puts on PATH,
+    # not beside sys.executable, so `python -m maturin` finds no maturin script.
+    import os
+    isolated=tmp_path/'isolated-bin';isolated.mkdir();log=tmp_path/'calls.jsonl';wheel=tmp_path/'gwz-1-cp310-abi3-test.whl'
+    fake=isolated/'maturin'
+    fake.write_text(f"#!{sys.executable}\nimport json,sys\nopen({str(log)!r},'a').write(json.dumps(sys.argv[1:])+'\\n')\n"
+        f"if sys.argv[2]=='build-wheel':\n    open({str(wheel)!r},'wb').close();print({str(wheel)!r})\nelse:\n    print('gwz-1.dist-info')\n")
+    fake.chmod(0o755)
+    monkeypatch.setenv('PATH',str(isolated)+os.pathsep+os.environ.get('PATH',''))
+    monkeypatch.setattr(backend,'settings',lambda _:(['--locked'],None,None,None,{}))
+    assert backend.prepare_metadata_for_build_wheel(str(tmp_path))=='gwz-1.dist-info'
+    out=tmp_path/'out';out.mkdir()
+    assert backend.maturin_wheel(str(out),['--locked'],dict(os.environ),editable=True)==wheel.name
+    calls=[json.loads(line) for line in log.read_text().splitlines()]
+    assert [call[:2] for call in calls]==[['pep517','write-dist-info'],['pep517','build-wheel']]
+
+def test_direct_run_uses_the_maturin_installed_with_its_interpreter(tmp_path,monkeypatch,backend):
+    # package_smoke.py and build_candidate_extension.py run the backend with a
+    # venv's python, whose maturin need not be the one PATH names.
+    import sysconfig
+    scripts=tmp_path/'scripts';scripts.mkdir()
+    installed=scripts/('maturin.exe' if sys.platform=='win32' else 'maturin');installed.write_bytes(b'');installed.chmod(0o755)
+    original=sysconfig.get_path
+    monkeypatch.setattr(sysconfig,'get_path',lambda name,*args,**kwargs:str(scripts) if name=='scripts' else original(name,*args,**kwargs))
+    calls=[]
+    monkeypatch.setattr(backend,'build_wheel',lambda out,config,*,maturin:calls.append(maturin) or 'gwz-1.whl')
+    monkeypatch.setattr(sys,'argv',['sspi_backend.py','--out',str(tmp_path/'out')])
+    backend.main()
+    assert len(calls)==1 and Path(calls[0]).parent==scripts and Path(calls[0]).stem.lower()=='maturin'
+
 @pytest.mark.parametrize('failure',[OSError('unsupported hard links'),KeyboardInterrupt()])
 def test_publication_failure_keeps_prior_complete_artifact(tmp_path,monkeypatch,backend,real_artifacts,failure):
     synthetic_handoff(monkeypatch,backend,real_artifacts,tmp_path)
