@@ -267,7 +267,7 @@ def test_interpreter_exit_does_not_wait_past_the_bound_for_an_operation_that_out
 
 FAILS_AFTER_EXIT_CHILD = textwrap.dedent(
     """
-    import os, sys, time
+    import _thread, os, sys, time
     from pathlib import Path
 
     sys.path.insert(0, sys.argv[2])
@@ -278,12 +278,17 @@ FAILS_AFTER_EXIT_CHILD = textwrap.dedent(
         # Collected when finalization clears this module, after the host's
         # exit callback has waited out its bound and the interpreter has
         # begun to finalize. It waits for the operation's outcome with the
-        # GIL released, so the operation's thread could take it.
+        # GIL released, so the operation's thread could take it. It pauses
+        # on a timed acquire of a lock it holds itself, because time.sleep
+        # raises here on Windows: from 3.11 it also waits on the Ctrl+C
+        # event, which finalization has closed by now.
 
         def __init__(self, operation):
             self.operation = operation
             self.try_result = native.try_operation_result
-            self.sleep = time.sleep
+            held = _thread.allocate_lock()
+            held.acquire()
+            self.pause = held.acquire
             self.clock = time.monotonic
             self.write = os.write
 
@@ -291,7 +296,7 @@ FAILS_AFTER_EXIT_CHILD = textwrap.dedent(
             deadline = self.clock() + 8
             outcome = self.try_result(self.operation)
             while outcome is None and self.clock() < deadline:
-                self.sleep(0.05)
+                self.pause(timeout=0.05)
                 outcome = self.try_result(self.operation)
             line = "unrecorded" if outcome is None else "recorded " + bytes(outcome).hex()
             self.write(1, (line + "\\n").encode())
@@ -336,6 +341,8 @@ def test_an_operation_that_fails_after_the_exit_bound_records_its_outcome_withou
     lines = child.stdout.split("\n")
     assert lines[0] == "exiting", child.stdout
     state, _, payload = lines[1].partition(" ")
+    # Without either line the finalizer itself failed; its error is on stderr.
+    assert state in ("recorded", "unrecorded"), child.stderr
     assert state == "recorded", (
         "the operation's thread ended when its failure attached to the finalizing interpreter"
     )
