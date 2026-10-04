@@ -46,7 +46,15 @@ class ProcessTree:
             os.killpg(process.pid, 0)
         except ProcessLookupError:
             return False
-        os.killpg(process.pid, signal.SIGKILL)
+        except PermissionError:
+            # macOS refuses any signal to a group whose remaining members are
+            # all zombies awaiting their reaper. The members are this user's,
+            # so the refusal means nothing in the group still runs.
+            return False
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass  # It ended after the probe found it running.
         return True
 
 
