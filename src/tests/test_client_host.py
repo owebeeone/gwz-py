@@ -11,7 +11,6 @@ transport route's own rows are in ``test_client_host_transport.py``.
 from __future__ import annotations
 
 import os
-import signal
 import subprocess
 import sys
 import textwrap
@@ -35,6 +34,7 @@ from host_helpers import (
     wait_until,
 )
 from native_helpers import native_module
+from process_tree import ProcessTree
 
 LIMIT = 8
 HOLD_MS = 2000
@@ -226,25 +226,23 @@ def run_exit_child(
     environment = {**os.environ, DELAY_VARIABLE: str(hold_ms)}
     tests = str(Path(__file__).resolve().parent)
     begun = time.monotonic()
-    process = subprocess.Popen(
-        [sys.executable, "-c", script, str(tmp_path), tests, *args],
-        env=environment,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        start_new_session=True,
-    )
-    stdout, stderr = process.communicate(timeout=60)
-    elapsed = time.monotonic() - begun
-    child = subprocess.CompletedProcess(process.args, process.returncode, stdout, stderr)
-    # Nothing the child started outlives it: its session's process group is
-    # empty.
-    try:
-        os.killpg(process.pid, 0)
-    except ProcessLookupError:
-        return child, elapsed
-    os.killpg(process.pid, signal.SIGKILL)
-    raise AssertionError("a process the child started outlived it")
+    with ProcessTree() as tree:
+        process = subprocess.Popen(
+            [sys.executable, "-c", script, str(tmp_path), tests, *args],
+            env=environment,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            **tree.popen_options,
+        )
+        tree.adopt(process)
+        stdout, stderr = process.communicate(timeout=60)
+        elapsed = time.monotonic() - begun
+        child = subprocess.CompletedProcess(process.args, process.returncode, stdout, stderr)
+        # Nothing the child started outlives it.
+        if tree.outlived(process):
+            raise AssertionError("a process the child started outlived it")
+    return child, elapsed
 
 
 def test_interpreter_exit_joins_a_running_operation(native, tmp_path: Path) -> None:
