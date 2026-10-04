@@ -39,7 +39,10 @@ fn directory(caller_cwd: Option<PathBuf>, request_bytes: &[u8]) -> PyResult<Path
 }
 
 fn uses_no_directory(method: &str) -> bool {
-    matches!(method, "configure_transport_runtime" | "transport_capabilities")
+    matches!(
+        method,
+        "configure_transport_runtime" | "transport_capabilities"
+    )
 }
 
 /// Routes one request to its handler, which runs on `backend`: a network
@@ -462,7 +465,7 @@ fn submit_accepted(
     // ID is live (the core session contract, §4.3).
     let recorder = operations::begin(&operation_id).map_err(error::model)?;
     cfg_if::cfg_if! {
-        if #[cfg(all(unix, gwz_transport_candidate))] {
+        if #[cfg(any(all(unix, gwz_transport_candidate), all(windows, gwz_transport_candidate, gwz_windows_https_qualification)))] {
             let response_meta = gwz_core::ResponseMeta {
                 transport_message: None,
                 transport: None,

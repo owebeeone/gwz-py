@@ -185,3 +185,8 @@ fn _gwz_core(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(log_output_release, module)?)?;
     Ok(())
 }
+
+// Qualification artifacts must never silently select another platform/route.
+cfg_if::cfg_if! { if #[cfg(all(gwz_windows_https_qualification, not(all(windows, gwz_transport_candidate))))] {
+    compile_error!("gwz_windows_https_qualification requires Windows and gwz_transport_candidate");
+} }

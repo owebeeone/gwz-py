@@ -15,7 +15,7 @@
 //! build takes the native arm.
 
 cfg_if::cfg_if! {
-    if #[cfg(all(unix, gwz_transport_candidate))] {
+    if #[cfg(any(all(unix, gwz_transport_candidate), all(windows, gwz_transport_candidate, gwz_windows_https_qualification)))] {
         mod transport;
         pub(crate) use transport::{Notices, Route, capture};
     } else {

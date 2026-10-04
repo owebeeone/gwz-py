@@ -12,7 +12,7 @@ path = "native/src/lib.rs"
 crate-type = ["cdylib"]
 
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(gwz_transport_candidate)', 'cfg(gwz_session_candidate)'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(gwz_transport_candidate)', 'cfg(gwz_windows_https_qualification)', 'cfg(gwz_session_candidate)'] }
 
 [dependencies]
 gwz-sspi = { path = "../gwz-sspi", version = "=0.1.0" }

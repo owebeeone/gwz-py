@@ -169,7 +169,7 @@ impl ClientHost {
         let Some(mut meta) = transport_meta(method, request_bytes) else {
             return Ok(None);
         };
-        cfg_if::cfg_if! { if #[cfg(all(unix, gwz_transport_candidate))] {
+        cfg_if::cfg_if! { if #[cfg(any(all(unix, gwz_transport_candidate), all(windows, gwz_transport_candidate, gwz_windows_https_qualification)))] {
             let native_caller = gwz_core::transport_host::NativeCaller::capture(&self._native_supervisor);
         } }
         let route = route::capture(
@@ -179,7 +179,7 @@ impl ClientHost {
             Operation::from_method(method).expect("transport scope has a method"),
             &self.ignored_transport_files,
         )?;
-        cfg_if::cfg_if! { if #[cfg(all(unix, gwz_transport_candidate))] { let mut route = route; route.attach_native(native_caller); } }
+        cfg_if::cfg_if! { if #[cfg(any(all(unix, gwz_transport_candidate), all(windows, gwz_transport_candidate, gwz_windows_https_qualification)))] { let mut route = route; route.attach_native(native_caller); } }
         let operation_id = shims::operation_id(&meta.request_id);
         let ticket = self
             .operations

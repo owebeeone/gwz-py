@@ -104,7 +104,7 @@ fn run(
 
 fn accepted_response(meta: &gwz_core::RequestMeta, operation_id: &str) -> gwz_core::MergeResponse {
     cfg_if::cfg_if! {
-        if #[cfg(all(unix, gwz_transport_candidate))] {
+        if #[cfg(any(all(unix, gwz_transport_candidate), all(windows, gwz_transport_candidate, gwz_windows_https_qualification)))] {
             let response_meta = gwz_core::ResponseMeta {
                 transport_message: None,
                 transport: None,

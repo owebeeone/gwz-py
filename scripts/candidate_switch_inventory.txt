@@ -22,4 +22,5 @@ gwz_transport_candidate  native/src/client_host.rs  fn network
 gwz_transport_candidate  native/src/client_host.rs  fn network
 gwz_transport_candidate  native/src/dispatch/merge.rs  fn accepted_response
 gwz_transport_candidate  native/src/dispatch/mod.rs  fn submit_accepted
+gwz_transport_candidate  native/src/lib.rs  (file)
 gwz_transport_candidate  native/src/route.rs  mod transport
