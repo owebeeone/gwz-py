@@ -51,6 +51,14 @@ def test_actual_loaded_extension_selection_ignores_attributes_environment_and_cw
     native=os.environ.get('GWZ_PY_NATIVE_MODULE')
     if not native:pytest.skip('requires a provisioned installed/extracted wheel')
     if non_utf8 and os.name=='nt':pytest.skip('Unix filesystem-byte fixture')
+    if non_utf8:
+        # CPython 3.12 and later key loaded extensions by their UTF-8 path, so
+        # they refuse a non-UTF-8 one before opening it: no extension, gwz's
+        # included, loads from such a directory there.
+        probe=importlib.util.spec_from_file_location('_gwz_core',os.fsdecode(b'/nonexistent-\xff/_gwz_core.so'))
+        try:importlib.util.module_from_spec(probe)
+        except UnicodeEncodeError:pytest.skip('this Python cannot load an extension from a non-UTF8 path')
+        except ImportError:pass
     import shutil
     source=Path(native).resolve()
     package=tmp_path/(os.fsdecode(b'installed-\xff') if non_utf8 else 'installed')/source.parent.name
