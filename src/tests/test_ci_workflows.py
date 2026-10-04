@@ -78,14 +78,16 @@ def test_the_candidate_job_checks_out_what_the_recipe_builds_against_beside_gwz_
     """gwz-core at main, as gwz-py's other jobs build against it; git2-rs at the
     commit gwz-core pins; gwz-transport at the commit gwz-core's own candidate
     job builds against; taut at the tag of gwz-py's taut-proto release, as a
-    workspace keeps it; and gwz-cli, whose CLI run_tests.py builds for the
-    cross-driver rows."""
+    workspace keeps it; gwz-cli, whose CLI run_tests.py builds for the
+    cross-driver rows; and gwz-sspi, which gwz-py, gwz-cli and the candidate
+    manifest name by path."""
     candidate = job(CANDIDATE, "candidate")
     for repository, path in (
         ("owebeeone/gwz-core", "gwz-core"),
         ("owebeeone/gwz-transport", "gwz-transport"),
         ("owebeeone/taut", "taut"),
         ("owebeeone/gwz-cli", "gwz-cli"),
+        ("owebeeone/gwz-sspi", "gwz-sspi"),
     ):
         checkout = step(candidate, f"repository: {repository}\n")
         assert re.findall(r"^          path: *(.+)$", checkout, re.M) == [path]
@@ -191,3 +193,21 @@ def test_every_job_that_builds_gwz_cli_from_main_resolves_its_lock_first() -> No
             assert ordered.index(resolve) < ordered.index(step(text, "run: python run_tests.py"))
     assert building == ["validate", "candidate"]
     assert RESOLVE not in (REPO_ROOT / ".github" / "workflows" / "publish.yml").read_text(encoding="utf-8")
+
+
+def test_every_job_that_builds_rust_from_main_checks_out_gwz_sspi_beside_gwz_py() -> None:
+    """gwz-py and gwz-cli name gwz-sspi by path (`../gwz-sspi`), as gwz-core's
+    candidate manifest does, so every job that builds Rust from main checks
+    it out beside them, at its main. The publish build checks out release
+    tags, whose manifests carry no path dependency (scripts/release.py)."""
+    building = []
+    for workflow in (CI, CANDIDATE):
+        for name in job_names(workflow):
+            text = job(workflow, name)
+            if "uses: dtolnay/rust-toolchain@" not in text:
+                continue
+            building.append(name)
+            checkout = step(text, "repository: owebeeone/gwz-sspi\n")
+            assert re.findall(r"^          path: *(.+)$", checkout, re.M) == ["gwz-sspi"]
+            assert not re.search(r"^          ref:", checkout, re.M)
+    assert building == ["validate", "rust-tests", "package-smoke", "candidate"]

@@ -45,6 +45,13 @@ jobs:
           repository: owebeeone/gwz-cli
           path: gwz-cli
 
+      - name: Checkout gwz-sspi
+        # gwz-py and gwz-cli build against gwz-sspi by path (`../gwz-sspi`).
+        uses: actions/checkout@v5
+        with:
+          repository: owebeeone/gwz-sspi
+          path: gwz-sspi
+
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
@@ -144,6 +151,13 @@ jobs:
         working-directory: gwz-core
         run: bash .github/checkout-git2-rs.sh
 
+      - name: Checkout gwz-sspi
+        # gwz-py builds against gwz-sspi by path (`../gwz-sspi`).
+        uses: actions/checkout@v5
+        with:
+          repository: owebeeone/gwz-sspi
+          path: gwz-sspi
+
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
@@ -186,6 +200,13 @@ jobs:
         shell: bash
         working-directory: gwz-core
         run: bash .github/checkout-git2-rs.sh
+
+      - name: Checkout gwz-sspi
+        # gwz-py builds against gwz-sspi by path (`../gwz-sspi`).
+        uses: actions/checkout@v5
+        with:
+          repository: owebeeone/gwz-sspi
+          path: gwz-sspi
 
       - name: Set up Python
         uses: actions/setup-python@v6
