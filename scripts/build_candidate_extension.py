@@ -146,9 +146,12 @@ def build(
         session=session,
         target_dir=target_dir or prepared.destination / "target",
     )
+    # No auditwheel repair: it would vendor the build machine's libraries into
+    # gwz.libs/, which unpack() leaves behind, so the module the suite imports
+    # links them where they are installed.
     run(
         [python, "build_support/sspi_backend.py", "--out", str(prepared.wheels),
-         "--build-args", "--profile dev --locked"],
+         "--build-args", "--profile dev --locked --auditwheel skip"],
         check=True, cwd=prepared.manifest.parent, env=env,
     )
     wheels = sorted(prepared.wheels.glob("gwz-*.whl"), key=lambda wheel: wheel.stat().st_mtime)

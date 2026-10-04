@@ -102,9 +102,11 @@ def test_the_recipe_builds_with_the_switches_and_unpacks_the_module(
         prepared, python="/venv/python", session=session, target_dir=tmp_path / "target", run=maturin
     )
     [(command, options)] = builds
+    # No auditwheel repair: unpack keeps only the gwz/ tree, and a repaired
+    # extension needs the gwz.libs/ beside it for the libraries it vendored.
     assert command == [
         "/venv/python", "build_support/sspi_backend.py", "--out", str(prepared.wheels),
-        "--build-args", "--profile dev --locked",
+        "--build-args", "--profile dev --locked --auditwheel skip",
     ]
     env = options["env"]
     switches = "--cfg gwz_transport_candidate" + (" --cfg gwz_session_candidate" if session else "")
@@ -116,7 +118,9 @@ def test_the_recipe_builds_with_the_switches_and_unpacks_the_module(
     assert module == prepared.extension / "gwz" / "_gwz_core.abi3.so"
     assert module.read_bytes() == b"module"
     assert (module.parent / "gwz-sspi-worker").read_bytes() == b"worker"
-    assert (module.parent / "gwz-sspi-worker").stat().st_mode & 0o777 == 0o755
+    if os.name != "nt":
+        # Windows keeps no executable bit; its worker is the .exe it names.
+        assert (module.parent / "gwz-sspi-worker").stat().st_mode & 0o777 == 0o755
 
 
 def test_the_recipe_prints_the_module_it_built_last(
