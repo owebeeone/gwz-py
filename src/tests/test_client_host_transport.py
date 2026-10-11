@@ -360,7 +360,7 @@ def test_without_configure_transport_runtime_a_stalled_setup_fails_on_the_defaul
             call(host, init_request(tmp_path, "req_default_clock", stall.url(ssh.user), identity(ssh)))
         took = time.monotonic() - begun
         print(f"the stalled setup failed after {took:.2f} s: {stalled.value}")
-        assert "ssh setup timeout: stall (attempt 4 of 4)" in str(stalled.value)
+        assert "ssh setup timeout: no progress for 9 seconds (--ssh-timeout 9; attempt 4 of 4)" in str(stalled.value)
         assert stall.accepted == 4, "one connection for each of the four attempts"
         assert 4 * 9 + 7 - 1 < took < 4 * 9 + 7 + 15
         host.close()
