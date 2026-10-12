@@ -10,6 +10,12 @@ extension, and ``python run_tests.py --candidate DIR`` builds it and runs the
 suite with it named. The rows that need no network fixture are in
 ``test_client_host.py``; the off switch's seam is a unit test of the route
 (``native/src/route/transport_tests.rs``).
+
+On Windows (plan step 5.3, 1.1.0 S4.5) the SSH, HTTPS and overlapping-operation
+rows run against the wheel's extension, on the portable ``sshd.exe``
+``GWZ_TEST_SSHD`` names (``ssh_fixture.py``); the rows that need a Unix shell
+or process group (the stalling server, the fake ``gh`` script, the exit child's
+process group) skip there with their reason.
 """
 
 from __future__ import annotations
@@ -17,6 +23,7 @@ from __future__ import annotations
 import importlib.machinery
 import importlib.util
 import os
+import shutil
 import signal
 import socket
 import ssl
@@ -44,7 +51,7 @@ from host_helpers import (
     submit,
     wait_until,
 )
-from ssh_fixture import SshFixture
+from ssh_fixture import WINDOWS, SshFixture, seed_bare_repository
 
 # Candidate wire keys (gwz-core protocol/candidate): OperationResult.transport,
 # ResponseMeta.transport and TransportObservation's endpoint receipt.
@@ -104,6 +111,8 @@ def ssh(tmp_path: Path, clean: pytest.MonkeyPatch) -> Any:
 
 @pytest.fixture
 def stalling(tmp_path: Path, clean: pytest.MonkeyPatch) -> Any:
+    if WINDOWS:
+        pytest.skip("the stalling server is a POSIX shell script that holds its channel open")
     fixture = SshFixture(tmp_path / "stalling", stall=True)
     clean.setenv("HOME", str(fixture.home))
     yield fixture
@@ -128,6 +137,35 @@ def receipts(rows: list[dict[int, Any]] | None) -> list[tuple[str, str]]:
 def error_receipts(error: BaseException) -> list[tuple[str, str]]:
     meta = getattr(error, "response_meta_cbor", None)
     return receipts(wire_cbor.loads(meta).get(META_TRANSPORT) if meta else None)
+
+
+def test_an_ssh_operation_takes_the_transport_route(
+    candidate: Any, ssh: SshFixture, tmp_path: Path
+) -> None:
+    host = candidate.ClientHost()
+    operation = submit(host, init_request(tmp_path, "req_ssh_route", ssh.url, identity(ssh)))
+    result = raw_result(candidate, operation)
+    assert result[4] == 1, result.get(8)
+    seen = receipts(result[RESULT_TRANSPORT])
+    assert seen, "the operation took the transport route: its observations carry an endpoint receipt"
+    assert ssh.proxy is not None and ssh.proxy.accepted == 1
+    assert host.close() == (0, False)
+
+
+def test_an_https_operation_takes_the_transport_route(
+    candidate: Any, clean: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    with HttpsFixture(tmp_path / "https", repository=True) as https:
+        clean.setenv("GIT_SSL_CAINFO", str(https.ca))
+        clean.setenv("HOME", str(tmp_path))
+        host = candidate.ClientHost()
+        operation = submit(host, init_request(tmp_path, "req_https_route", https.url))
+        result = raw_result(candidate, operation)
+        assert result[4] == 1, result.get(8)
+        seen = receipts(result[RESULT_TRANSPORT])
+        assert seen, "the operation took the transport route: its observations carry an endpoint receipt"
+        assert https.requests >= 2, "and it reached the fixture over HTTPS"
+        assert host.close() == (0, False)
 
 
 def test_two_overlapping_operations_complete_independently_each_on_its_own_runtime(
@@ -314,6 +352,8 @@ def test_close_with_a_running_network_operation_cancels_it_and_counts_it(
 def test_a_gh_failure_and_an_unsupported_proxy_refuse_without_credential_material(
     candidate: Any, clean: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    if WINDOWS:
+        pytest.skip("the fake gh is a POSIX shell script; S6.3's gh row on Windows is not plan step 5.3's")
     secret = "ghp_FIXTURESECRET0123456789"
     with HttpsFixture(tmp_path / "https") as https:
         gh = https.fake_gh(secret)
@@ -331,7 +371,10 @@ def test_a_gh_failure_and_an_unsupported_proxy_refuse_without_credential_materia
         # Git asked the configured gh helper for the credential, which gh refused.
         assert https.requests == 1 and https.gh_calls() == ["auth git-credential get"]
         assert error_code(gh_failure.value) == "RemoteRejected"
-        assert "no credential helper gave one" in str(gh_failure.value)
+        # gwz-core tells a helper that gave no password from a configuration with no helper (D13).
+        assert "The credential helper in your git configuration gave no password for 127.0.0.1" in str(
+            gh_failure.value
+        )
 
         clean.setenv("https_proxy", f"http://fixture:{secret}@127.0.0.1:9/")
         with pytest.raises(RuntimeError) as proxy_refusal:
@@ -457,10 +500,12 @@ class StallServer:
 
 
 class HttpsFixture:
-    """A local HTTPS server under a temporary CA that answers every request
-    401, as gwz-core's fixture does, and a fake gh that refuses."""
+    """A local HTTPS server under a temporary CA. By default it answers every
+    request 401, as gwz-core's fixture does, with a fake gh that refuses. With
+    `repository` it serves a bare repository with one commit over Git's smart
+    HTTP protocol (`git http-backend`), anonymously."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, *, repository: bool = False) -> None:
         root.mkdir(parents=True)
         self.root = root
 
@@ -481,15 +526,78 @@ class HttpsFixture:
                 "-CAcreateserial", "-out", "cert.pem", "-days", "1", "-extfile", "extensions")
         self.ca = root / "ca.pem"
         self.requests = 0
+        self.served: Path | None = None
+        git = shutil.which("git")
+        if repository:
+            self.served = root / "served"
+            self.served.mkdir()
+            seed_bare_repository(root, self.served / "repo.git")
+            (root / "empty-config").write_text("")
         fixture = self
 
         class Handler(BaseHTTPRequestHandler):
+            # The transport's HTTPS client reads a keep-alive response, as the native fixture serves it.
+            protocol_version = "HTTP/1.1"
+
             def do_GET(self) -> None:  # noqa: N802 - http.server's name
                 fixture.requests += 1
-                self.send_response(401)
-                self.send_header("WWW-Authenticate", 'Basic realm="fixture"')
-                self.send_header("Content-Length", "0")
+                if fixture.served is None:
+                    self.send_response(401)
+                    self.send_header("WWW-Authenticate", 'Basic realm="fixture"')
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
+                self.smart(b"")
+
+            def do_POST(self) -> None:  # noqa: N802 - http.server's name
+                fixture.requests += 1
+                self.smart(self.request_body())
+
+            def request_body(self) -> bytes:
+                """The request body, chunked as the transport's client sends an upload-pack request."""
+                if self.headers.get("Transfer-Encoding", "").lower() != "chunked":
+                    return self.rfile.read(int(self.headers.get("Content-Length", "0")))
+                body = bytearray()
+                while True:
+                    size = int(self.rfile.readline(128).split(b";", 1)[0], 16)
+                    if size == 0:
+                        self.rfile.readline(128)
+                        return bytes(body)
+                    body.extend(self.rfile.read(size))
+                    self.rfile.readline(128)
+
+            def smart(self, body: bytes) -> None:
+                """One request through `git http-backend`, as native_https_fixture.py serves it."""
+                assert fixture.served is not None and git is not None
+                path, _, query = self.path.partition("?")
+                environment = dict(os.environ)
+                environment.update(
+                    GIT_PROJECT_ROOT=str(fixture.served), GIT_HTTP_EXPORT_ALL="1", PATH_INFO=path,
+                    QUERY_STRING=query, REQUEST_METHOD=self.command,
+                    CONTENT_TYPE=self.headers.get("Content-Type", ""), CONTENT_LENGTH=str(len(body)),
+                    REMOTE_USER="fixture", SERVER_PROTOCOL="HTTP/1.1", GIT_CONFIG_NOSYSTEM="1",
+                    GIT_CONFIG_GLOBAL=str(fixture.root / "empty-config"),
+                )
+                response = subprocess.run(
+                    [git, "http-backend"], input=body, env=environment, capture_output=True, timeout=30
+                )
+                head, separator, payload = response.stdout.partition(b"\r\n\r\n")
+                if response.returncode or not separator:
+                    self.send_response(500)
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
+                fields = [line.decode("ascii").split(":", 1) for line in head.split(b"\r\n")]
+                status = next(
+                    (int(value.strip().split()[0]) for name, value in fields if name.lower() == "status"), 200
+                )
+                self.send_response(status)
+                for name, value in fields:
+                    if name.lower() not in ("status", "content-length"):
+                        self.send_header(name, value.strip())
+                self.send_header("Content-Length", str(len(payload)))
                 self.end_headers()
+                self.wfile.write(payload)
 
             def log_message(self, *_args: object) -> None:
                 pass

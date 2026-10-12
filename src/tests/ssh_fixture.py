@@ -8,18 +8,86 @@ server. With ``stall``, every exec writes its PID and then holds its channel
 open without writing, as gwz-core's stalling fixture does. A counting proxy in
 front of it counts the connections operations open. No user's agent, key or
 trust store is read.
+
+On Windows (1.1.0 S4.5, plan step 5.3) the server is an ``sshd.exe`` run as a
+foreground child, as gwz-core's ``fixture_host.rs`` runs it: the file
+``GWZ_TEST_SSHD`` names, else the system's ``System32/OpenSSH/sshd.exe``, else
+one on ``PATH``, with the ``ssh-keygen.exe`` beside it. Keys are 2048-bit RSA
+in PEM form (libssh2 on Windows CNG has no ed25519). The host's OpenSSH default
+shell must be a POSIX shell (a Git for Windows ``bash.exe``), and a
+``ForceCommand`` puts Git's directories on its ``PATH`` and changes into the
+fixture's directory. The server and its sessions end by the exact PID this
+fixture started. The stalling server is Unix-only.
 """
 
 from __future__ import annotations
 
+import getpass
 import os
+import shutil
 import socket
 import subprocess
 import threading
 import time
 from pathlib import Path
 
-SSHD = Path("/usr/sbin/sshd")
+WINDOWS = os.name == "nt"
+SSHD_ENV = "GWZ_TEST_SSHD"
+
+
+def sshd_program() -> Path:
+    """The OpenSSH server a fixture runs, and where `ssh-keygen` is."""
+    if not WINDOWS:
+        return Path("/usr/sbin/sshd")
+    named = os.environ.get(SSHD_ENV)
+    candidates = [Path(named)] if named else []
+    candidates.append(Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "OpenSSH" / "sshd.exe")
+    found = shutil.which("sshd.exe")
+    if found:
+        candidates.append(Path(found))
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return candidates[0]
+
+
+SSHD = sshd_program()
+
+
+def keygen_program() -> str | Path:
+    return SSHD.with_name("ssh-keygen.exe") if WINDOWS else "ssh-keygen"
+
+
+def posix_path(path: Path | str) -> str:
+    """`path` as a POSIX shell on Windows spells it: `C:\\a b` as `/c/a b`."""
+    text = str(path).replace("\\", "/")
+    if len(text) > 1 and text[1] == ":":
+        return "/" + text[0].lower() + text[2:]
+    return text
+
+
+def sshd_value(path: Path | str) -> str:
+    """`path` as one sshd_config value: forward slashes on Windows, quoted when it holds a space."""
+    text = str(path).replace("\\", "/") if WINDOWS else str(path)
+    return f'"{text}"' if " " in text else text
+
+
+def git_directories() -> list[str]:
+    """The directories Git runs from on Windows: the one that holds `git.exe`, and its exec path."""
+    git = shutil.which("git")
+    if git is None:
+        raise RuntimeError("the transport rows need git on PATH")
+    exec_path = run("git", "--exec-path")
+    return [str(Path(git).parent), exec_path]
+
+
+def force_command(directory: Path) -> str:
+    """The `ForceCommand` line for a POSIX default shell, as gwz-core's `posix_force_command` writes it."""
+    path = ":".join(posix_path(entry) for entry in git_directories())
+    return (
+        f"ForceCommand cd '{posix_path(directory)}' && export PATH='{path}':\"$PATH\" && "
+        'eval "$SSH_ORIGINAL_COMMAND"\n'
+    )
 
 
 def run(*command: str | Path, cwd: Path | None = None) -> str:
@@ -31,6 +99,16 @@ def run(*command: str | Path, cwd: Path | None = None) -> str:
         stderr=subprocess.PIPE,
         text=True,
     ).stdout.strip()
+
+
+def seed_bare_repository(root: Path, repository: Path) -> None:
+    """A bare repository at `repository` with one commit on main, made through `root`/seed."""
+    run("git", "init", "-q", "--bare", "--initial-branch=main", repository)
+    seed = root / "seed"
+    run("git", "init", "-q", "--initial-branch=main", seed)
+    run("git", "-c", "user.name=GWZ Test", "-c", "user.email=gwz@example.invalid",
+        "commit", "-q", "--allow-empty", "-m", "seed", cwd=seed)
+    run("git", "push", "-q", str(repository), "main", cwd=seed)
 
 
 def free_port() -> int:
@@ -95,12 +173,18 @@ class SshFixture:
     def __init__(self, root: Path, *, stall: bool = False, count: bool = False) -> None:
         if not SSHD.exists():
             raise RuntimeError(f"the transport rows need {SSHD}")
+        if WINDOWS and stall:
+            raise RuntimeError("the stalling server is Unix-only")
         self.root = root
         root.mkdir(parents=True, exist_ok=True)
+        # The files keep their ed25519 names on Windows too, where the keys are RSA in PEM form.
         host_key = root / "host_ed25519"
         self.identity = root / "client_ed25519"
         for key in (host_key, self.identity):
-            run("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", key)
+            if WINDOWS:
+                run(keygen_program(), "-q", "-t", "rsa", "-b", "2048", "-m", "PEM", "-N", "", "-f", key)
+            else:
+                run(keygen_program(), "-q", "-t", "ed25519", "-N", "", "-f", key)
         self.repository = root / "repository.git"
         self._seed_repository()
         self.started = root / "stalled"
@@ -112,15 +196,23 @@ class SshFixture:
             script.chmod(0o755)
             authorized.write_text(f'command="{script}" {public}')
         else:
-            authorized.write_text(public)
+            authorized.write_text(public.strip() + "\n", newline="\n")
         self.port = free_port()
         config = root / "sshd_config"
-        config.write_text(
-            f"Port {self.port}\nListenAddress 127.0.0.1\nHostKey {host_key}\n"
-            f"AuthorizedKeysFile {authorized}\nPidFile none\nPasswordAuthentication no\n"
-            "KbdInteractiveAuthentication no\nChallengeResponseAuthentication no\nUsePAM no\n"
-            "PermitRootLogin yes\nPubkeyAuthentication yes\nStrictModes no\nLogLevel ERROR\n"
-        )
+        if WINDOWS:
+            config.write_text(
+                f"Port {self.port}\nListenAddress 127.0.0.1\nHostKey {sshd_value(host_key)}\n"
+                f"AuthorizedKeysFile {sshd_value(authorized)}\nPidFile none\nPasswordAuthentication no\n"
+                "KbdInteractiveAuthentication no\nPubkeyAuthentication yes\nStrictModes no\nLogLevel ERROR\n"
+                + force_command(root)
+            )
+        else:
+            config.write_text(
+                f"Port {self.port}\nListenAddress 127.0.0.1\nHostKey {host_key}\n"
+                f"AuthorizedKeysFile {authorized}\nPidFile none\nPasswordAuthentication no\n"
+                "KbdInteractiveAuthentication no\nChallengeResponseAuthentication no\nUsePAM no\n"
+                "PermitRootLogin yes\nPubkeyAuthentication yes\nStrictModes no\nLogLevel ERROR\n"
+            )
         run(SSHD, "-t", "-f", config)
         self._server = subprocess.Popen(
             [str(SSHD), "-D", "-e", "-f", str(config)],
@@ -130,8 +222,9 @@ class SshFixture:
         wait_listening(self.port)
         self.proxy = CountingProxy(self.port) if count else None
         connect_port = self.proxy.port if self.proxy else self.port
-        self.user = run("id", "-un")
-        self.url = f"ssh://{self.user}@127.0.0.1:{connect_port}{self.repository}"
+        self.user = getpass.getuser() if WINDOWS else run("id", "-un")
+        remote_path = posix_path(self.repository) if WINDOWS else self.repository
+        self.url = f"ssh://{self.user}@127.0.0.1:{connect_port}{remote_path}"
         self.home = root / "home"
         (self.home / ".ssh").mkdir(parents=True)
         host_public = host_key.with_suffix(".pub").read_text().strip()
@@ -140,12 +233,7 @@ class SshFixture:
         )
 
     def _seed_repository(self) -> None:
-        run("git", "init", "-q", "--bare", "--initial-branch=main", self.repository)
-        seed = self.root / "seed"
-        run("git", "init", "-q", "--initial-branch=main", seed)
-        run("git", "-c", "user.name=GWZ Test", "-c", "user.email=gwz@example.invalid",
-            "commit", "-q", "--allow-empty", "-m", "seed", cwd=seed)
-        run("git", "push", "-q", str(self.repository), "main", cwd=seed)
+        seed_bare_repository(self.root, self.repository)
 
     def stalled_pids(self) -> list[int]:
         """The PIDs of the execs a stalling fixture holds."""
@@ -157,7 +245,16 @@ class SshFixture:
     def close(self) -> None:
         if self.proxy:
             self.proxy.close()
-        self._server.terminate()
+        if WINDOWS:
+            # The server and the session processes under it, by the exact PID this fixture started.
+            subprocess.run(
+                ["taskkill", "/PID", str(self._server.pid), "/T", "/F"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
+        else:
+            self._server.terminate()
         try:
             self._server.wait(timeout=5)
         except subprocess.TimeoutExpired:
