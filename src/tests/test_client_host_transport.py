@@ -208,8 +208,13 @@ def test_a_change_to_the_environment_after_an_operation_starts_does_not_affect_i
     # replaced HOME's known hosts, which trust nothing, refuse it.
     with pytest.raises(RuntimeError) as after:
         call(host, init_request(tmp_path, "req_after", ssh.url, identity(ssh)))
-    assert error_code(after.value) == "RemoteRejected"
-    assert "ssh setup failed" in str(after.value)
+    # A host key the snapshot's known hosts do not trust fails as libgit2's own
+    # SSH-class error does on the native route (gwz-core step 3.1, `0caf3190`),
+    # a Git command failure and not a remote rejection.
+    assert error_code(after.value) == "GitCommandFailed"
+    # Its words name the known hosts of the replacement HOME it captured.
+    assert "gwz cannot trust the host key" in str(after.value)
+    assert "stranger-home" in str(after.value)
     host.close()
 
 
