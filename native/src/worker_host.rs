@@ -1,6 +1,6 @@
 //! Loaded-image based installed descriptor. No Python attributes or runtime env.
 use gwz_sspi::{ErrorKind, WorkerExecutable};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 fn unavailable() -> ErrorKind {
     ErrorKind::WorkerUnavailable
 }
@@ -14,7 +14,12 @@ fn anchor() -> &'static str {
     option_env!("GWZ_SSPI_BUILD_FINGERPRINT").unwrap_or("")
 }
 pub(crate) fn descriptor() -> Result<WorkerExecutable, ErrorKind> {
-    let image = image::path()?;
+    descriptor_for(&image::path()?, option_env!("GWZ_SSPI_BUILD_FINGERPRINT"))
+}
+/// The worker beside the loaded extension `image`, for the build whose compiled fingerprint is `compiled`. The
+/// image must be an absolute path to an extension module; the worker is the fixed adjacent file and nothing a
+/// search finds.
+fn descriptor_for(image: &Path, compiled: Option<&str>) -> Result<WorkerExecutable, ErrorKind> {
     if !image.is_absolute()
         || !image
             .extension()
@@ -22,8 +27,7 @@ pub(crate) fn descriptor() -> Result<WorkerExecutable, ErrorKind> {
     {
         return Err(unavailable());
     }
-    gwz_sspi::packaging::installed_worker(&image, option_env!("GWZ_SSPI_BUILD_FINGERPRINT"))
-        .map_err(|error| error.kind())
+    gwz_sspi::packaging::installed_worker(image, compiled).map_err(|error| error.kind())
 }
 cfg_if::cfg_if! {
     if #[cfg(windows)] {
@@ -92,6 +96,90 @@ mod tests {
         let absolute = std::env::current_exe().unwrap();
         assert_eq!(absolute_image(absolute.clone()).unwrap(), absolute);
         assert_eq!(descriptor().err(), Some(ErrorKind::WorkerUnavailable));
+    }
+
+    /// An install directory under the system temporary directory, removed when dropped.
+    struct Scratch(PathBuf);
+    impl Scratch {
+        fn new(label: &str) -> Self {
+            static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+            let path = std::env::temp_dir().join(format!(
+                "gwz-py-worker-host-{}-{}-{label}",
+                std::process::id(),
+                NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            ));
+            std::fs::create_dir_all(&path).unwrap();
+            Self(path)
+        }
+    }
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+    const WORKER: &str = if cfg!(windows) {
+        "gwz-sspi-worker.exe"
+    } else {
+        "gwz-sspi-worker"
+    };
+
+    #[test]
+    fn the_wheels_worker_is_the_file_beside_the_extension_wherever_the_wheel_is_installed() {
+        // WH3 installed paths (step 4.10): site-packages under a directory with spaces or non-ASCII characters.
+        let build = "42".repeat(32);
+        for directory in [
+            vec!["Python 3.13", "Lib", "site-packages", "gwz"],
+            vec!["\u{fc}ml\u{e4}ut \u{65e5}\u{672c}\u{8a9e}", "venv", "gwz"],
+            vec!["with spaces", "\u{43f}\u{430}\u{43f}\u{43a}\u{430}", "gwz"],
+        ] {
+            let scratch = Scratch::new("installed");
+            let dir = directory
+                .iter()
+                .fold(scratch.0.clone(), |path, part| path.join(part));
+            std::fs::create_dir_all(&dir).unwrap();
+            let image = dir.join("_gwz_core.pyd");
+            std::fs::write(&image, b"image").unwrap();
+            let worker = dir.join(WORKER);
+            std::fs::write(&worker, b"worker").unwrap();
+            let descriptor = descriptor_for(&image, Some(&build)).unwrap();
+            assert_eq!(descriptor.path(), worker.as_path(), "{directory:?}");
+        }
+    }
+
+    #[test]
+    fn a_missing_worker_an_unprovisioned_build_and_a_foreign_image_have_no_descriptor() {
+        let build = "42".repeat(32);
+        let scratch = Scratch::new("missing");
+        let dir = scratch.0.join("with spaces").join("gwz");
+        std::fs::create_dir_all(&dir).unwrap();
+        let image = dir.join("_gwz_core.pyd");
+        std::fs::write(&image, b"image").unwrap();
+        // The worker is not beside the extension: nothing else stands in for it.
+        assert_eq!(
+            descriptor_for(&image, Some(&build)).err(),
+            Some(ErrorKind::WorkerUnavailable)
+        );
+        std::fs::write(dir.join(WORKER), b"worker").unwrap();
+        assert!(descriptor_for(&image, Some(&build)).is_ok());
+        // A build with no compiled fingerprint is unprovisioned; a malformed one is a mismatch.
+        assert_eq!(
+            descriptor_for(&image, None).err(),
+            Some(ErrorKind::WorkerUnavailable)
+        );
+        assert_eq!(
+            descriptor_for(&image, Some("not hex")).err(),
+            Some(ErrorKind::WorkerMismatch)
+        );
+        // Only an extension module names a worker: a script or an executable beside one does not.
+        for foreign in ["gwz.py", "python.exe", "gwz"] {
+            let path = dir.join(foreign);
+            std::fs::write(&path, b"x").unwrap();
+            assert_eq!(
+                descriptor_for(&path, Some(&build)).err(),
+                Some(ErrorKind::WorkerUnavailable),
+                "{foreign}"
+            );
+        }
     }
 }
 
