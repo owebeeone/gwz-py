@@ -493,6 +493,7 @@ class GwzErrorCode(Enum):
     cancelled = 73
     transport_record_limit = 74
     credential_helper_timeout = 75
+    capacity = 76
 
 class MergeRecordRequiredWave(Enum):
     a1 = 0

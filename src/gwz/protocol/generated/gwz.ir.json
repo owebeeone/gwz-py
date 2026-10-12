@@ -1378,7 +1378,8 @@
         "url_scheme_unavailable": 72,
         "cancelled": 73,
         "transport_record_limit": 74,
-        "credential_helper_timeout": 75
+        "credential_helper_timeout": 75,
+        "capacity": 76
       },
       "member_options": {
         "ok": {},
@@ -1456,7 +1457,8 @@
         "url_scheme_unavailable": {},
         "cancelled": {},
         "transport_record_limit": {},
-        "credential_helper_timeout": {}
+        "credential_helper_timeout": {},
+        "capacity": {}
       }
     },
     {
