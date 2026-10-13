@@ -47,20 +47,30 @@ def meta(
     )
 
 
+def not_a_repository(base: Path) -> str:
+    """A local source that exists and is no repository. Opening it fails at once on every platform, locally. (A
+    path that does not exist is not always taken for one: libgit2 on Windows reads `C:\\...\\missing-source` as the
+    scp-style address of a host named `C` and waits for the resolver to say it has none, 2.7 s on the Windows
+    host and not bounded on a runner whose resolver is slow.)"""
+    path = base / "not-a-repository"
+    path.mkdir(exist_ok=True)
+    return str(path)
+
+
 def init_request(
     base: Path,
     request_id: str,
     source: str | None = None,
     transport: TransportOptions | None = None,
 ) -> InitFromSourcesRequest:
-    """A network operation in gwz-core's transport scope. From the default,
-    missing local source, it fails once its handler runs, after the delay
-    hook, and opens no connection."""
+    """A network operation in gwz-core's transport scope. From the default
+    source, a local directory that is no repository, it fails once its
+    handler runs, after the delay hook, at once, and opens no connection."""
     root = base / f"workspace-{request_id}"
     return InitFromSourcesRequest(
         meta=meta(base, request_id, transport, root),
         workspace_root=str(root),
-        sources=sources([source or str(base / "missing-source")]),
+        sources=sources([source or not_a_repository(base)]),
         target=None,
         workspace_id=None,
     )

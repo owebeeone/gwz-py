@@ -38,6 +38,8 @@ from process_tree import ProcessTree
 
 LIMIT = 8
 HOLD_MS = 2000
+# How long close's rows hold their operations: a hold within which they surely start, and far inside the bound.
+CLOSE_HOLD_MS = 1000
 
 
 @pytest.fixture
@@ -49,6 +51,16 @@ def native():
 def held(monkeypatch):
     """Every operation started from here sleeps HOLD_MS after it starts."""
     monkeypatch.setenv(DELAY_VARIABLE, str(HOLD_MS))
+
+
+def test_a_default_request_fails_on_a_local_source_that_no_name_resolution_can_delay(tmp_path: Path) -> None:
+    """The rows below hold operations that "fail on their source" and judge how long they take to end. A source
+    that does not exist is not a local path to every platform: libgit2 on Windows reads `C:\\...\\missing-source` as
+    the scp-style address of a host named `C` and asks the resolver for it, which took 2.7 s on the Windows host
+    and has no bound at all on a runner whose resolver is slow. The default source is a directory that exists."""
+    (source,) = [item.url for item in init_request(tmp_path, "req_default_source").sources]
+    assert Path(source).is_dir()
+    assert not (Path(source) / ".git").exists()
 
 
 def test_a_ninth_operation_of_either_entry_waits_and_is_cancelled_while_it_waits(
@@ -87,7 +99,7 @@ def test_a_ninth_operation_of_either_entry_waits_and_is_cancelled_while_it_waits
         assert error_code(cancelled_call.value) == "Cancelled"
         assert not started(native, waiting_submit)
 
-        # The eight were not cancelled: each fails on its missing source.
+        # The eight were not cancelled: each fails on its source, a directory that is no repository.
         for operation in submitted:
             outcome = result(native, operation)
             assert [error.code for error in outcome.errors] != [GwzErrorCode.cancelled]
@@ -147,15 +159,20 @@ def test_a_cancel_naming_a_wrong_foreign_completed_or_non_network_operation_fail
     host.submit("merge", "MergeRequest", "MergeResponse", encode_message("MergeRequest", merge))
     assert refused("op_req_host_merge_status") == "InvalidRequest"
 
-    # Nothing was cancelled: both end on their missing sources.
+    # Nothing was cancelled: both end on their sources, directories that are no repositories.
     for native_result in (result(native, running), result(native, foreign)):
         assert [error.code for error in native_result.errors] != [GwzErrorCode.cancelled]
     assert refused(running) == "InvalidRequest"
 
 
 def test_close_cancels_waiting_operations_refuses_new_ones_and_joins_the_running(
-    native, held, tmp_path: Path
+    native, monkeypatch, tmp_path: Path
 ) -> None:
+    # The eight run, held for CLOSE_HOLD_MS and then failing on their local source in a few milliseconds, so that
+    # they end well inside the bound (CLEANUP_BOUND, 5 s) with all the slack a loaded runner needs. They were held
+    # for 2 s on a source that Windows sent to the resolver, which took 2.7 s more on the host, 0.2 s inside the
+    # bound, and past it on a loaded runner: 7 of the 8 were still pending (CI run 38427804639).
+    monkeypatch.setenv(DELAY_VARIABLE, str(CLOSE_HOLD_MS))
     host = native.ClientHost()
     running = [submit(host, init_request(tmp_path, f"req_closing_{i}")) for i in range(LIMIT)]
     wait_until(lambda: all(started(native, op) for op in running), 5, "eight operations starting")
@@ -169,9 +186,15 @@ def test_close_cancels_waiting_operations_refuses_new_ones_and_joins_the_running
     # is the host's own account against its own clock; this process's wall clock
     # also holds its scheduling, which a loaded Windows runner stretched to the
     # full bound (5.00 s) in the run that failed `assert 5.0 < 5.0`.
-    assert report == (0, False)
+    assert report == (0, False), f"close took {closed:.2f} s"
     assert [error.code for error in result(native, waiting).errors] == [GwzErrorCode.cancelled]
-    assert all(native.try_operation_result(op) is not None for op in running)
+    # Close saw each operation end; an operation records its result a moment after that (its entry has returned
+    # by then), so the records are waited for rather than expected at once.
+    wait_until(
+        lambda: all(native.try_operation_result(op) is not None for op in running),
+        CLEANUP_BOUND,
+        "every running operation recording its result",
+    )
     with pytest.raises(RuntimeError) as refused:
         submit(host, init_request(tmp_path, "req_after_close"))
     assert error_code(refused.value) == "InvalidRequest"

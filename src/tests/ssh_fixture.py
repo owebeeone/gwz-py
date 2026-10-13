@@ -24,11 +24,13 @@ from __future__ import annotations
 
 import getpass
 import os
+import random
 import shutil
 import socket
 import subprocess
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 WINDOWS = os.name == "nt"
@@ -112,20 +114,83 @@ def seed_bare_repository(root: Path, repository: Path) -> None:
 
 
 def free_port() -> int:
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        return probe.getsockname()[1]
+    """A port for a server that binds it itself, below every range the systems hand out to `bind(0)` and to outgoing
+    connections (Linux from 32768, macOS and Windows from 49152), so that nothing else is given it in the gap before the
+    server binds it. Drawn at random from 12000 to 31999 and checked free by binding it."""
+    for _ in range(1000):
+        port = random.randrange(12_000, 32_000)
+        with socket.socket() as probe:
+            try:
+                probe.bind(("127.0.0.1", port))
+            except OSError:
+                continue
+        return port
+    raise RuntimeError("no free port in 12000..32000 for a fixture server after 1000 draws")
 
 
-def wait_listening(port: int, timeout: float = 5) -> None:
-    deadline = time.monotonic() + timeout
+START_ATTEMPTS = 5
+READY_WITHIN = 20 if WINDOWS else 5
+
+
+def keyscan_program() -> str | Path:
+    return SSHD.with_name("ssh-keyscan.exe") if WINDOWS else "ssh-keyscan"
+
+
+def host_keys_at(port: int) -> set[tuple[str, str]]:
+    """The (type, key) pairs whatever answers on 127.0.0.1:`port` offers as its host keys; empty when nothing
+    answers with a key (refused, silent, or dropped)."""
+    try:
+        scan = subprocess.run(
+            [str(keyscan_program()), "-p", str(port), "-T", "2", "127.0.0.1"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return set()
+    keys = set()
+    for line in scan.stdout.splitlines():
+        fields = line.split()
+        if len(fields) >= 3 and not line.startswith("#"):
+            keys.add((fields[1], fields[2]))
+    return keys
+
+
+def wait_ready_as_own(server: subprocess.Popen[bytes], host_public: str, port: int) -> str | None:
+    """None once `server`, still running, is what answers on `port` with this fixture's host key; else why it is not
+    ready. A listener that merely accepts could be another server's, which does not offer this key."""
+    own = tuple(host_public.split()[:2])
+    deadline = time.monotonic() + READY_WITHIN
     while time.monotonic() < deadline:
-        try:
-            socket.create_connection(("127.0.0.1", port), timeout=0.2).close()
-            return
-        except OSError:
-            time.sleep(0.02)
-    raise RuntimeError(f"nothing listens on 127.0.0.1:{port}")
+        status = server.poll()
+        if status is not None:
+            return f"it exited with {status} before it was ready"
+        offered = host_keys_at(port)
+        if own in offered:
+            return None
+        if offered:
+            return "another server answers on the port"
+        time.sleep(0.02)
+    return f"it was not ready in {READY_WITHIN} s"
+
+
+def end_server(server: subprocess.Popen[bytes]) -> None:
+    """Ends the server this fixture started, by its exact PID, and on Windows the session processes under it."""
+    if WINDOWS:
+        subprocess.run(
+            ["taskkill", "/PID", str(server.pid), "/T", "/F"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+    else:
+        server.terminate()
+    try:
+        server.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        server.kill()
 
 
 class CountingProxy:
@@ -170,7 +235,14 @@ class CountingProxy:
 
 
 class SshFixture:
-    def __init__(self, root: Path, *, stall: bool = False, count: bool = False) -> None:
+    def __init__(
+        self,
+        root: Path,
+        *,
+        stall: bool = False,
+        count: bool = False,
+        ports: Callable[[], int] = free_port,
+    ) -> None:
         if not SSHD.exists():
             raise RuntimeError(f"the transport rows need {SSHD}")
         if WINDOWS and stall:
@@ -197,29 +269,8 @@ class SshFixture:
             authorized.write_text(f'command="{script}" {public}')
         else:
             authorized.write_text(public.strip() + "\n", newline="\n")
-        self.port = free_port()
         config = root / "sshd_config"
-        if WINDOWS:
-            config.write_text(
-                f"Port {self.port}\nListenAddress 127.0.0.1\nHostKey {sshd_value(host_key)}\n"
-                f"AuthorizedKeysFile {sshd_value(authorized)}\nPidFile none\nPasswordAuthentication no\n"
-                "KbdInteractiveAuthentication no\nPubkeyAuthentication yes\nStrictModes no\nLogLevel ERROR\n"
-                + force_command(root)
-            )
-        else:
-            config.write_text(
-                f"Port {self.port}\nListenAddress 127.0.0.1\nHostKey {host_key}\n"
-                f"AuthorizedKeysFile {authorized}\nPidFile none\nPasswordAuthentication no\n"
-                "KbdInteractiveAuthentication no\nChallengeResponseAuthentication no\nUsePAM no\n"
-                "PermitRootLogin yes\nPubkeyAuthentication yes\nStrictModes no\nLogLevel ERROR\n"
-            )
-        run(SSHD, "-t", "-f", config)
-        self._server = subprocess.Popen(
-            [str(SSHD), "-D", "-e", "-f", str(config)],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        wait_listening(self.port)
+        self.port, self._server = self._serve(config, host_key, authorized, ports)
         self.proxy = CountingProxy(self.port) if count else None
         connect_port = self.proxy.port if self.proxy else self.port
         self.user = getpass.getuser() if WINDOWS else run("id", "-un")
@@ -231,6 +282,49 @@ class SshFixture:
         (self.home / ".ssh" / "known_hosts").write_text(
             f"[127.0.0.1]:{connect_port} {host_public}\n"
         )
+
+    def _config_text(self, port: int, host_key: Path, authorized: Path) -> str:
+        if WINDOWS:
+            return (
+                f"Port {port}\nListenAddress 127.0.0.1\nHostKey {sshd_value(host_key)}\n"
+                f"AuthorizedKeysFile {sshd_value(authorized)}\nPidFile none\nPasswordAuthentication no\n"
+                "KbdInteractiveAuthentication no\nPubkeyAuthentication yes\nStrictModes no\nLogLevel ERROR\n"
+                + force_command(self.root)
+            )
+        return (
+            f"Port {port}\nListenAddress 127.0.0.1\nHostKey {host_key}\n"
+            f"AuthorizedKeysFile {authorized}\nPidFile none\nPasswordAuthentication no\n"
+            "KbdInteractiveAuthentication no\nChallengeResponseAuthentication no\nUsePAM no\n"
+            "PermitRootLogin yes\nPubkeyAuthentication yes\nStrictModes no\nLogLevel ERROR\n"
+        )
+
+    def _serve(
+        self, config: Path, host_key: Path, authorized: Path, ports: Callable[[], int]
+    ) -> tuple[int, subprocess.Popen[bytes]]:
+        """A server of this fixture's own, and its port. A port is picked by binding and releasing one, so another
+        server can take it before this one binds it: this server then exits, or is not the one that answers. That
+        attempt is ended and the next starts on the next port, up to START_ATTEMPTS times."""
+        host_public = host_key.with_suffix(".pub").read_text()
+        refused = []
+        for _ in range(START_ATTEMPTS):
+            port = ports()
+            config.write_text(self._config_text(port, host_key, authorized))
+            run(SSHD, "-t", "-f", config)
+            server = subprocess.Popen(
+                [str(SSHD), "-D", "-e", "-f", str(config)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            try:
+                reason = wait_ready_as_own(server, host_public, port)
+            except BaseException:
+                end_server(server)
+                raise
+            if reason is None:
+                return port, server
+            end_server(server)
+            refused.append(f"port {port}: {reason}")
+        raise RuntimeError(f"the sshd did not start in {START_ATTEMPTS} attempts: " + "; ".join(refused))
 
     def _seed_repository(self) -> None:
         seed_bare_repository(self.root, self.repository)
@@ -245,20 +339,7 @@ class SshFixture:
     def close(self) -> None:
         if self.proxy:
             self.proxy.close()
-        if WINDOWS:
-            # The server and the session processes under it, by the exact PID this fixture started.
-            subprocess.run(
-                ["taskkill", "/PID", str(self._server.pid), "/T", "/F"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                check=False,
-            )
-        else:
-            self._server.terminate()
-        try:
-            self._server.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            self._server.kill()
+        end_server(self._server)
         for pid in self.stalled_pids():
             try:
                 os.kill(pid, 9)
