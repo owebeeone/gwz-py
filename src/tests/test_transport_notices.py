@@ -41,3 +41,14 @@ def test_cli_renders_warning_and_ignored_record_as_notes_and_restores_hooks(caps
         NATIVE.replace("gwz: ", "gwz-py: note: ", 1),
         IGNORED.replace("gwz: ", "gwz-py: note: ", 1),
     ]
+
+
+def test_cli_prints_a_transport_note_record_as_a_note_and_leaves_its_detail_lines_at_debug(capsys) -> None:
+    # The transport's notes are `gwz` records at WARNING under `gwz: ` (Code P3-9); a detail line, such as a
+    # followed redirect, is a DEBUG record, which the CLI's WARNING level leaves out.
+    logger = logging.getLogger("gwz")
+    with cli_notices():
+        logger.warning("gwz: github.com:443 asked gwz to wait 2 s; waiting")
+        logger.debug("gwz: github.com:443 redirected to https://github.com/x; following it")
+    output = capsys.readouterr()
+    assert output.err.splitlines() == ["gwz-py: note: github.com:443 asked gwz to wait 2 s; waiting"]

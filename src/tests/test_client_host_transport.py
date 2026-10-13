@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import importlib.machinery
 import importlib.util
+import logging
 import os
 import shutil
 import signal
@@ -165,6 +166,33 @@ def test_an_https_operation_takes_the_transport_route(
         seen = receipts(result[RESULT_TRANSPORT])
         assert seen, "the operation took the transport route: its observations carry an endpoint receipt"
         assert https.requests >= 2, "and it reached the fixture over HTTPS"
+        assert host.close() == (0, False)
+
+
+def test_a_throttled_https_host_is_noted_as_a_gwz_log_record(
+    candidate: Any, clean: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The note of the adaptive concurrency design's section 9 is a `logging`
+    record on `gwz` (Code P3-9): a host that asks for a wait says so, once, at
+    WARNING, in words the CLI's handler prints as a `gwz-py: note:` line."""
+    with HttpsFixture(tmp_path / "https", repository=True, throttle=1) as https:
+        clean.setenv("GIT_SSL_CAINFO", str(https.ca))
+        clean.setenv("HOME", str(tmp_path))
+        host = candidate.ClientHost()
+        with caplog.at_level(logging.DEBUG, logger="gwz"):
+            operation = submit(host, init_request(tmp_path, "req_https_note", https.url))
+            result = raw_result(candidate, operation)
+        assert result[4] == 1, result.get(8)
+        assert https.throttled == 1
+        asked = [
+            record
+            for record in caplog.records
+            if record.name == "gwz" and "asked gwz to wait 2 s; waiting" in record.getMessage()
+        ]
+        assert len(asked) == 1, [record.getMessage() for record in caplog.records]
+        assert asked[0].levelno == logging.WARNING
+        message = asked[0].getMessage()
+        assert message.startswith("gwz: ") and f"127.0.0.1:{https.port} asked gwz" in message, message
         assert host.close() == (0, False)
 
 
@@ -503,11 +531,15 @@ class HttpsFixture:
     """A local HTTPS server under a temporary CA. By default it answers every
     request 401, as gwz-core's fixture does, with a fake gh that refuses. With
     `repository` it serves a bare repository with one commit over Git's smart
-    HTTP protocol (`git http-backend`), anonymously."""
+    HTTP protocol (`git http-backend`), anonymously. Its first `throttle` GET
+    requests are answered 429 with `Retry-After: 2`, as a host that limits
+    its clients does."""
 
-    def __init__(self, root: Path, *, repository: bool = False) -> None:
+    def __init__(self, root: Path, *, repository: bool = False, throttle: int = 0) -> None:
         root.mkdir(parents=True)
         self.root = root
+        self.throttle = throttle
+        self.throttled = 0
 
         def openssl(*args: str) -> None:
             subprocess.run(["openssl", *args], check=True, capture_output=True, cwd=root)
@@ -541,6 +573,13 @@ class HttpsFixture:
 
             def do_GET(self) -> None:  # noqa: N802 - http.server's name
                 fixture.requests += 1
+                if fixture.throttled < fixture.throttle:
+                    fixture.throttled += 1
+                    self.send_response(429)
+                    self.send_header("Retry-After", "2")
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
                 if fixture.served is None:
                     self.send_response(401)
                     self.send_header("WWW-Authenticate", 'Basic realm="fixture"')
@@ -607,7 +646,8 @@ class HttpsFixture:
         context.load_cert_chain(root / "cert.pem", root / "key.pem")
         self._server.socket = context.wrap_socket(self._server.socket, server_side=True)
         threading.Thread(target=self._server.serve_forever, daemon=True).start()
-        self.url = f"https://127.0.0.1:{self._server.server_address[1]}/repo.git"
+        self.port = self._server.server_address[1]
+        self.url = f"https://127.0.0.1:{self.port}/repo.git"
 
     def fake_gh(self, secret: str) -> Path:
         directory = self.root / "bin"

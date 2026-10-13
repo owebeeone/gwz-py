@@ -202,6 +202,14 @@ Logging failures do not refuse the operation. Native selection emits a
 `UserWarning`, which normal Python warning filters can silence or turn into
 an error. The `gwz-py` CLI renders both diagnostics as notes on standard error.
 
+When a host limits the connections an operation may use, or asks it to wait, or
+stops answering, the transport says so as a `WARNING` record on logger `gwz`,
+once per event for the host, in the words of the CLI's `note:` lines under a
+`gwz: ` prefix (for example `gwz: github.com:443 asked gwz to wait 20 s;
+waiting`). A detail line, such as a followed redirect, is a `DEBUG` record. The
+`gwz-py` CLI renders the `WARNING` records as `gwz-py: note:` lines. The records
+come from a thread of the operation's runtime while the operation runs.
+
 Native is a pre-operation escape hatch; an operation never switches transports
 on failure. With native selected, unset concurrency and host connection limits
 resolve to 50 and 8. With gwz selected they resolve to 100 and 32.

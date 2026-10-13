@@ -17,7 +17,8 @@ use gwz_core::git::Git2Backend;
 use gwz_core::model::ModelResult;
 use gwz_core::session_host::EnvironmentSnapshot;
 use gwz_core::transport_host::{
-    CallControls, CancellationToken, NativeCaller, with_cancellable_local_transport_native,
+    CallControls, CancellationToken, NativeCaller, NoteSink,
+    with_cancellable_local_transport_native_noted,
 };
 use gwz_core::transport_scope::Operation;
 use gwz_core::transport_setting::{self, Driver, Source, Transport};
@@ -187,12 +188,13 @@ impl Route {
                 native,
                 ..
             } => {
-                let (result, report) = with_cancellable_local_transport_native(
+                let (result, report) = with_cancellable_local_transport_native_noted(
                     meta,
                     operation_id,
                     &environment,
                     &token,
                     native,
+                    log_notes(),
                     action,
                 );
                 let cleanup = Cleanup {
@@ -203,6 +205,31 @@ impl Route {
             }
         }
     }
+}
+
+/// Where the transport's notes go (the adaptive concurrency design's §9): a
+/// `logging` record on `gwz` for each, at WARNING, and each detail line, such as
+/// a followed discovery redirect, at DEBUG. The record's text is the note's
+/// with its `note: ` prefix, which the CLI prints, replaced by `gwz: `, as the
+/// transport setting's records are, so gwz-py's own handler prints it as a
+/// `gwz-py: note:` line. A note comes from a thread of the operation's runtime,
+/// which takes the GIL for the record; logging never fails the operation.
+fn log_notes() -> NoteSink {
+    NoteSink::new(|line| log_note("warning", line))
+        .with_detail_reader(|line| log_note("debug", line))
+}
+
+fn log_note(level: &'static str, line: &str) {
+    let text = format!("gwz: {}", line.strip_prefix("note: ").unwrap_or(line));
+    let _ = std::panic::catch_unwind(|| {
+        Python::attach(|py| {
+            if let Ok(logging) = py.import("logging")
+                && let Ok(logger) = logging.call_method1("getLogger", ("gwz",))
+            {
+                let _ = logger.call_method1(level, (text,));
+            }
+        });
+    });
 }
 
 /// Resolves the request's `~` and `~/…` invocation identities against
