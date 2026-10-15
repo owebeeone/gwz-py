@@ -5,11 +5,31 @@
 
 use std::cell::Cell;
 use std::ffi::OsString;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use gwz_core::model::ErrorCode;
 use gwz_core::{FetchRequest, RemoteSshIdentity, TransportOptions};
 
-use super::{Cleanup, RequestMeta, capture_with, fill_native_defaults};
+use super::{Cleanup, ExitGate, RequestMeta, capture_with, fill_native_defaults, note_sink};
+use crate::client_host::Operations;
+
+fn gate() -> ExitGate {
+    Arc::new(Operations::default()).exit_gate()
+}
+
+/// What reached the interpreter: each record the sink made, with its level.
+type Records = Arc<Mutex<Vec<(&'static str, String)>>>;
+
+/// A sink whose interpreter call is a push to `Records`.
+fn recording(exit: ExitGate) -> (gwz_core::transport_host::NoteSink, Records) {
+    let records = Records::default();
+    let seen = Arc::clone(&records);
+    let sink = note_sink(exit, move |level, line| {
+        seen.lock().unwrap().push((level, line.to_owned()));
+    });
+    (sink, records)
+}
 
 /// A fetch whose invocation names `default_identity` and, for `origin`,
 /// `remote_identity`.
@@ -107,7 +127,7 @@ fn with_the_off_switch_on_an_operation_takes_the_native_route_and_builds_no_runt
     assert!(route.canceller().is_none());
     assert_eq!(request_bytes, original);
     let ran = Cell::new(false);
-    let (result, cleanup) = route.run(request_meta, "op_req_route".into(), |_| {
+    let (result, cleanup) = route.run(request_meta, "op_req_route".into(), gate(), |_| {
         ran.set(true);
     });
     assert!(result.is_ok());
@@ -131,7 +151,7 @@ fn with_the_off_switch_off_an_operation_enters_the_transport() {
     .unwrap();
     assert!(route.canceller().is_some());
     let ran = Cell::new(false);
-    let (result, cleanup) = route.run(request_meta, "op_req_route".into(), |_| {
+    let (result, cleanup) = route.run(request_meta, "op_req_route".into(), gate(), |_| {
         ran.set(true);
     });
     assert_eq!(result.unwrap_err().code, ErrorCode::InvalidRequest);
@@ -188,4 +208,51 @@ fn tilde_identities_resolve_against_the_snapshot_home() {
         );
         assert_eq!(request_meta, meta(&original));
     }
+}
+
+/// gwz-py design §2.6: an operation that outlives the exit bound attaches to
+/// no interpreter, and a note is an attachment. A note, or a detail line, that
+/// the transport delivers after the host closed at exit makes no interpreter
+/// call; before the close, and after a close that is not at exit, it does.
+#[test]
+fn a_note_after_the_host_closed_at_exit_makes_no_interpreter_call() {
+    let operations = Arc::new(Operations::default());
+    let (sink, records) = recording(operations.exit_gate());
+    sink.tell("note: before");
+    sink.tell_detail("detail: before");
+    assert_eq!(records.lock().unwrap().len(), 2, "alive: both reach it");
+
+    operations.close(true, Duration::ZERO);
+    sink.tell("note: after the exit close");
+    sink.tell_detail("detail: after the exit close");
+    assert_eq!(
+        records.lock().unwrap().len(),
+        2,
+        "closed at exit: neither reaches it"
+    );
+}
+
+#[test]
+fn a_note_after_a_close_that_is_not_at_exit_still_reaches_the_interpreter() {
+    let operations = Arc::new(Operations::default());
+    let (sink, records) = recording(operations.exit_gate());
+    operations.close(false, Duration::ZERO);
+    sink.tell("note: after an ordinary close");
+    assert_eq!(
+        *records.lock().unwrap(),
+        vec![("warning", "note: after an ordinary close".to_owned())]
+    );
+}
+
+/// The exit hook's close can come while the operation's own thread is the one
+/// that delivers: the sink the operation took before the close sees it.
+#[test]
+fn a_sink_taken_before_the_exit_close_drops_notes_delivered_from_another_thread() {
+    let operations = Arc::new(Operations::default());
+    let (sink, records) = recording(operations.exit_gate());
+    operations.close(true, Duration::ZERO);
+    std::thread::spawn(move || sink.tell("note: from the pass thread"))
+        .join()
+        .unwrap();
+    assert!(records.lock().unwrap().is_empty());
 }

@@ -26,7 +26,7 @@ use gwz_core::{Cbor, RequestMeta};
 use pyo3::types::PyAnyMethods;
 use pyo3::{PyResult, Python};
 
-use crate::client_host::{Canceller, Cleanup};
+use crate::client_host::{Canceller, Cleanup, ExitGate};
 use crate::error;
 
 pub(crate) struct Route(Inner);
@@ -178,6 +178,7 @@ impl Route {
         self,
         meta: RequestMeta,
         operation_id: String,
+        exit: ExitGate,
         action: impl FnOnce(&Git2Backend) -> T,
     ) -> (ModelResult<T>, Option<Cleanup>) {
         match self.0 {
@@ -194,7 +195,7 @@ impl Route {
                     &environment,
                     &token,
                     native,
-                    log_notes(),
+                    log_notes(exit),
                     action,
                 );
                 let cleanup = Cleanup {
@@ -213,10 +214,31 @@ impl Route {
 /// with its `note: ` prefix, which the CLI prints, replaced by `gwz: `, as the
 /// transport setting's records are, so gwz-py's own handler prints it as a
 /// `gwz-py: note:` line. A note comes from a thread of the operation's runtime,
-/// which takes the GIL for the record; logging never fails the operation.
-fn log_notes() -> NoteSink {
-    NoteSink::new(|line| log_note("warning", line))
-        .with_detail_reader(|line| log_note("debug", line))
+/// which takes the GIL for the record; logging never fails the operation, and
+/// a note that comes after the host closed at exit is dropped (`note_sink`).
+fn log_notes(exit: ExitGate) -> NoteSink {
+    note_sink(exit, log_note)
+}
+
+/// The sink over `record`, the one place a note reaches the interpreter. A
+/// note that comes once the host has closed at interpreter exit is dropped:
+/// the operation outlived the exit bound, and design §2.6 has it attach to no
+/// interpreter, which may be finalizing.
+fn note_sink(
+    exit: ExitGate,
+    record: impl Fn(&'static str, &str) + Clone + Send + Sync + 'static,
+) -> NoteSink {
+    let (detail_exit, detail_record) = (Arc::clone(&exit), record.clone());
+    NoteSink::new(move |line| {
+        if !exit() {
+            record("warning", line);
+        }
+    })
+    .with_detail_reader(move |line| {
+        if !detail_exit() {
+            detail_record("debug", line);
+        }
+    })
 }
 
 fn log_note(level: &'static str, line: &str) {

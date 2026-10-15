@@ -9,7 +9,7 @@
 //! | The route and the snapshot are captured while the caller holds the GIL; the operation then runs with it released: a `call` on the caller's thread, a `submit` on its own `gwz-py-operation` thread, which is where a waiting operation waits | §2.3, §2.4 |
 //! | `cancel_operation` and `close` wait with the GIL released, bounded by the cleanup bound, and so does the exit hook. An operation needs no GIL to end: its Python error is built only where it is raised or read (`error.rs`) | §2.5, §2.6 "No wait holds the GIL" |
 //! | Each host registers its own exit callback with `atexit` when it is created, holding only a weak reference to the host's operations; `close` unregisters it once no operation is left running, and until then the callback marks the host as exiting and waits for them again | §2.6 "Interpreter exit" |
-//! | An operation that ends after a close at exit records its outcome in the host and then attaches to no interpreter | §2.6 |
+//! | An operation that ends after a close at exit records its outcome in the host and then attaches to no interpreter; the transport's note sink, which attaches for each logging record, drops the notes that come once the host has closed at exit | §2.6 |
 
 mod operations;
 
@@ -23,8 +23,8 @@ use gwz_core::transport_scope::{Operation, in_scope};
 use pyo3::prelude::*;
 use pyo3::types::{PyCFunction, PyDict, PyTuple};
 
-pub(crate) use operations::{Canceller, Cleanup};
-use operations::{Operations, Ticket};
+use operations::Ticket;
+pub(crate) use operations::{Canceller, Cleanup, ExitGate, Operations};
 
 use crate::route::{self, Route};
 use crate::{codec, dispatch, error, shims};
@@ -254,7 +254,7 @@ impl Network {
                 exiting: ticket.finish(None),
             };
         }
-        let (result, cleanup) = route.run(meta, operation_id, action);
+        let (result, cleanup) = route.run(meta, operation_id, ticket.exit_gate(), action);
         Ran {
             result,
             exiting: ticket.finish(cleanup),

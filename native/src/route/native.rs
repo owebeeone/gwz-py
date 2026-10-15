@@ -8,7 +8,7 @@ use gwz_core::model::ModelResult;
 use gwz_core::transport_scope::Operation;
 use pyo3::PyResult;
 
-use crate::client_host::{Canceller, Cleanup};
+use crate::client_host::{Canceller, Cleanup, ExitGate};
 
 pub(crate) struct Route;
 
@@ -39,6 +39,7 @@ impl Route {
         self,
         _meta: RequestMeta,
         _operation_id: String,
+        _exit: ExitGate,
         action: impl FnOnce(&Git2Backend) -> T,
     ) -> (ModelResult<T>, Option<Cleanup>) {
         (Ok(action(&Git2Backend::new())), None)

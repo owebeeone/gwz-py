@@ -49,6 +49,11 @@ impl Cleanup {
     };
 }
 
+/// What a note sink asks before it attaches to the interpreter: whether the
+/// host has closed at interpreter exit (§2.6), true from the moment that close
+/// begins. It reads the host's own state and keeps nothing of its own.
+pub(crate) type ExitGate = Arc<dyn Fn() -> bool + Send + Sync>;
+
 /// A host's network operations.
 #[derive(Default)]
 pub(crate) struct Operations {
@@ -119,6 +124,13 @@ impl Aggregate {
 impl Operations {
     fn lock(&self) -> MutexGuard<'_, State> {
         self.state.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// The gate that tells a thread of an operation's runtime whether the host
+    /// has closed at interpreter exit.
+    pub(crate) fn exit_gate(self: &Arc<Self>) -> ExitGate {
+        let operations = Arc::clone(self);
+        Arc::new(move || operations.lock().exiting)
     }
 
     /// Waits for a change until `deadline`; false once it has passed.
@@ -320,6 +332,11 @@ pub(crate) struct Ticket {
 }
 
 impl Ticket {
+    /// The gate of this operation's host.
+    pub(crate) fn exit_gate(&self) -> ExitGate {
+        self.operations.exit_gate()
+    }
+
     /// Waits, holding no GIL, for a slot and takes it. Refused with
     /// `Cancelled` when the operation is cancelled, or its host closes,
     /// while it waits.
