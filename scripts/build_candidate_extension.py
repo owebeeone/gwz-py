@@ -6,9 +6,10 @@
 It never changes a production manifest. It makes DESTINATION, a new
 directory outside the workspace, and builds there:
 
-- core/: gwz-core's candidate manifest, which gwz-core's
+- core/: a copy of gwz-core's manifest, which gwz-core's
   tests/transport_backend/prepare.py makes from the gwz-core checkout beside
-  this one, adding gwz-transport and the transport's third-party crates;
+  this one (the transport's crates are in that manifest itself, behind
+  gwz_transport_candidate, which the build's RUSTFLAGS turn on);
 - py/: a copy of this repository's manifest whose gwz-core dependency names
   core/, its Cargo.lock, which resolving the copy extends with the
   transport's crates, and links to the sources it builds;

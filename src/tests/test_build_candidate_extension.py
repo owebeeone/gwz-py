@@ -44,7 +44,7 @@ def test_the_recipe_builds_gwz_py_on_the_core_candidate_manifest(tmp_path: Path)
     prepared = recipe.prepare(outside_the_workspace(tmp_path), core=CORE)
 
     core_manifest = (prepared.core / "Cargo.toml").read_text(encoding="utf-8")
-    assert "gwz-transport = { path = " in core_manifest, "gwz-core's own prepare.py made it"
+    assert "gwz-transport = { path = " in core_manifest, "the prepared copy of gwz-core's manifest names it behind the switch"
     ours = (ROOT / "Cargo.toml").read_text(encoding="utf-8")
     assert prepared.manifest.read_text(encoding="utf-8") == ours.replace(
         'gwz-core = { path = "../gwz-core" }',
