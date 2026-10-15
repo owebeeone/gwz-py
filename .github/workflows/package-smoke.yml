@@ -52,6 +52,16 @@ jobs:
           repository: owebeeone/gwz-sspi
           path: gwz-sspi
 
+      - name: Check out gwz-transport and gwz-sspi beside gwz-core
+        # gwz-core's Cargo.toml names both by path (`../gwz-transport`,
+        # `../gwz-sspi`) behind gwz_transport_candidate, and Cargo reads a path
+        # dependency's manifest in every build, ordinary ones included. Each is
+        # at the commit gwz-core's .github/gwz-transport.commit or
+        # .github/gwz-sspi.commit pins; one this job checked out already stays.
+        shell: bash
+        working-directory: gwz-core
+        run: bash .github/checkout-siblings.sh
+
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
@@ -161,6 +171,16 @@ jobs:
           repository: owebeeone/gwz-sspi
           path: gwz-sspi
 
+      - name: Check out gwz-transport and gwz-sspi beside gwz-core
+        # gwz-core's Cargo.toml names both by path (`../gwz-transport`,
+        # `../gwz-sspi`) behind gwz_transport_candidate, and Cargo reads a path
+        # dependency's manifest in every build, ordinary ones included. Each is
+        # at the commit gwz-core's .github/gwz-transport.commit or
+        # .github/gwz-sspi.commit pins; one this job checked out already stays.
+        shell: bash
+        working-directory: gwz-core
+        run: bash .github/checkout-siblings.sh
+
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
@@ -210,6 +230,16 @@ jobs:
         with:
           repository: owebeeone/gwz-sspi
           path: gwz-sspi
+
+      - name: Check out gwz-transport and gwz-sspi beside gwz-core
+        # gwz-core's Cargo.toml names both by path (`../gwz-transport`,
+        # `../gwz-sspi`) behind gwz_transport_candidate, and Cargo reads a path
+        # dependency's manifest in every build, ordinary ones included. Each is
+        # at the commit gwz-core's .github/gwz-transport.commit or
+        # .github/gwz-sspi.commit pins; one this job checked out already stays.
+        shell: bash
+        working-directory: gwz-core
+        run: bash .github/checkout-siblings.sh
 
       - name: Set up Python
         uses: actions/setup-python@v6

@@ -78,11 +78,11 @@ jobs:
           echo "taut=v${release#taut-proto==}" >> "$GITHUB_OUTPUT"
 
       - name: Check out gwz-transport at its pin, beside gwz-core
-        # The recipe builds on gwz-core's own candidate manifest
-        # (tests/transport_backend/prepare.py), which adds gwz-transport from the
-        # checkout beside gwz-core: here the commit gwz-core's transport candidate
-        # job builds against, whose protocol module gwz-core's candidate protocol
-        # matches.
+        # The recipe builds on a copy of gwz-core's own manifest
+        # (tests/transport_backend/prepare.py), which names gwz-transport, behind
+        # the switch, from the checkout beside gwz-core: here the commit gwz-core's
+        # transport candidate job builds against, whose protocol module gwz-core's
+        # candidate protocol matches.
         uses: actions/checkout@v5
         with:
           repository: owebeeone/gwz-transport
@@ -110,8 +110,8 @@ jobs:
           persist-credentials: false
 
       - name: Checkout gwz-sspi
-        # gwz-py, gwz-cli and gwz-core's candidate manifest build against gwz-sspi
-        # by path, beside them.
+        # gwz-py, gwz-cli and gwz-core build against gwz-sspi by path, beside
+        # them.
         uses: actions/checkout@v5
         with:
           repository: owebeeone/gwz-sspi
