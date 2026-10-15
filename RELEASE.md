@@ -12,7 +12,7 @@ the release script sets the Cargo package version to that value before building
 wheels.
 
 The core source differs intentionally between branches. The new SSPI path edge
-is also reconciled to the exact `=0.1.0` registry pin before existing gates. SSPI
+is also reconciled to the exact `=0.1.1` registry pin before existing gates. SSPI
 is currently unpublished and `publish=false`; provisioned local artifacts do
 not bypass this public release prerequisite. See [HostPackaging.md](docs/HostPackaging.md).
 
@@ -37,7 +37,7 @@ from crates.io; none is a `git` or `path` dependency.
 
 | Crate | Pin on `release` |
 |---|---|
-| `gwz-sspi` | `gwz-sspi = "=0.1.0"`; registry publication remains a prerequisite |
+| `gwz-sspi` | `gwz-sspi = "=0.1.1"`; registry publication remains a prerequisite |
 | `gwz-core` | `gwz-core = "=X.Y.Z"`: gwz-py's own version, exactly. Not a git tag, and not main's sibling path |
 | `pyo3`, `tokio`, `cfg-if` | main's crates.io version requirement, unchanged |
 | gwz-core's own dependencies: the git2-rs fork's `gwz-git2` and `gwz-libgit2-sys`, gwz-core's internal `gwz-*` crates and, once the transport is in the ordinary build, `gwz-transport` | the versions the published gwz-core X.Y.Z requires |

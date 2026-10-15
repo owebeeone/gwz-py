@@ -168,7 +168,7 @@ def real_artifacts():
     source=ROOT.parent/'gwz-sspi/scripts/artifact_set.py'
     if not source.is_file():
         home=Path(os.environ.get('CARGO_HOME',Path.home()/'.cargo'))
-        sources=list(home.glob('registry/src/*/gwz-sspi-0.1.0/scripts/artifact_set.py'))
+        sources=list(home.glob('registry/src/*/gwz-sspi-0.1.1/scripts/artifact_set.py'))
         assert len(sources)==1,'resolve the declared SSPI Cargo dependency before packaging tests'
         source=sources[0]
     return load(source,'fixture_real_artifacts')
