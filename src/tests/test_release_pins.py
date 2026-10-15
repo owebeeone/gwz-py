@@ -56,7 +56,7 @@ def release_manifest(pin: str, version: str) -> str:
     assert manifest.count(MAIN_PIN) == 1, f"Cargo.toml on main no longer carries `{MAIN_PIN}`"
     manifest = manifest.replace(MAIN_PIN, pin)
     if pin.startswith('gwz-core = "='):
-        manifest = manifest.replace('gwz-sspi = { path = "../gwz-sspi", version = "=0.1.0" }', 'gwz-sspi = "=0.1.0"')
+        manifest = manifest.replace('gwz-sspi = { path = "../gwz-sspi", version = "=0.1.1" }', 'gwz-sspi = "=0.1.1"')
     return re.sub(r'^version = "[^"]*"', f'version = "{version}"', manifest, count=1, flags=re.M)
 
 
@@ -73,7 +73,7 @@ def release_lock(replaced: dict[str, str] | None = None) -> str:
     """The 1.1.0 registry release's lock: gwz-py itself, each declared crate and an internal
     crate gwz-core brings in, all but gwz-py from crates.io, with `replaced` entries swapped in."""
     entries = {
-        package: lock_entry(package, "1.1.0" if package == "gwz-core" else "0.1.0" if package == "gwz-sspi" else "1.0.0")
+        package: lock_entry(package, "1.1.0" if package == "gwz-core" else "0.1.1" if package == "gwz-sspi" else "1.0.0")
         for package in DECLARED.values()
     }
     entries["gwz-ids"] = lock_entry("gwz-ids", "0.0.9")
@@ -314,7 +314,7 @@ def test_release_md_names_every_native_dependency_pin() -> None:
 
 @pytest.mark.parametrize("pin", ['gwz-sspi = "0.1.0"', 'gwz-sspi = "=0.2.0"', 'gwz-sspi = { path = "unreviewed", version = "=0.1.0" }'])
 def test_sspi_release_pin_refuses_unreviewed_shapes_before_writing(tmp_path, pin):
-    text=release_manifest(MAIN_PIN,"1.0.17").replace('gwz-sspi = { path = "../gwz-sspi", version = "=0.1.0" }',pin)
+    text=release_manifest(MAIN_PIN,"1.0.17").replace('gwz-sspi = { path = "../gwz-sspi", version = "=0.1.1" }',pin)
     manifest=tmp_path/'Cargo.toml';manifest.write_text(text)
     with pytest.raises(SystemExit):release.reconcile_cargo_toml(tmp_path,"1.1.0")
     assert manifest.read_text()==text
