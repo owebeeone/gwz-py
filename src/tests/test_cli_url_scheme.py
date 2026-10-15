@@ -170,6 +170,10 @@ def test_verbose_rewrites_precede_the_transport_diagnostics() -> None:
             credential_offered=True,
             authenticated=True,
             public_key_fingerprint=None,
+            endpoint_id=None,
+            connection_id=None,
+            stream_id=None,
+            reused=None,
         )
     ]
 

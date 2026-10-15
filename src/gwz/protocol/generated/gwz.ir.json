@@ -2218,6 +2218,18 @@
           "optional": true,
           "transient": false,
           "merge": null
+        },
+        {
+          "name": "max_retries",
+          "tag": 9,
+          "options": {},
+          "type": {
+            "k": "scalar",
+            "scalar": "int"
+          },
+          "optional": "missing_ok",
+          "transient": false,
+          "merge": null
         }
       ]
     },
@@ -2648,6 +2660,54 @@
             "scalar": "str"
           },
           "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "endpoint_id",
+          "tag": 9,
+          "options": {},
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": "missing_ok",
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "connection_id",
+          "tag": 10,
+          "options": {},
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": "missing_ok",
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "stream_id",
+          "tag": 11,
+          "options": {},
+          "type": {
+            "k": "scalar",
+            "scalar": "int"
+          },
+          "optional": "missing_ok",
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "reused",
+          "tag": 12,
+          "options": {},
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": "missing_ok",
           "transient": false,
           "merge": null
         }

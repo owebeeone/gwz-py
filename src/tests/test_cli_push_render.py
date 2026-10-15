@@ -140,6 +140,10 @@ def test_verbose_lists_both_kinds_of_reason_before_the_transport_diagnostics() -
             credential_offered=True,
             authenticated=True,
             public_key_fingerprint=None,
+            endpoint_id=None,
+            connection_id=None,
+            stream_id=None,
+            reused=None,
         )
     ]
 

@@ -15,6 +15,7 @@ def test_transport_output_does_not_turn_an_offer_into_authentication() -> None:
         credential_method=TransportCredentialMethod.file,
         selection_source=TransportSelectionSource.invocation_default,
         credential_offered=True, authenticated=None, public_key_fingerprint=None,
+        endpoint_id=None, connection_id=None, stream_id=None, reused=None,
     )
     response = SimpleNamespace(response=SimpleNamespace(meta=SimpleNamespace(
         transport=[row], aggregate_status=AggregateStatus.ok,
@@ -34,10 +35,13 @@ def test_transport_rows_are_serializable_without_secret_material() -> None:
         credential_method=TransportCredentialMethod.agent,
         selection_source=TransportSelectionSource.ambient,
         credential_offered=True, authenticated=True, public_key_fingerprint=None,
+        endpoint_id=None, connection_id=None, stream_id=None, reused=None,
     )
     value = json.loads(json.dumps(row, default=json_default))
     assert value["credential_method"] == "agent"
     assert value["public_key_fingerprint"] is None
+    # S7.1 (1.1.0) C2: the four receipts are on the row, null off the transport route.
+    assert [value[name] for name in ("endpoint_id", "connection_id", "stream_id", "reused")] == [None] * 4
     assert "private_key_path" not in value
 
 
@@ -54,6 +58,7 @@ def test_failed_operations_keep_transport_evidence_in_error_output(streamed: boo
         credential_method=TransportCredentialMethod.file,
         selection_source=TransportSelectionSource.invocation_default,
         credential_offered=True, authenticated=None, public_key_fingerprint=None,
+        endpoint_id=None, connection_id=None, stream_id=None, reused=None,
     )]
     if streamed:
         response = OperationResult(

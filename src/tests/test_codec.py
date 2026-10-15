@@ -44,6 +44,7 @@ def _request_meta(request_id: str = "req_test") -> generated.RequestMeta:
             concurrency=4,
             progress_min_interval_ms=None,
             max_connections_per_host=8,
+            max_retries=None,
         ),
         dry_run=True,
         attribution=generated.OperationAttribution(
@@ -381,6 +382,84 @@ def test_stash_generated_response_round_trip() -> None:
     )
 
     _assert_cbor_round_trip("StashResponse", response)
+
+
+# S7.1 (1.1.0) step C2.2: the five members core's ordinary protocol gained.
+# These bytes were encoded by the pre-C2 schema (no tags 9 to 12); the new
+# reader accepts them and reads the new members as absent.
+PRE_C2_POLICY = bytes.fromhex("a8010102f603f604f605666f726967696e060407f60808")
+PRE_C2_OBSERVATION = bytes.fromhex(
+    "a8016a7265706f732f636f726502666f726967696e03010402050006f507f508f6"
+)
+
+
+def _observation(**receipts: object) -> generated.TransportObservation:
+    values: dict[str, object] = {
+        "endpoint_id": None,
+        "connection_id": None,
+        "stream_id": None,
+        "reused": None,
+    }
+    values.update(receipts)
+    return generated.TransportObservation(
+        repository_path="repos/core",
+        remote="origin",
+        operation=generated.TransportOperation.fetch,
+        credential_method=generated.TransportCredentialMethod.agent,
+        selection_source=generated.TransportSelectionSource.ambient,
+        credential_offered=True,
+        authenticated=True,
+        public_key_fingerprint=None,
+        **values,
+    )
+
+
+def _policy(**extra: object) -> generated.OperationPolicy:
+    return generated.OperationPolicy(
+        partial=generated.PartialBehavior.partial,
+        destructive=None,
+        sync=None,
+        unsupported_member=None,
+        remote="origin",
+        concurrency=4,
+        progress_min_interval_ms=None,
+        max_connections_per_host=8,
+        **extra,
+    )
+
+
+def test_operation_policy_and_observation_round_trip_the_1_1_0_fields() -> None:
+    for retries in (0, 3):
+        _assert_cbor_round_trip("OperationPolicy", _policy(max_retries=retries))
+    _assert_cbor_round_trip("OperationPolicy", _policy(max_retries=None))
+    _assert_cbor_round_trip(
+        "TransportObservation",
+        _observation(
+            endpoint_id="endpoint-1", connection_id="connection-1", stream_id=7, reused=True
+        ),
+    )
+    _assert_cbor_round_trip("TransportObservation", _observation(reused=False))
+    _assert_cbor_round_trip("TransportObservation", _observation())
+
+
+def test_pre_c2_bytes_decode_with_the_new_members_absent() -> None:
+    policy = decode_message("OperationPolicy", PRE_C2_POLICY)
+    assert policy == _policy(max_retries=None)
+    assert policy.concurrency == 4
+    observation = decode_message("TransportObservation", PRE_C2_OBSERVATION)
+    assert observation == _observation()
+    assert observation.remote == "origin"
+
+
+def test_the_new_members_are_written_at_tags_nine_to_twelve() -> None:
+    policy = wire_codec.encode_struct(schema(), "OperationPolicy", to_wire(_policy(max_retries=0)))
+    assert policy[9] == 0
+    observation = wire_codec.encode_struct(
+        schema(),
+        "TransportObservation",
+        to_wire(_observation(endpoint_id="e", connection_id="c", stream_id=7, reused=True)),
+    )
+    assert (observation[9], observation[10], observation[11], observation[12]) == ("e", "c", 7, True)
 
 
 def test_unsupported_message_name_raises_protocol_error() -> None:

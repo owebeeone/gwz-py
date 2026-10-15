@@ -669,6 +669,7 @@ class OperationPolicy:
     concurrency: int | None
     progress_min_interval_ms: int | None
     max_connections_per_host: int | None
+    max_retries: int | None
 
 @dataclass(slots=True)
 class RemoteSshIdentity:
@@ -722,6 +723,10 @@ class TransportObservation:
     credential_offered: bool
     authenticated: bool | None
     public_key_fingerprint: str | None
+    endpoint_id: str | None
+    connection_id: str | None
+    stream_id: int | None
+    reused: bool | None
 
 @dataclass(slots=True)
 class MemberUrlResolution:

@@ -335,6 +335,7 @@ class Client:
             concurrency=concurrency,
             progress_min_interval_ms=progress_min_interval_ms,
             max_connections_per_host=max_connections_per_host,
+            max_retries=None,
         )
 
         raw_root = Path(root) if root is not None else self.root

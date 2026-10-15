@@ -367,5 +367,21 @@ def test_log_addition_preserves_every_pre_existing_wire_shape_and_slot() -> None
                         ("credential_helper_timeout", 75), ("capacity", 76)):
         if error_codes["members"].pop(name, None) != value:
             raise ValueError(f"GwzErrorCode.{name} must occupy additive slot {value}")
+    # S7.1 (1.1.0) step C2 adds OperationPolicy.max_retries (tag 9) and the
+    # four TransportObservation receipts (tags 9 to 12), all MISSING_OK.
+    # Require the exact slots, then remove only them, matching
+    # check_protocol_drift.py.
+    for message_name, additions in (
+        ("OperationPolicy", {"max_retries": 9}),
+        (
+            "TransportObservation",
+            {"endpoint_id": 9, "connection_id": 10, "stream_id": 11, "reused": 12},
+        ),
+    ):
+        message = next(m for m in projected["messages"] if m["name"] == message_name)
+        for name, tag in additions.items():
+            added = [f for f in message["fields"] if f["name"] == name]
+            assert [(f["tag"], f["optional"]) for f in added] == [(tag, "missing_ok")]
+            message["fields"].remove(added[0])
     encoded = json.dumps(projected, sort_keys=True, separators=(",", ":")).encode()
     assert hashlib.sha256(encoded).hexdigest() == PRE_LOG_WIRE_SHA256
