@@ -40,7 +40,9 @@ def test_transport_rows_are_serializable_without_secret_material() -> None:
     value = json.loads(json.dumps(row, default=json_default))
     assert value["credential_method"] == "agent"
     assert value["public_key_fingerprint"] is None
-    # S7.1 (1.1.0) C2: the four receipts are on the row, null off the transport route.
+    # S7.1 (1.1.0) C2: the four receipts are on the row, null unless the transport
+    # route reported an open for it (native route, or a transport-route row whose
+    # setup failed or was refused before the open).
     assert [value[name] for name in ("endpoint_id", "connection_id", "stream_id", "reused")] == [None] * 4
     assert "private_key_path" not in value
 
