@@ -104,7 +104,8 @@ fn run(
 
 fn accepted_response(meta: &gwz_core::RequestMeta, operation_id: &str) -> gwz_core::MergeResponse {
     cfg_if::cfg_if! {
-        if #[cfg(all(gwz_transport_candidate, any(unix, windows)))] {
+        // The session candidate's `ResponseMeta` carries an embedded message (S7.1 (1.1.0) step C3a).
+        if #[cfg(gwz_session_candidate)] {
             let response_meta = gwz_core::ResponseMeta {
                 transport_message: None,
                 transport: None,

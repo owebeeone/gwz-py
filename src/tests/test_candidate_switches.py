@@ -46,6 +46,10 @@ SCANNED = (
 ROUTE_SITES = (
     "native/src/route.rs",
     "native/src/client_host.rs",
+)
+# The two arms that build a `ResponseMeta` literal differ only by the session candidate's `transport_message` slot
+# (S7.1 (1.1.0) step C3a), so they select by that switch alone: the transport switch without it is the ordinary shape.
+RESPONSE_META_SITES = (
     "native/src/dispatch/merge.rs",
     "native/src/dispatch/mod.rs",
 )
@@ -77,6 +81,13 @@ def test_the_route_sites_select_by_platform_and_the_candidate_switch_alone() -> 
         assert PLATFORMS in text, name
         assert "all(windows, gwz_transport_candidate" not in text, name
         assert "all(unix, gwz_transport_candidate)" not in text, name
+
+
+def test_the_response_meta_arms_select_the_session_candidate_alone() -> None:
+    for name in RESPONSE_META_SITES:
+        text = (ROOT / name).read_text(encoding="utf-8")
+        assert "if #[cfg(gwz_session_candidate)]" in text, name
+        assert "gwz_transport_candidate" not in text, name
 
 
 def test_the_candidate_switch_alone_has_no_refusal_to_compile() -> None:
