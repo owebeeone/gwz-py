@@ -465,7 +465,8 @@ fn submit_accepted(
     // ID is live (the core session contract, §4.3).
     let recorder = operations::begin(&operation_id).map_err(error::model)?;
     cfg_if::cfg_if! {
-        if #[cfg(all(gwz_transport_candidate, any(unix, windows)))] {
+        // The session candidate's `ResponseMeta` carries an embedded message (S7.1 (1.1.0) step C3a).
+        if #[cfg(gwz_session_candidate)] {
             let response_meta = gwz_core::ResponseMeta {
                 transport_message: None,
                 transport: None,
