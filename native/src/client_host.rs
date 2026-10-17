@@ -29,10 +29,34 @@ pub(crate) use operations::{Canceller, Cleanup, ExitGate, Operations};
 use crate::route::{self, Route};
 use crate::{codec, dispatch, error, shims};
 
+cfg_if::cfg_if! {
+    if #[cfg(all(gwz_transport_candidate, any(unix, windows)))] {
+        /// This Client's native route: its SSPI supervisor and the spawn gate that supervisor's worker launches take
+        /// (contract C9; operator decision D31). Each network operation takes its caller from it, so the operations
+        /// of one Client share one gate with the supervisor they share.
+        type NativeRoute = gwz_core::transport_host::NativeHost;
+
+        fn native_route() -> NativeRoute {
+            gwz_core::transport_host::NativeHost::new(crate::worker_host::descriptor())
+        }
+    } else {
+        /// Without the transport candidate nothing uses the supervisor, and no operation has a gate to share.
+        type NativeRoute = Result<Arc<gwz_sspi::Supervisor>, gwz_sspi::ErrorKind>;
+
+        fn native_route() -> NativeRoute {
+            crate::worker_host::descriptor().and_then(|descriptor| {
+                gwz_sspi::Supervisor::new(descriptor, gwz_sspi::Options::default())
+                    .map(Arc::new)
+                    .map_err(|error| error.kind())
+            })
+        }
+    }
+}
+
 #[pyclass(module = "gwz._gwz_core", frozen)]
 pub(crate) struct ClientHost {
     operations: Arc<Operations>,
-    _native_supervisor: Result<Arc<gwz_sspi::Supervisor>, gwz_sspi::ErrorKind>,
+    _native: NativeRoute,
     /// Repository configuration files already reported for this Client.
     ignored_transport_files: route::Notices,
     /// The `atexit` callback, until `close` unregisters it.
@@ -45,14 +69,9 @@ impl ClientHost {
     fn new(py: Python<'_>) -> PyResult<Self> {
         let operations = Arc::new(Operations::default());
         let exit_hook = register_exit_hook(py, Arc::downgrade(&operations))?;
-        let native_supervisor = crate::worker_host::descriptor().and_then(|descriptor| {
-            gwz_sspi::Supervisor::new(descriptor, gwz_sspi::Options::default())
-                .map(Arc::new)
-                .map_err(|error| error.kind())
-        });
         Ok(Self {
             operations,
-            _native_supervisor: native_supervisor,
+            _native: native_route(),
             ignored_transport_files: route::Notices::default(),
             exit_hook: Mutex::new(Some(exit_hook)),
         })
@@ -170,7 +189,7 @@ impl ClientHost {
             return Ok(None);
         };
         cfg_if::cfg_if! { if #[cfg(all(gwz_transport_candidate, any(unix, windows)))] {
-            let native_caller = gwz_core::transport_host::NativeCaller::capture(&self._native_supervisor);
+            let native_caller = self._native.caller();
         } }
         let route = route::capture(
             py,
