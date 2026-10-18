@@ -8,7 +8,7 @@ use gwz_core::model::ModelResult;
 use gwz_core::transport_scope::Operation;
 use pyo3::PyResult;
 
-use crate::client_host::{Canceller, Cleanup, ExitGate};
+use crate::client_host::{Canceller, Cleanup, ExitGate, NativeRoute};
 
 pub(crate) struct Route;
 
@@ -23,6 +23,7 @@ pub(crate) fn capture(
     _meta: &mut RequestMeta,
     _operation: Operation,
     _ignored_files: &Notices,
+    _own: NativeRoute,
 ) -> PyResult<Route> {
     Ok(Route)
 }

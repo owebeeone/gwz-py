@@ -36,7 +36,7 @@ pub(crate) type Notices = Mutex<BTreeSet<PathBuf>>;
 
 enum Inner {
     /// The off switch is on: libgit2's native route, and no runtime. The backend is the Client host's, on its gate.
-    Native { own: Option<NativeHost> },
+    Native { own: NativeHost },
     /// The operation's own runtime, built from `environment` when it runs.
     Transport {
         environment: EnvironmentSnapshot,
@@ -56,6 +56,7 @@ pub(crate) fn capture(
     meta: &mut RequestMeta,
     operation: Operation,
     ignored_files: &Notices,
+    own: NativeHost,
 ) -> PyResult<Route> {
     // Capture before releasing the GIL; file reads and the bounded target
     // scan can then let another Python thread run.
@@ -120,7 +121,7 @@ pub(crate) fn capture(
             .call_method1("native_notice", (message,))?;
     }
     let native = setting.transport == Transport::Native;
-    let route = capture_with(request_bytes, meta, pairs, |_| native)?;
+    let route = capture_with(request_bytes, meta, pairs, own, |_| native)?;
     if native {
         fill_native_defaults(request_bytes, meta);
     }
@@ -131,6 +132,7 @@ fn capture_with(
     request_bytes: &mut Vec<u8>,
     meta: &mut RequestMeta,
     environment: impl IntoIterator<Item = (OsString, OsString)>,
+    own: NativeHost,
     transport_off: impl FnOnce(&EnvironmentSnapshot) -> bool,
 ) -> PyResult<Route> {
     let pairs: Vec<(OsString, OsString)> = environment.into_iter().collect();
@@ -142,7 +144,7 @@ fn capture_with(
         .map(|(_, home)| home.clone());
     let environment = EnvironmentSnapshot::from_os_pairs(pairs).map_err(error::model)?;
     if transport_off(&environment) {
-        return Ok(Route(Inner::Native { own: None }));
+        return Ok(Route(Inner::Native { own }));
     }
     resolve_identity_home(request_bytes, meta, home.as_deref());
     let (controls, gate) = CallControls::new(&Arc::new(()));
@@ -157,13 +159,6 @@ fn capture_with(
 }
 
 impl Route {
-    /// The Client host the operation's backend comes from when it runs without a runtime (the off switch).
-    pub(crate) fn attach_own(&mut self, host: NativeHost) {
-        if let Inner::Native { own } = &mut self.0 {
-            *own = Some(host);
-        }
-    }
-
     pub(crate) fn attach_native(&mut self, caller: NativeCaller) {
         if let Inner::Transport { native, .. } = &mut self.0 {
             *native = Some(caller);
@@ -189,12 +184,7 @@ impl Route {
         action: impl FnOnce(&Git2Backend) -> T,
     ) -> (ModelResult<T>, Option<Cleanup>) {
         match self.0 {
-            Inner::Native { own } => {
-                let backend = own
-                    .as_ref()
-                    .map_or_else(Git2Backend::new, NativeHost::backend);
-                (Ok(action(&backend)), None)
-            }
+            Inner::Native { own } => (Ok(action(&own.backend())), None),
             Inner::Transport {
                 environment,
                 token,

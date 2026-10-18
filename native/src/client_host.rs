@@ -216,8 +216,9 @@ impl ClientHost {
             &mut meta,
             Operation::from_method(method).expect("transport scope has a method"),
             &self.ignored_transport_files,
+            self.native.clone(),
         )?;
-        cfg_if::cfg_if! { if #[cfg(all(gwz_transport_candidate, any(unix, windows)))] { let mut route = route; route.attach_native(native_caller); route.attach_own(self.native.clone()); } }
+        cfg_if::cfg_if! { if #[cfg(all(gwz_transport_candidate, any(unix, windows)))] { let mut route = route; route.attach_native(native_caller); } }
         let operation_id = shims::operation_id(&meta.request_id);
         let ticket = self
             .operations

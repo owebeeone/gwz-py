@@ -19,21 +19,34 @@ use crate::{error, operations};
 /// process-wide transport timeout, which `configure_transport_runtime` must
 /// still be able to choose first.
 pub(crate) struct Backend<'a> {
-    given: Option<&'a Git2Backend>,
-    own: OnceCell<Git2Backend>,
-    /// The Client's native route, which a backend of the request's own is made from.
-    route: Option<NativeRoute>,
+    source: Source<'a>,
     /// A submitted operation's record, which its submit began.
     recorder: Option<&'a operations::OperationRecorder>,
+}
+
+/// Where the backend comes from. A backend of a request's own is made from its Client's native route, always: there
+/// is no variant without one (operator decision D47).
+enum Source<'a> {
+    /// A network operation's route's backend.
+    Given(&'a Git2Backend),
+    /// The request's own, made when its handler first asks.
+    Own(Box<OwnSource>),
+}
+
+/// The Client's route and the backend made from it.
+struct OwnSource {
+    route: NativeRoute,
+    cell: OnceCell<Git2Backend>,
 }
 
 impl<'a> Backend<'a> {
     /// A backend of the request's own, on libgit2's native route and its Client's gate.
     pub(crate) fn own(route: NativeRoute) -> Self {
         Self {
-            given: None,
-            own: OnceCell::new(),
-            route: Some(route),
+            source: Source::Own(Box::new(OwnSource {
+                route,
+                cell: OnceCell::new(),
+            })),
             recorder: None,
         }
     }
@@ -41,9 +54,7 @@ impl<'a> Backend<'a> {
     /// A network operation's route's backend.
     pub(crate) fn given(backend: &'a Git2Backend) -> Self {
         Self {
-            given: Some(backend),
-            own: OnceCell::new(),
-            route: None,
+            source: Source::Given(backend),
             recorder: None,
         }
     }
@@ -58,12 +69,9 @@ impl<'a> Backend<'a> {
     }
 
     fn get(&self) -> &Git2Backend {
-        match self.given {
-            Some(backend) => backend,
-            None => self.own.get_or_init(|| match &self.route {
-                Some(route) => own_backend(route),
-                None => Git2Backend::new(),
-            }),
+        match &self.source {
+            Source::Given(backend) => backend,
+            Source::Own(own) => own.cell.get_or_init(|| own_backend(&own.route)),
         }
     }
 }

@@ -16,6 +16,11 @@ use gwz_core::transport_host::NativeHost;
 use super::{Cleanup, ExitGate, RequestMeta, capture_with, fill_native_defaults, note_sink};
 use crate::client_host::Operations;
 
+/// A Client host with no SSPI worker, which is all a route's backend needs of it.
+fn host() -> NativeHost {
+    NativeHost::new(Err(gwz_sspi::ErrorKind::UnsupportedPlatform))
+}
+
 fn gate() -> ExitGate {
     Arc::new(Operations::default()).exit_gate()
 }
@@ -123,6 +128,7 @@ fn with_the_off_switch_on_an_operation_takes_the_native_route_and_builds_no_runt
         &mut request_bytes,
         &mut request_meta,
         environment(None),
+        host(),
         |_| true,
     )
     .unwrap();
@@ -146,14 +152,14 @@ fn with_the_off_switch_on_an_operation_runs_on_the_client_hosts_gate() {
     let other = NativeHost::new(Err(gwz_sspi::ErrorKind::UnsupportedPlatform));
     let mut request_bytes = request(Some("~/id"), None);
     let mut request_meta = meta(&request_bytes);
-    let mut route = capture_with(
+    let route = capture_with(
         &mut request_bytes,
         &mut request_meta,
         environment(None),
+        host.clone(),
         |_| true,
     )
     .unwrap();
-    route.attach_own(host.clone());
     let seen = Cell::new((false, false));
     let (result, _) = route.run(request_meta, "op_req_route".into(), gate(), |backend| {
         seen.set((host.gates(backend), other.gates(backend)));
@@ -173,6 +179,7 @@ fn with_the_off_switch_off_an_operation_enters_the_transport() {
         &mut request_bytes,
         &mut request_meta,
         environment(None),
+        host(),
         |_| false,
     )
     .unwrap();
@@ -196,6 +203,7 @@ fn tilde_identities_resolve_against_the_snapshot_home() {
         &mut request_bytes,
         &mut request_meta,
         environment(Some("/snapshot/home")),
+        host(),
         |_| false,
     )
     .unwrap();
@@ -226,6 +234,7 @@ fn tilde_identities_resolve_against_the_snapshot_home() {
             &mut request_bytes,
             &mut request_meta,
             environment(home),
+            host(),
             |_| false,
         )
         .unwrap();
