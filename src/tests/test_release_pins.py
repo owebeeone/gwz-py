@@ -312,7 +312,16 @@ def test_release_md_names_every_native_dependency_pin() -> None:
     assert '`gwz-core = "=X.Y.Z"`' in section
 
 
-@pytest.mark.parametrize("pin", ['gwz-sspi = "0.1.0"', 'gwz-sspi = "=0.2.0"', 'gwz-sspi = { path = "unreviewed", version = "=0.1.0" }'])
+@pytest.mark.parametrize(
+    "pin",
+    [
+        'gwz-sspi = "0.1.0"',
+        'gwz-sspi = "=0.1.1"',
+        'gwz-sspi = { path = "../gwz-sspi", version = "=0.1.1" }',
+        'gwz-sspi = "=0.2.0"',
+        'gwz-sspi = { path = "unreviewed", version = "=0.1.0" }',
+    ],
+)
 def test_sspi_release_pin_refuses_unreviewed_shapes_before_writing(tmp_path, pin):
     text=release_manifest(MAIN_PIN,"1.0.17").replace('gwz-sspi = { path = "../gwz-sspi", version = "=0.1.2" }',pin)
     manifest=tmp_path/'Cargo.toml';manifest.write_text(text)

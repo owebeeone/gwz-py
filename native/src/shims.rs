@@ -11,6 +11,7 @@ use std::cell::OnceCell;
 use gwz_core::git::Git2Backend;
 use pyo3::PyResult;
 
+use crate::client_host::{NativeRoute, own_backend};
 use crate::{error, operations};
 
 /// The backend a request's handler runs on. A request's own backend is made
@@ -20,16 +21,19 @@ use crate::{error, operations};
 pub(crate) struct Backend<'a> {
     given: Option<&'a Git2Backend>,
     own: OnceCell<Git2Backend>,
+    /// The Client's native route, which a backend of the request's own is made from.
+    route: Option<NativeRoute>,
     /// A submitted operation's record, which its submit began.
     recorder: Option<&'a operations::OperationRecorder>,
 }
 
 impl<'a> Backend<'a> {
-    /// A backend of the request's own, on libgit2's native route.
-    pub(crate) fn own() -> Self {
+    /// A backend of the request's own, on libgit2's native route and its Client's gate.
+    pub(crate) fn own(route: NativeRoute) -> Self {
         Self {
             given: None,
             own: OnceCell::new(),
+            route: Some(route),
             recorder: None,
         }
     }
@@ -39,6 +43,7 @@ impl<'a> Backend<'a> {
         Self {
             given: Some(backend),
             own: OnceCell::new(),
+            route: None,
             recorder: None,
         }
     }
@@ -55,7 +60,10 @@ impl<'a> Backend<'a> {
     fn get(&self) -> &Git2Backend {
         match self.given {
             Some(backend) => backend,
-            None => self.own.get_or_init(Git2Backend::new),
+            None => self.own.get_or_init(|| match &self.route {
+                Some(route) => own_backend(route),
+                None => Git2Backend::new(),
+            }),
         }
     }
 }
@@ -123,4 +131,27 @@ pub(crate) fn backend_with_recorder<T>(
     ) -> gwz_core::model::ModelResult<T>,
 ) -> gwz_core::model::ModelResult<T> {
     handler(backend.get(), operation_id.to_owned(), recorder)
+}
+
+cfg_if::cfg_if! {
+    if #[cfg(all(test, gwz_transport_candidate, any(unix, windows)))] {
+        mod tests {
+            use super::*;
+            use gwz_core::transport_host::NativeHost;
+
+            /// A request's own backend is made from its Client's native route (operator decision D47): it is on the
+            /// gate that host's supervisor's worker launches take, which another Client's is not, and which a plain
+            /// `Git2Backend::new()` is not. (An excluding gate exists only on Windows, so this asks whom the gate
+            /// belongs to rather than trying to hold it.)
+            #[test]
+            fn a_requests_own_backend_is_on_its_clients_gate() {
+                let host = NativeHost::new(Err(gwz_sspi::ErrorKind::UnsupportedPlatform));
+                let other = NativeHost::new(Err(gwz_sspi::ErrorKind::UnsupportedPlatform));
+                let backend = Backend::own(host.clone());
+                assert!(host.gates(backend.get()));
+                assert!(!other.gates(backend.get()));
+                assert!(!host.gates(&Git2Backend::new()));
+            }
+        }
+    }
 }

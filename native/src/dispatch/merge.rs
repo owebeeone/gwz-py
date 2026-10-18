@@ -3,6 +3,7 @@ use std::thread;
 
 use pyo3::PyResult;
 
+use crate::client_host::NativeRoute;
 use crate::{codec, error, operations, shims};
 
 pub(crate) fn call(
@@ -27,6 +28,7 @@ pub(crate) fn submit(
     response_message: &str,
     request_bytes: &[u8],
     caller_cwd: &std::path::Path,
+    own: NativeRoute,
 ) -> PyResult<Vec<u8>> {
     let request = decode_request(method, request_message, response_message, request_bytes)?;
     let start = caller_cwd;
@@ -40,7 +42,7 @@ pub(crate) fn submit(
     let thread_operation_id = operation_id.clone();
     thread::spawn(move || {
         let _ = run(
-            &shims::Backend::own(),
+            &shims::Backend::own(own),
             request,
             &start,
             &thread_operation_id,

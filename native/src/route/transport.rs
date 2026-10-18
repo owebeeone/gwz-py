@@ -17,7 +17,7 @@ use gwz_core::git::Git2Backend;
 use gwz_core::model::ModelResult;
 use gwz_core::session_host::EnvironmentSnapshot;
 use gwz_core::transport_host::{
-    CallControls, CancellationToken, NativeCaller, NoteSink,
+    CallControls, CancellationToken, NativeCaller, NativeHost, NoteSink,
     with_cancellable_local_transport_native_noted,
 };
 use gwz_core::transport_scope::Operation;
@@ -35,8 +35,8 @@ pub(crate) struct Route(Inner);
 pub(crate) type Notices = Mutex<BTreeSet<PathBuf>>;
 
 enum Inner {
-    /// The off switch is on: libgit2's native route, and no runtime.
-    Native,
+    /// The off switch is on: libgit2's native route, and no runtime. The backend is the Client host's, on its gate.
+    Native { own: Option<NativeHost> },
     /// The operation's own runtime, built from `environment` when it runs.
     Transport {
         environment: EnvironmentSnapshot,
@@ -142,7 +142,7 @@ fn capture_with(
         .map(|(_, home)| home.clone());
     let environment = EnvironmentSnapshot::from_os_pairs(pairs).map_err(error::model)?;
     if transport_off(&environment) {
-        return Ok(Route(Inner::Native));
+        return Ok(Route(Inner::Native { own: None }));
     }
     resolve_identity_home(request_bytes, meta, home.as_deref());
     let (controls, gate) = CallControls::new(&Arc::new(()));
@@ -157,6 +157,13 @@ fn capture_with(
 }
 
 impl Route {
+    /// The Client host the operation's backend comes from when it runs without a runtime (the off switch).
+    pub(crate) fn attach_own(&mut self, host: NativeHost) {
+        if let Inner::Native { own } = &mut self.0 {
+            *own = Some(host);
+        }
+    }
+
     pub(crate) fn attach_native(&mut self, caller: NativeCaller) {
         if let Inner::Transport { native, .. } = &mut self.0 {
             *native = Some(caller);
@@ -166,7 +173,7 @@ impl Route {
     /// the operation's request, while it waits for its runtime or runs.
     pub(crate) fn canceller(&self) -> Option<Canceller> {
         match &self.0 {
-            Inner::Native => None,
+            Inner::Native { .. } => None,
             Inner::Transport { canceller, .. } => Some(Arc::clone(canceller)),
         }
     }
@@ -182,7 +189,12 @@ impl Route {
         action: impl FnOnce(&Git2Backend) -> T,
     ) -> (ModelResult<T>, Option<Cleanup>) {
         match self.0 {
-            Inner::Native => (Ok(action(&Git2Backend::new())), None),
+            Inner::Native { own } => {
+                let backend = own
+                    .as_ref()
+                    .map_or_else(Git2Backend::new, NativeHost::backend);
+                (Ok(action(&backend)), None)
+            }
             Inner::Transport {
                 environment,
                 token,

@@ -11,6 +11,8 @@ use std::time::Duration;
 use gwz_core::model::ErrorCode;
 use gwz_core::{FetchRequest, RemoteSshIdentity, TransportOptions};
 
+use gwz_core::transport_host::NativeHost;
+
 use super::{Cleanup, ExitGate, RequestMeta, capture_with, fill_native_defaults, note_sink};
 use crate::client_host::Operations;
 
@@ -133,6 +135,31 @@ fn with_the_off_switch_on_an_operation_takes_the_native_route_and_builds_no_runt
     assert!(result.is_ok());
     assert!(ran.get());
     assert_eq!(cleanup, None);
+}
+
+/// With the seam on, the operation still runs on its Client host's gate (operator decision D47): the backend it is
+/// handed is the host's own backend, not a plain one, so its `git commit`, `git tag` and libgit2 credential helper
+/// take the gate that the host's supervisor's worker launches take.
+#[test]
+fn with_the_off_switch_on_an_operation_runs_on_the_client_hosts_gate() {
+    let host = NativeHost::new(Err(gwz_sspi::ErrorKind::UnsupportedPlatform));
+    let other = NativeHost::new(Err(gwz_sspi::ErrorKind::UnsupportedPlatform));
+    let mut request_bytes = request(Some("~/id"), None);
+    let mut request_meta = meta(&request_bytes);
+    let mut route = capture_with(
+        &mut request_bytes,
+        &mut request_meta,
+        environment(None),
+        |_| true,
+    )
+    .unwrap();
+    route.attach_own(host.clone());
+    let seen = Cell::new((false, false));
+    let (result, _) = route.run(request_meta, "op_req_route".into(), gate(), |backend| {
+        seen.set((host.gates(backend), other.gates(backend)));
+    });
+    assert!(result.is_ok());
+    assert_eq!(seen.get(), (true, false));
 }
 
 /// With the seam off, the same operation enters the cancellable entry, which
