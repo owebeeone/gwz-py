@@ -11,8 +11,15 @@ use std::time::Duration;
 use gwz_core::model::ErrorCode;
 use gwz_core::{FetchRequest, RemoteSshIdentity, TransportOptions};
 
+use gwz_core::transport_host::NativeHost;
+
 use super::{Cleanup, ExitGate, RequestMeta, capture_with, fill_native_defaults, note_sink};
 use crate::client_host::Operations;
+
+/// A Client host with no SSPI worker, which is all a route's backend needs of it.
+fn host() -> NativeHost {
+    NativeHost::new(Err(gwz_sspi::ErrorKind::UnsupportedPlatform))
+}
 
 fn gate() -> ExitGate {
     Arc::new(Operations::default()).exit_gate()
@@ -121,6 +128,7 @@ fn with_the_off_switch_on_an_operation_takes_the_native_route_and_builds_no_runt
         &mut request_bytes,
         &mut request_meta,
         environment(None),
+        host(),
         |_| true,
     )
     .unwrap();
@@ -135,6 +143,31 @@ fn with_the_off_switch_on_an_operation_takes_the_native_route_and_builds_no_runt
     assert_eq!(cleanup, None);
 }
 
+/// With the seam on, the operation still runs on its Client host's gate (operator decision D47): the backend it is
+/// handed is the host's own backend, not a plain one, so its `git commit`, `git tag` and libgit2 credential helper
+/// take the gate that the host's supervisor's worker launches take.
+#[test]
+fn with_the_off_switch_on_an_operation_runs_on_the_client_hosts_gate() {
+    let host = NativeHost::new(Err(gwz_sspi::ErrorKind::UnsupportedPlatform));
+    let other = NativeHost::new(Err(gwz_sspi::ErrorKind::UnsupportedPlatform));
+    let mut request_bytes = request(Some("~/id"), None);
+    let mut request_meta = meta(&request_bytes);
+    let route = capture_with(
+        &mut request_bytes,
+        &mut request_meta,
+        environment(None),
+        host.clone(),
+        |_| true,
+    )
+    .unwrap();
+    let seen = Cell::new((false, false));
+    let (result, _) = route.run(request_meta, "op_req_route".into(), gate(), |backend| {
+        seen.set((host.gates(backend), other.gates(backend)));
+    });
+    assert!(result.is_ok());
+    assert_eq!(seen.get(), (true, false));
+}
+
 /// With the seam off, the same operation enters the cancellable entry, which
 /// builds its runtime from the snapshot and refuses for its missing `HOME`,
 /// before the action and with nothing left to clean up.
@@ -146,6 +179,7 @@ fn with_the_off_switch_off_an_operation_enters_the_transport() {
         &mut request_bytes,
         &mut request_meta,
         environment(None),
+        host(),
         |_| false,
     )
     .unwrap();
@@ -169,6 +203,7 @@ fn tilde_identities_resolve_against_the_snapshot_home() {
         &mut request_bytes,
         &mut request_meta,
         environment(Some("/snapshot/home")),
+        host(),
         |_| false,
     )
     .unwrap();
@@ -199,6 +234,7 @@ fn tilde_identities_resolve_against_the_snapshot_home() {
             &mut request_bytes,
             &mut request_meta,
             environment(home),
+            host(),
             |_| false,
         )
         .unwrap();

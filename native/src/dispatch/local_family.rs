@@ -8,6 +8,7 @@
 
 use pyo3::PyResult;
 
+use crate::client_host::{NativeRoute, Scope};
 use crate::{codec, error, operations, shims};
 
 pub(crate) fn call(
@@ -45,6 +46,7 @@ pub(crate) fn submit(
     response_message: &str,
     request_bytes: &[u8],
     caller_cwd: &std::path::Path,
+    own: NativeRoute,
 ) -> PyResult<Vec<u8>> {
     match method {
         "clone_local_workspace" => {
@@ -64,7 +66,7 @@ pub(crate) fn submit(
                 &request.meta,
                 gwz_core::ActionKind::CloneLocalWorkspace,
                 |response| gwz_core::CloneLocalWorkspaceResponse { response }.to_cbor(),
-                None,
+                Scope { own, network: None },
             )
         }
         other => Err(error::unsupported_method(other)),

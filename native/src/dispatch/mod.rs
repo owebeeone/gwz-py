@@ -14,7 +14,7 @@ use std::thread;
 use gwz_core::model::{ErrorCode, ModelError};
 use pyo3::{PyErr, PyResult};
 
-use crate::client_host::{Network, Ran};
+use crate::client_host::{Ran, Scope};
 use crate::{codec, error, operations, shims};
 
 /// The caller's directory for a request, taken only from its metadata, never
@@ -146,7 +146,7 @@ pub(crate) fn submit(
     request_message: &str,
     response_message: &str,
     request_bytes: &[u8],
-    network: Option<Network>,
+    network: Scope,
 ) -> PyResult<Vec<u8>> {
     match method {
         "init_from_sources" => submit_init_from_sources(
@@ -219,6 +219,7 @@ pub(crate) fn submit(
             response_message,
             request_bytes,
             &request_directory(request_bytes)?,
+            network.own,
         ),
         "clone_local_workspace" => local_family::submit(
             method,
@@ -226,6 +227,7 @@ pub(crate) fn submit(
             response_message,
             request_bytes,
             &request_directory(request_bytes)?,
+            network.own,
         ),
         other => Err(error::unsupported_method(other)),
     }
@@ -237,7 +239,7 @@ fn submit_init_from_sources(
     response_message: &str,
     request_bytes: &[u8],
     caller_cwd: &std::path::Path,
-    network: Option<Network>,
+    network: Scope,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "InitFromSourcesRequest")?;
     codec::require_response(method, response_message, "InitFromSourcesResponse")?;
@@ -263,7 +265,7 @@ fn submit_materialize(
     response_message: &str,
     request_bytes: &[u8],
     caller_cwd: &std::path::Path,
-    network: Option<Network>,
+    network: Scope,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "MaterializeRequest")?;
     codec::require_response(method, response_message, "MaterializeResponse")?;
@@ -289,7 +291,7 @@ fn submit_clone_workspace(
     response_message: &str,
     request_bytes: &[u8],
     caller_cwd: &std::path::Path,
-    network: Option<Network>,
+    network: Scope,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "CloneWorkspaceRequest")?;
     codec::require_response(method, response_message, "CloneWorkspaceResponse")?;
@@ -315,7 +317,7 @@ fn submit_clone_repo_member(
     response_message: &str,
     request_bytes: &[u8],
     caller_cwd: &std::path::Path,
-    network: Option<Network>,
+    network: Scope,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "CloneRepoMemberRequest")?;
     codec::require_response(method, response_message, "CloneRepoMemberResponse")?;
@@ -341,7 +343,7 @@ fn submit_pull_head(
     response_message: &str,
     request_bytes: &[u8],
     caller_cwd: &std::path::Path,
-    network: Option<Network>,
+    network: Scope,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "PullHeadRequest")?;
     codec::require_response(method, response_message, "PullHeadResponse")?;
@@ -367,7 +369,7 @@ fn submit_pull_snapshot(
     response_message: &str,
     request_bytes: &[u8],
     caller_cwd: &std::path::Path,
-    network: Option<Network>,
+    network: Scope,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "PullSnapshotRequest")?;
     codec::require_response(method, response_message, "PullSnapshotResponse")?;
@@ -393,7 +395,7 @@ fn submit_push(
     response_message: &str,
     request_bytes: &[u8],
     caller_cwd: &std::path::Path,
-    network: Option<Network>,
+    network: Scope,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "PushRequest")?;
     codec::require_response(method, response_message, "PushResponse")?;
@@ -422,7 +424,7 @@ fn submit_fetch(
     response_message: &str,
     request_bytes: &[u8],
     caller_cwd: &std::path::Path,
-    network: Option<Network>,
+    network: Scope,
 ) -> PyResult<Vec<u8>> {
     codec::require_request(method, request_message, "FetchRequest")?;
     codec::require_response(method, response_message, "FetchResponse")?;
@@ -458,7 +460,7 @@ fn submit_accepted(
     meta: &gwz_core::RequestMeta,
     action: gwz_core::ActionKind,
     encode_response: impl FnOnce(gwz_core::ResponseEnvelope) -> gwz_core::Cbor,
-    network: Option<Network>,
+    network: Scope,
 ) -> PyResult<Vec<u8>> {
     let operation_id = shims::operation_id(&meta.request_id);
     // Refused before any effect while another operation with this request
@@ -521,7 +523,7 @@ fn spawn_call(
     meta: gwz_core::RequestMeta,
     action: gwz_core::ActionKind,
     caller_cwd: PathBuf,
-    network: Option<Network>,
+    network: Scope,
 ) -> PyResult<()> {
     let method = method.to_owned();
     let request_message = request_message.to_owned();
@@ -543,8 +545,10 @@ fn spawn_call(
             };
             // The handler reports to the record this submit began.
             let outcome =
-                catch_unwind(AssertUnwindSafe(|| match network {
-                    None => Submitted::Ran(run(&shims::Backend::own().reporting_to(&recorder))),
+                catch_unwind(AssertUnwindSafe(|| match network.network {
+                    None => Submitted::Ran(run(
+                        &shims::Backend::own(network.own).reporting_to(&recorder)
+                    )),
                     Some(network) => Submitted::from(network.run(|backend| {
                         run(&shims::Backend::given(backend).reporting_to(&recorder))
                     })),

@@ -29,10 +29,44 @@ pub(crate) use operations::{Canceller, Cleanup, ExitGate, Operations};
 use crate::route::{self, Route};
 use crate::{codec, dispatch, error, shims};
 
+cfg_if::cfg_if! {
+    if #[cfg(all(gwz_transport_candidate, any(unix, windows)))] {
+        /// This Client's native route: its SSPI supervisor and the spawn gate that supervisor's worker launches take
+        /// (contract C9; operator decision D31). Each network operation takes its caller from it, so a Client's network
+        /// operations on the transport route share one gate with the supervisor they share. Its other operations
+        /// (non-network, and under the transport off switch) have backends of their own and are not on that gate.
+        pub(crate) type NativeRoute = gwz_core::transport_host::NativeHost;
+
+        fn native_route() -> NativeRoute {
+            gwz_core::transport_host::NativeHost::new(crate::worker_host::descriptor())
+        }
+
+        /// A backend for a request that runs outside the transport (not a network operation, or one under the
+        /// off switch): the Client's host's, on the gate its supervisor's worker launches take (operator decision
+        /// D47), so that every operation of the Client excludes a launch's window.
+        pub(crate) fn own_backend(route: &NativeRoute) -> Git2Backend {
+            route.backend()
+        }
+    } else {
+        /// Without the transport candidate no operation has a native route, so a Client has no supervisor to hold.
+        #[derive(Clone)]
+        pub(crate) struct NativeRoute;
+
+        fn native_route() -> NativeRoute {
+            NativeRoute
+        }
+
+        /// A backend of a request's own, on libgit2's native route.
+        pub(crate) fn own_backend(_: &NativeRoute) -> Git2Backend {
+            Git2Backend::new()
+        }
+    }
+}
+
 #[pyclass(module = "gwz._gwz_core", frozen)]
 pub(crate) struct ClientHost {
     operations: Arc<Operations>,
-    _native_supervisor: Result<Arc<gwz_sspi::Supervisor>, gwz_sspi::ErrorKind>,
+    native: NativeRoute,
     /// Repository configuration files already reported for this Client.
     ignored_transport_files: route::Notices,
     /// The `atexit` callback, until `close` unregisters it.
@@ -45,14 +79,9 @@ impl ClientHost {
     fn new(py: Python<'_>) -> PyResult<Self> {
         let operations = Arc::new(Operations::default());
         let exit_hook = register_exit_hook(py, Arc::downgrade(&operations))?;
-        let native_supervisor = crate::worker_host::descriptor().and_then(|descriptor| {
-            gwz_sspi::Supervisor::new(descriptor, gwz_sspi::Options::default())
-                .map(Arc::new)
-                .map_err(|error| error.kind())
-        });
         Ok(Self {
             operations,
-            _native_supervisor: native_supervisor,
+            native: native_route(),
             ignored_transport_files: route::Notices::default(),
             exit_hook: Mutex::new(Some(exit_hook)),
         })
@@ -69,7 +98,7 @@ impl ClientHost {
         request_bytes: &[u8],
     ) -> PyResult<Vec<u8>> {
         let mut request_bytes = request_bytes.to_vec();
-        let network = self.network(py, method, &mut request_bytes)?;
+        let scope = self.scope(py, method, &mut request_bytes)?;
         let (method, request_message, response_message) = (
             method.to_owned(),
             request_message.to_owned(),
@@ -86,8 +115,8 @@ impl ClientHost {
                 backend,
             )
         };
-        let ran: Result<PyResult<Vec<u8>>, ModelError> = py.detach(move || match network {
-            None => Ok(run(&shims::Backend::own())),
+        let ran: Result<PyResult<Vec<u8>>, ModelError> = py.detach(move || match scope.network {
+            None => Ok(run(&shims::Backend::own(scope.own))),
             Some(network) => {
                 network
                     .run(|backend| run(&shims::Backend::given(backend)))
@@ -108,7 +137,7 @@ impl ClientHost {
         request_bytes: &[u8],
     ) -> PyResult<Vec<u8>> {
         let mut request_bytes = request_bytes.to_vec();
-        let network = self.network(py, method, &mut request_bytes)?;
+        let scope = self.scope(py, method, &mut request_bytes)?;
         let (method, request_message, response_message) = (
             method.to_owned(),
             request_message.to_owned(),
@@ -120,7 +149,7 @@ impl ClientHost {
                 &request_message,
                 &response_message,
                 &request_bytes,
-                network,
+                scope,
             )
         })
     }
@@ -157,6 +186,15 @@ impl ClientHost {
 }
 
 impl ClientHost {
+    /// How the request runs: on the transport, if it is a network operation, and otherwise on a backend of the
+    /// Client's host's.
+    fn scope(&self, py: Python<'_>, method: &str, request_bytes: &mut Vec<u8>) -> PyResult<Scope> {
+        Ok(Scope {
+            own: self.native.clone(),
+            network: self.network(py, method, request_bytes)?,
+        })
+    }
+
     /// The request as a network operation, if gwz-core's transport scope
     /// says it is one: its route captured and its registration made, here at
     /// the native entry, while the caller holds the GIL.
@@ -170,7 +208,7 @@ impl ClientHost {
             return Ok(None);
         };
         cfg_if::cfg_if! { if #[cfg(all(gwz_transport_candidate, any(unix, windows)))] {
-            let native_caller = gwz_core::transport_host::NativeCaller::capture(&self._native_supervisor);
+            let native_caller = self.native.caller();
         } }
         let route = route::capture(
             py,
@@ -178,6 +216,7 @@ impl ClientHost {
             &mut meta,
             Operation::from_method(method).expect("transport scope has a method"),
             &self.ignored_transport_files,
+            self.native.clone(),
         )?;
         cfg_if::cfg_if! { if #[cfg(all(gwz_transport_candidate, any(unix, windows)))] { let mut route = route; route.attach_native(native_caller); } }
         let operation_id = shims::operation_id(&meta.request_id);
@@ -217,6 +256,13 @@ fn transport_meta(method: &str, request_bytes: &[u8]) -> Option<RequestMeta> {
         _ => None,
     };
     in_scope(operation, tag.as_ref()).then_some(meta)
+}
+
+/// How a request runs: on the transport as a network operation, or on a backend of its own. Either way it carries
+/// its Client's native route, so that a backend of its own is on the gate its worker launches take.
+pub(crate) struct Scope {
+    pub(crate) own: NativeRoute,
+    pub(crate) network: Option<Network>,
 }
 
 /// One network operation, registered with its host and its route captured.
