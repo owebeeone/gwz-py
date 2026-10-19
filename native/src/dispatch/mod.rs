@@ -125,6 +125,7 @@ pub(crate) fn call(
             response_message,
             request_bytes,
             &directory(caller_cwd, request_bytes)?,
+            backend,
         ),
         "clone_local_workspace" | "local_family" => local_family::call(
             method,
