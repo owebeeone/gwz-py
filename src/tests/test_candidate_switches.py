@@ -103,7 +103,11 @@ def test_the_native_entry_capture_precedes_the_route_capture_and_the_detach() ->
     """
     source = (ROOT / "native/src/client_host.rs").read_text(encoding="utf-8")
     network = source[source.index("fn network(") :]
-    assert network.index("NativeCaller::capture") < network.index("route::capture")
+    # The Client's host takes the caller snapshot (D31: `NativeHost::caller`, once `NativeCaller::capture`).
+    assert network.index("self.native.caller()") < network.index("route::capture")
+    # call and submit reach network through scope (D47), and both before the GIL is released.
+    scope = source[source.index("fn scope(") : source.index("fn network(")]
+    assert "self.network(" in scope
     for method in ("fn call(", "fn submit("):
         body = source[source.index(method) :]
-        assert body.index("self.network(") < body.index("py.detach(")
+        assert body.index("self.scope(") < body.index("py.detach(")

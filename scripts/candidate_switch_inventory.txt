@@ -22,5 +22,7 @@ gwz_session_candidate  native/src/dispatch/merge.rs  fn accepted_response
 gwz_session_candidate  native/src/dispatch/mod.rs  fn submit_accepted
 gwz_transport_candidate  native/src/client_host.rs  fn network
 gwz_transport_candidate  native/src/client_host.rs  fn network
+gwz_transport_candidate  native/src/client_host.rs  type NativeRoute
 gwz_transport_candidate  native/src/dispatch/log.rs  mod tests
 gwz_transport_candidate  native/src/route.rs  mod transport
+gwz_transport_candidate  native/src/shims.rs  mod tests
