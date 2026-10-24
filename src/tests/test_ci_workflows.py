@@ -94,6 +94,13 @@ def test_the_candidate_job_checks_out_what_the_recipe_builds_against_beside_gwz_
     git2 = step(candidate, "checkout-git2-rs.sh")
     assert re.findall(r"^        run: *(.+)$", git2, re.M) == ["bash .github/checkout-git2-rs.sh"]
     assert re.findall(r"^        working-directory: *(.+)$", git2, re.M) == ["gwz-core"]
+    # gwz-core builds against gwz-git by path in every build (step 5.2): its script checks it out at the commit
+    # gwz-core pins and leaves the transport and sspi checkouts above it as they are.
+    siblings = step(candidate, "checkout-siblings.sh")
+    assert re.findall(r"^        run: *(.+)$", siblings, re.M) == ["bash .github/checkout-siblings.sh"]
+    assert re.findall(r"^        working-directory: *(.+)$", siblings, re.M) == ["gwz-core"]
+    ordered = steps(candidate)
+    assert ordered.index(siblings) > ordered.index(step(candidate, "repository: owebeeone/gwz-sspi\n"))
     pins = step(candidate, "id: pins")
     assert "gwz-core/.github/gwz-transport.commit" in pins
     assert "gwz-py/pyproject.toml" in pins

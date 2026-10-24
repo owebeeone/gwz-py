@@ -118,6 +118,15 @@ jobs:
           path: gwz-sspi
           persist-credentials: false
 
+      - name: Check out gwz-git beside gwz-core
+        # gwz-core builds against gwz-git by path (`../gwz-git`) in every build,
+        # ordinary ones included (step 5.2), at the commit gwz-core's
+        # .github/gwz-git.commit pins. The script leaves the gwz-transport and
+        # gwz-sspi checkouts above as they are.
+        shell: bash
+        working-directory: gwz-core
+        run: bash .github/checkout-siblings.sh
+
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
