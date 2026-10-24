@@ -145,7 +145,8 @@ fn with_the_off_switch_on_an_operation_takes_the_native_route_and_builds_no_runt
 
 /// With the seam on, the operation still runs on its Client host's gate (operator decision D47): the backend it is
 /// handed is the host's own backend, not a plain one, so its `git commit`, `git tag` and libgit2 credential helper
-/// take the gate that the host's supervisor's worker launches take.
+/// take the gate that the host's supervisor's worker launches take. That gate is the process's (gwz-core step 1.3a;
+/// operator decision D-E), so another Client's host is on it too.
 #[test]
 fn with_the_off_switch_on_an_operation_runs_on_the_client_hosts_gate() {
     let host = NativeHost::new(Err(gwz_sspi::ErrorKind::UnsupportedPlatform));
@@ -165,7 +166,7 @@ fn with_the_off_switch_on_an_operation_runs_on_the_client_hosts_gate() {
         seen.set((host.gates(backend), other.gates(backend)));
     });
     assert!(result.is_ok());
-    assert_eq!(seen.get(), (true, false));
+    assert_eq!(seen.get(), (true, true));
 }
 
 /// With the seam off, the same operation enters the cancellable entry, which

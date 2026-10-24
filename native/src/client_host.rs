@@ -32,9 +32,11 @@ use crate::{codec, dispatch, error, shims};
 cfg_if::cfg_if! {
     if #[cfg(all(gwz_transport_candidate, any(unix, windows)))] {
         /// This Client's native route: its SSPI supervisor and the spawn gate that supervisor's worker launches take
-        /// (contract C9; operator decision D31). Each network operation takes its caller from it, so a Client's network
-        /// operations on the transport route share one gate with the supervisor they share. Its other operations
-        /// (non-network, and under the transport off switch) have backends of their own and are not on that gate.
+        /// (contract C9; operator decision D31). The gate is the process's, made by gwz-core's composition
+        /// (`transport_host::process_safety`; gwz-core step 1.3a, operator decision D-E) and shared by every Client in
+        /// the process, so no Client makes a gate of its own. Each network operation takes its caller from it, and its
+        /// other operations (non-network, and under the transport off switch) take a backend from it (`own_backend`),
+        /// so every operation of a Client is on that one gate.
         pub(crate) type NativeRoute = gwz_core::transport_host::NativeHost;
 
         fn native_route() -> NativeRoute {

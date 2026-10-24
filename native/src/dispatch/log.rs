@@ -81,9 +81,10 @@ cfg_if::cfg_if! {
             use gwz_core::transport_host::NativeHost;
 
             /// A log call runs on its Client's gate (operator decision D25): the backend its handler gets, which
-            /// the path cursor's `git rev-list` spawns under, is the Client's native route's, and not another
-            /// Client's or a plain `Git2Backend::new()`'s. (An excluding gate exists only on Windows, so this asks
-            /// whom the gate belongs to rather than trying to hold it.)
+            /// the path cursor's `git rev-list` spawns under, is the Client's native route's, on the process gate
+            /// every Client shares (gwz-core step 1.3a; operator decision D-E), so another Client's host is on it too,
+            /// and a plain `Git2Backend::new()` is not. (An excluding gate exists only on Windows, so this asks whom
+            /// the gate belongs to rather than trying to hold it.)
             #[test]
             fn a_log_call_runs_on_its_clients_gate() {
                 let host = NativeHost::new(Err(gwz_sspi::ErrorKind::UnsupportedPlatform));
@@ -102,7 +103,7 @@ cfg_if::cfg_if! {
                     },
                 )
                 .unwrap();
-                assert_eq!(ran, (true, false, false));
+                assert_eq!(ran, (true, true, false));
             }
         }
     }

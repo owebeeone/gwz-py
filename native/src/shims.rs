@@ -148,17 +148,19 @@ cfg_if::cfg_if! {
             use gwz_core::transport_host::NativeHost;
 
             /// A request's own backend is made from its Client's native route (operator decision D47): it is on the
-            /// gate that host's supervisor's worker launches take, which another Client's is not, and which a plain
-            /// `Git2Backend::new()` is not. (An excluding gate exists only on Windows, so this asks whom the gate
-            /// belongs to rather than trying to hold it.)
+            /// gate that host's supervisor's worker launches take. That gate is the process's (gwz-core step 1.3a;
+            /// operator decision D-E), which every Client in the process shares, so another Client's host is on it too;
+            /// a plain `Git2Backend::new()` has no host and is not. (An excluding gate exists only on Windows, so this
+            /// asks whom the gate belongs to rather than trying to hold it.)
             #[test]
             fn a_requests_own_backend_is_on_its_clients_gate() {
                 let host = NativeHost::new(Err(gwz_sspi::ErrorKind::UnsupportedPlatform));
                 let other = NativeHost::new(Err(gwz_sspi::ErrorKind::UnsupportedPlatform));
                 let backend = Backend::own(host.clone());
                 assert!(host.gates(backend.get()));
-                assert!(!other.gates(backend.get()));
+                assert!(other.gates(backend.get()));
                 assert!(!host.gates(&Git2Backend::new()));
+                assert!(!other.gates(&Git2Backend::new()));
             }
         }
     }
