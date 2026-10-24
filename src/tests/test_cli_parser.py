@@ -250,7 +250,9 @@ def test_url_scheme_flag_carries_the_scheme_on_clone_and_materialize(
     assert args.url_scheme == "ssh"
     assert meta_kwargs(args) == {
         "transport": TransportOptions(
-            default_identity=None, remote_identities=[], url_scheme=UrlScheme.ssh
+            default_identity=None, remote_identities=[], url_scheme=UrlScheme.ssh,
+                                                         placement=None,
+                                                         endpoint_path_base=None,
         )
     }
 
@@ -291,7 +293,9 @@ def test_no_url_scheme_request_leaves_the_request_meta_untouched(
     assert clone.url_scheme is None
     assert meta_kwargs(clone) == {}
     assert meta_kwargs(identity)["transport"] == TransportOptions(
-        default_identity="key", remote_identities=[], url_scheme=None
+        default_identity="key", remote_identities=[], url_scheme=None,
+                                                      placement=None,
+                                                      endpoint_path_base=None,
     )
 
 

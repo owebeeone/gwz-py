@@ -78,10 +78,9 @@ def test_the_candidate_option_runs_the_suite_with_the_built_module(monkeypatch, 
     assert "GWZ_PY_NATIVE_MODULE" not in env, "without the option the transport rows skip"
 
 
-def test_the_session_option_builds_the_candidate_with_both_switches(tmp_path) -> None:
-    """The second candidate shape of rule (a) (gwz-core
-    dev-docs/GwzTransportReleasePlanAmendment-2.md §3.13): the recipe's
-    --session adds gwz_session_candidate to gwz_transport_candidate."""
+def test_the_candidate_option_runs_the_recipe_and_names_its_module(tmp_path) -> None:
+    """The recipe takes the destination alone: gwz_session_candidate is retired (plan
+    step 2.2), so there is no second candidate shape to ask it for."""
     destination = tmp_path / "candidate"
     module = destination / "extension" / "gwz" / "_gwz_core.abi3.so"
     commands = []
@@ -93,39 +92,20 @@ def test_the_session_option_builds_the_candidate_with_both_switches(tmp_path) ->
         return run_tests.subprocess.CompletedProcess(command, 0, stdout=f"{module}\n")
 
     env = {"PATH": "/bin"}
-    assert run_tests.candidate_extension(destination, env, session=True, run_command=recipe) == module
+    assert run_tests.candidate_extension(destination, env, run_command=recipe) == module
     assert commands == [
         [
             run_tests.sys.executable,
             str(run_tests.ROOT / "scripts" / "build_candidate_extension.py"),
             str(destination),
-            "--session",
         ]
     ]
     assert env["GWZ_PY_NATIVE_MODULE"] == str(module)
 
 
-def test_the_session_option_reaches_the_recipe_only_with_the_candidate_option(
-    monkeypatch, tmp_path, capsys
-) -> None:
-    builds = []
+def test_the_session_option_is_retired(monkeypatch, capsys) -> None:
     monkeypatch.setattr(run_tests, "provision_rust_cli", lambda env: None)
     monkeypatch.setattr(run_tests, "run", lambda command, *, env: None)
-
-    def candidate_extension(destination, env, **options):
-        builds.append((destination, options))
-        return destination / "module.so"
-
-    monkeypatch.setattr(run_tests, "candidate_extension", candidate_extension)
-
-    run_tests.main(["--candidate", str(tmp_path / "candidate"), "--session"])
-    run_tests.main(["--candidate", str(tmp_path / "other")])
-    assert builds == [
-        (tmp_path / "candidate", {"session": True}),
-        (tmp_path / "other", {"session": False}),
-    ]
-
     with pytest.raises(SystemExit):
-        run_tests.main(["--session"])
-    assert "--session needs --candidate" in capsys.readouterr().err
-    assert len(builds) == 2, "without --candidate nothing is built"
+        run_tests.main(["--candidate", "unused", "--session"])
+    assert "unrecognized arguments: --session" in capsys.readouterr().err

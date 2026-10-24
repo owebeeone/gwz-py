@@ -23,23 +23,8 @@ env:
 # included, and then the candidate build's Rust unit tests.
 jobs:
   candidate:
-    name: Candidate suite (${{ matrix.leg }})
+    name: Candidate suite
     runs-on: ubuntu-24.04
-    strategy:
-      # Rule (a) of gwz-core dev-docs/GwzTransportReleasePlanAmendment-2.md §3.13
-      # (TR2.12): until S7.1 (1.1.0) removes gwz_transport_candidate, CI keeps two
-      # candidate shapes green, the transport switch alone and both switches, one
-      # leg each, as gwz-core's transport candidate job does. A leg's rustflags
-      # are the switches the recipe builds it with.
-      fail-fast: false
-      matrix:
-        include:
-          - leg: transport
-            session: ""
-            rustflags: --cfg gwz_transport_candidate
-          - leg: transport-and-session
-            session: --session
-            rustflags: --cfg gwz_transport_candidate --cfg gwz_session_candidate
     env:
       # The job builds gwz-core several times over: for the ordinary extension,
       # the gwz CLI and the candidate extension. Without debug info or
@@ -177,7 +162,7 @@ jobs:
         # directory outside the workspace, and runs the suite with
         # GWZ_PY_NATIVE_MODULE naming it, so the transport rows run, not skip.
         working-directory: gwz-py
-        run: python run_tests.py --candidate "$RUNNER_TEMP/candidate" ${{ matrix.session }}
+        run: python run_tests.py --candidate "$RUNNER_TEMP/candidate"
 
       - name: Run the candidate build's Rust unit tests
         # The recipe left the candidate manifest, with its lock resolved, in
@@ -186,6 +171,6 @@ jobs:
         # and include the route's, which only a candidate build compiles.
         working-directory: gwz-py
         env:
-          RUSTFLAGS: ${{ matrix.rustflags }}
+          RUSTFLAGS: --cfg gwz_transport_candidate
           CARGO_TARGET_DIR: ${{ runner.temp }}/candidate/target
         run: cargo test --locked --manifest-path "$RUNNER_TEMP/candidate/py/Cargo.toml"

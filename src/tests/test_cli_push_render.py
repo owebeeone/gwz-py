@@ -63,6 +63,7 @@ def _envelope(
             message=None,
             attribution=None,
             transport=None,
+            transport_message=None,
         ),
         members=list(rows),
         errors=[],

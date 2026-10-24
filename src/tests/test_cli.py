@@ -52,6 +52,7 @@ def response_envelope(
             message=None,
             attribution=None,
             transport=None,
+            transport_message=None,
         ),
         members=[],
         errors=[],

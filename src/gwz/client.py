@@ -366,6 +366,7 @@ class Client:
             # or submit work to another thread.  This is transport data, not a
             # late lookup by the receiving native worker.
             invocation=InvocationContext(caller_cwd=_path_text(caller_cwd, "working directory")),
+            transport_message=None,
         )
 
     async def _require_transport_capability(self, request: Any) -> None:

@@ -3,6 +3,132 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
+class MessageKind(Enum):
+    bind = 1
+    bind_rejected = 3
+    bound = 2
+    cancel = 14
+    check_identity = 16
+    close = 12
+    closed = 13
+    data = 7
+    end_write = 11
+    failed = 15
+    flush = 9
+    flushed = 10
+    identity_check_failed = 18
+    identity_checked = 17
+    open = 4
+    open_failed = 6
+    opened = 5
+    window = 8
+
+class EndpointRole(Enum):
+    driver = 2
+    local = 1
+
+class Scheme(Enum):
+    https = 2
+    ssh = 1
+
+class AuthPolicy(Enum):
+    anonymous = 3
+    gh = 4
+    ssh_ambient = 1
+    ssh_explicit = 2
+    windows_configured = 5
+    windows_default = 6
+
+class GitService(Enum):
+    receive_pack_advertisement = 3
+    receive_pack_exchange = 4
+    upload_pack_advertisement = 1
+    upload_pack_exchange = 2
+
+class IdentityMode(Enum):
+    ambient = 1
+    credentials_disabled = 3
+    explicit_key = 2
+
+class ErrorCode(Enum):
+    authentication = 8
+    cancelled = 7
+    capacity = 5
+    carrier_lost = 12
+    invalid_request = 4
+    io = 10
+    protocol = 11
+    repository_refused = 13
+    timeout = 6
+    trust = 9
+    unavailable = 3
+    unsupported_operation = 2
+    unsupported_version = 1
+
+class SetupFailureCause(Enum):
+    address_not_available = 7
+    aggregate = 2
+    allocation = 4
+    connection_refused = 5
+    interaction = 3
+    not_found = 6
+    stall = 1
+
+class HelperFailureCause(Enum):
+    configuration_refused = 11
+    control_character = 3
+    declined = 10
+    malformed_output = 8
+    missing_field = 7
+    missing_newline = 6
+    no_helper = 9
+    not_utf8 = 5
+    output_limit = 2
+    pipe_failure = 1
+    username_colon = 4
+
+class CapacityCause(Enum):
+    local = 3
+    server_retry_after = 2
+    server_throttle = 1
+
+class CapacitySignal(Enum):
+    http_429 = 1
+    http_503 = 2
+
+class Effect(Enum):
+    none = 1
+    possible = 2
+
+class Disposition(Enum):
+    discarded = 2
+    reusable = 1
+
+class AuthMethod(Enum):
+    gh = 4
+    none = 1
+    ssh_agent = 2
+    ssh_key = 3
+    sspi = 5
+
+class NativeSource(Enum):
+    configured = 1
+    current_logon = 2
+
+class NativeScheme(Enum):
+    digest = 3
+    negotiate = 1
+    ntlm = 2
+
+class NativeObservation(Enum):
+    not_started = 1
+    selected = 3
+    unresolved = 2
+
+class NativeMechanism(Enum):
+    kerberos = 1
+    ntlm = 2
+
 class ActionKind(Enum):
     create_workspace = 0
     init_from_sources = 1
@@ -614,6 +740,10 @@ class UrlSchemeSource(Enum):
     request = 1
     workspace = 2
 
+class TransportPlacement(Enum):
+    local = 1
+    cli = 2
+
 class FetchResult(Enum):
     updated = 0
     unchanged = 1
@@ -624,6 +754,203 @@ class FetchResult(Enum):
 class RemoteCheck(Enum):
     changed = 0
     always = 1
+
+@dataclass(slots=True)
+class NativeFacts:
+    source: NativeSource
+    scheme: NativeScheme
+    observation: NativeObservation
+    mechanism: NativeMechanism | None
+    authoritative: bool
+
+@dataclass(slots=True)
+class Limits:
+    encoded_frame: int
+    data_payload: int
+    metadata_bytes: int
+    nesting: int
+    collection_entries: int
+    decode_allocation: int
+    queued_bytes: int
+    queued_frames: int
+    receive_window: int
+    control_reserve_bytes: int
+    control_reserve_frames: int
+
+@dataclass(slots=True)
+class Bind:
+    versions: list[int]
+    role: EndpointRole
+    schemes: list[Scheme]
+    policies: list[AuthPolicy]
+    receive_limits: Limits
+
+@dataclass(slots=True)
+class Bound:
+    version: int
+    endpoint_id: str
+    role: EndpointRole
+    schemes: list[Scheme]
+    policies: list[AuthPolicy]
+    receive_limits: Limits
+    trust_owner: str
+
+@dataclass(slots=True)
+class RetryAttempt:
+    attempt: int
+    attempts: int
+
+@dataclass(slots=True)
+class CapacityDetail:
+    cause: CapacityCause
+    scheme: Scheme | None
+    host: str | None
+    port: int | None
+    limit_applied: int | None
+    max_per_host: int | None
+    elapsed_ms: int | None
+    last_signal: CapacitySignal | None
+    retry_after_ms: int | None
+
+@dataclass(slots=True)
+class FailureDetail:
+    helper_cause: HelperFailureCause | None
+    pipe_kind: str | None
+    schemes: list[str] | None
+    retry_attempt: RetryAttempt | None
+    helper_budget_ms: int | None
+    capacity: CapacityDetail | None
+
+@dataclass(slots=True)
+class Failure:
+    code: ErrorCode
+    effect: Effect
+    facts: Facts | None
+    setup_cause: SetupFailureCause | None
+    detail: FailureDetail | None
+
+@dataclass(slots=True)
+class Destination:
+    scheme: Scheme
+    host: str
+    port: int
+    path: str
+    ssh_username: str | None
+    https_username: str | None
+
+@dataclass(slots=True)
+class Identity:
+    mode: IdentityMode
+    key_path: str | None
+    path_base: str | None
+
+@dataclass(slots=True)
+class Deadlines:
+    allocation_ms: int
+    connect_ms: int
+    io_ms: int
+    interaction_ms: int
+    cleanup_ms: int
+
+@dataclass(slots=True)
+class Open:
+    endpoint_id: str
+    operation_id: str
+    destination: Destination
+    service: GitService
+    identity: Identity
+    policy: AuthPolicy
+    deadlines: Deadlines
+    receive_limits: Limits
+
+@dataclass(slots=True)
+class CheckIdentity:
+    endpoint_id: str
+    operation_id: str
+    identity: Identity
+    timeout_ms: int
+
+@dataclass(slots=True)
+class IdentityChecked:
+    pass
+
+@dataclass(slots=True)
+class Facts:
+    method: AuthMethod
+    credential_offered: bool
+    authenticated: bool | None
+    key_fingerprint: str | None
+    http_status: int | None
+    ssh_exit_status: int | None
+    native: NativeFacts | None
+
+@dataclass(slots=True)
+class Opened:
+    connection_id: str
+    reused: bool
+    endpoint_id: str
+    trust_owner: str
+    facts: Facts
+    receive_limits: Limits
+
+@dataclass(slots=True)
+class Data:
+    offset: int
+    payload: bytes
+
+@dataclass(slots=True)
+class Window:
+    max_offset: int
+
+@dataclass(slots=True)
+class Barrier:
+    barrier_id: int
+    offset: int
+
+@dataclass(slots=True)
+class EndWrite:
+    final_offset: int
+
+@dataclass(slots=True)
+class Close:
+    final_offset: int
+
+@dataclass(slots=True)
+class Closed:
+    disposition: Disposition
+    unread_response_discarded: bool
+    facts: Facts
+    failure: Failure | None
+
+@dataclass(slots=True)
+class Cancel:
+    reason: ErrorCode
+
+@dataclass(slots=True)
+class Envelope:
+    version: int
+    session_id: str
+    stream_id: int
+    kind: MessageKind
+    message_seq: int | None
+    bind: Bind | None
+    bound: Bound | None
+    bind_rejected: Failure | None
+    open: Open | None
+    opened: Opened | None
+    open_failed: Failure | None
+    data: Data | None
+    window: Window | None
+    flush: Barrier | None
+    flushed: Barrier | None
+    end_write: EndWrite | None
+    close: Close | None
+    closed: Closed | None
+    cancel: Cancel | None
+    failed: Failure | None
+    check_identity: CheckIdentity | None
+    identity_checked: IdentityChecked | None
+    identity_check_failed: Failure | None
 
 @dataclass(slots=True)
 class WorkspaceRef:
@@ -712,6 +1039,11 @@ class TransportCapabilitiesRequest:
 class TransportCapabilitiesResponse:
     file_identity: bool
     exact_agent_identity: bool
+    message_versions: list[int] | None
+    placements: list[TransportPlacement] | None
+    schemes: list[Scheme] | None
+    auth_policies: list[AuthPolicy] | None
+    message_limits: Limits | None
 
 @dataclass(slots=True)
 class TransportObservation:
@@ -742,6 +1074,8 @@ class TransportOptions:
     default_identity: str | None
     remote_identities: list[RemoteSshIdentity]
     url_scheme: UrlScheme | None
+    placement: TransportPlacement | None
+    endpoint_path_base: str | None
 
 @dataclass(slots=True)
 class InvocationContext:
@@ -758,6 +1092,7 @@ class RequestMeta:
     attribution: OperationAttribution | None
     transport: TransportOptions | None
     invocation: InvocationContext | None
+    transport_message: Envelope | None
 
 @dataclass(slots=True)
 class ResponseMeta:
@@ -769,6 +1104,7 @@ class ResponseMeta:
     message: str | None
     attribution: OperationAttribution | None
     transport: list[TransportObservation] | None
+    transport_message: Envelope | None
 
 @dataclass(slots=True)
 class MergeRecordCompatibilityContext:

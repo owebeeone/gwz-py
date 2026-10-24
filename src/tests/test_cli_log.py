@@ -52,6 +52,7 @@ def _response(status: AggregateStatus) -> LogResponse:
                 message=None,
                 attribution=None,
                 transport=None,
+                transport_message=None,
             ),
             members=[],
             errors=[],

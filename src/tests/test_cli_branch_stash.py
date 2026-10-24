@@ -142,6 +142,7 @@ def test_a_partial_stash_report_prints_no_copied_member_error() -> None:
             request_id="req_stash", schema_version="gwz.protocol/v0", action=ActionKind.stash,
             aggregate_status=AggregateStatus.partial, operation_id="op_stash", message=None,
             attribution=None, transport=None,
+                              transport_message=None,
         )
         members = [member("mem_app", MemberStatus.ok, None), member("mem_lib", MemberStatus.failed, error)]
         return StashResponse(response=ResponseEnvelope(meta=meta, members=members, errors=errors), bundles=[])

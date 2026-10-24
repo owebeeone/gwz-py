@@ -69,6 +69,7 @@ def status_response(status: AggregateStatus, errors: list[GeneratedGwzError] | N
                 message=f"{status.name} status",
                 attribution=None,
                 transport=None,
+                transport_message=None,
             ),
             members=[],
             errors=errors or [],

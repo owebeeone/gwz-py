@@ -71,6 +71,7 @@ class GwzOperationError(GwzError):
                 action=result.action, aggregate_status=result.aggregate_status,
                 operation_id=result.operation_id, message=None,
                 attribution=result.attribution, transport=result.transport,
+                                                transport_message=None,
             )
         return None
 

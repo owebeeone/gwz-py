@@ -46,6 +46,7 @@ def merge_request(root: Path, request_id: str, op: MergeOp) -> MergeRequest:
             attribution=None,
             transport=None,
             invocation=InvocationContext(caller_cwd=str(root)),
+            transport_message=None,
         ),
         op=op,
         source_ref=None,

@@ -270,6 +270,7 @@ def test_merge_human_and_machine_render_idle_without_fabricated_operation() -> N
         ResponseEnvelope(ResponseMeta(
             "req-idle", "gwz.protocol/v0", ActionKind.merge, AggregateStatus.noop,
             "op-idle", None, None, None,
+                                   transport_message=None,
         ), [], []),
         None,
         MergeOperationState.idle,
@@ -574,6 +575,7 @@ def merge_response() -> MergeResponse:
     envelope = ResponseEnvelope(ResponseMeta(
         "req-parity-1", "gwz.protocol/v0", ActionKind.merge, AggregateStatus.failed,
         "op-parity-1", None, None, None,
+                                   transport_message=None,
     ), [], [])
     repos = [
         merge_repo("lib", MergeParticipantState.planned),

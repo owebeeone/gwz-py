@@ -40,7 +40,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 TRANSPORT_SWITCH = "gwz_transport_candidate"
-SESSION_SWITCH = "gwz_session_candidate"
 # The dependency as main's Cargo.toml declares it; the release branch pins a
 # registry version instead, and has no candidate build.
 CORE_DEPENDENCY = 'gwz-core = { path = "../gwz-core" }'
@@ -119,11 +118,8 @@ def resolve(prepared: Prepared, *, run: Run = subprocess.run) -> None:
     )
 
 
-def build_environment(
-    environment: dict[str, str], *, session: bool, target_dir: Path
-) -> dict[str, str]:
-    switches = [TRANSPORT_SWITCH, *([SESSION_SWITCH] if session else [])]
-    flags = " ".join(f"--cfg {switch}" for switch in switches)
+def build_environment(environment: dict[str, str], *, target_dir: Path) -> dict[str, str]:
+    flags = f"--cfg {TRANSPORT_SWITCH}"
     inherited = environment.get("RUSTFLAGS", "").strip()
     env = dict(environment)
     env["RUSTFLAGS"] = f"{inherited} {flags}" if inherited else flags
@@ -136,17 +132,12 @@ def build(
     prepared: Prepared,
     *,
     python: str = sys.executable,
-    session: bool = False,
     target_dir: Path | None = None,
     run: Run = subprocess.run,
 ) -> Path:
     """Builds the candidate wheel and returns it."""
     prepared.wheels.mkdir(exist_ok=True)
-    env = build_environment(
-        dict(os.environ),
-        session=session,
-        target_dir=target_dir or prepared.destination / "target",
-    )
+    env = build_environment(dict(os.environ), target_dir=target_dir or prepared.destination / "target")
     # No auditwheel repair: it would vendor the build machine's libraries into
     # gwz.libs/, which unpack() leaves behind, so the module the suite imports
     # links them where they are installed.
@@ -189,11 +180,6 @@ def main(argv: Sequence[str] | None = None, *, run: Run = subprocess.run) -> Pat
         help="the gwz-core checkout to build against (default: the one beside this checkout)",
     )
     parser.add_argument(
-        "--session",
-        action="store_true",
-        help=f"build with {SESSION_SWITCH} too, as gwz-core's second candidate leg does",
-    )
-    parser.add_argument(
         "--python",
         default=sys.executable,
         help="the interpreter to build for, which runs maturin (default: this one)",
@@ -209,7 +195,6 @@ def main(argv: Sequence[str] | None = None, *, run: Run = subprocess.run) -> Pat
     wheel = build(
         prepared,
         python=options.python,
-        session=options.session,
         target_dir=options.target_dir,
         run=run,
     )
