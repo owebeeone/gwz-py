@@ -457,7 +457,9 @@ EXIT_CHILD = textwrap.dedent(
     native = load(os.environ["GWZ_PY_NATIVE_MODULE"])
     host = native.ClientHost()
     base, url, key, started = Path(sys.argv[1]), sys.argv[3], sys.argv[4], Path(sys.argv[5])
-    transport = TransportOptions(default_identity=key, remote_identities=[], url_scheme=None)
+    transport = TransportOptions(
+        default_identity=key, remote_identities=[], url_scheme=None, placement=None, endpoint_path_base=None
+    )
     submit(host, init_request(base, "req_exit", url, transport))
     wait_until(started.exists, 10, "the exchange stalling")
     print("exiting", flush=True)
