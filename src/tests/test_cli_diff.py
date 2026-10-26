@@ -41,6 +41,7 @@ def _response() -> ResponseEnvelope:
             message=None,
             attribution=None,
             transport=None,
+            transport_message=None,
         ),
         members=[],
         errors=[],

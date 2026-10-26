@@ -236,6 +236,7 @@ def envelope(
             message=message,
             attribution=None,
             transport=None,
+            transport_message=None,
         ),
         members=[],
         errors=list(errors or []),
@@ -1423,6 +1424,7 @@ class CloneUrlClient:
             dry_run=kwargs.get("dry_run"),
             attribution=None,
             transport=None,
+            transport_message=None,
         )
 
 

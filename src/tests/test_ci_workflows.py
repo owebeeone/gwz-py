@@ -7,7 +7,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CI = REPO_ROOT / ".github" / "workflows" / "package-smoke.yml"
 CANDIDATE = REPO_ROOT / ".github" / "workflows" / "transport-candidate.yml"
-T, S = "gwz_transport_candidate", "gwz_session_candidate"
+T = "gwz_transport_candidate"
 
 
 def job(workflow: Path, name: str) -> str:
@@ -67,7 +67,7 @@ def test_the_candidate_job_runs_the_whole_suite_on_the_recipes_extension_on_linu
     assert re.findall(r"^    runs-on: *(.+)$", candidate, re.M) == ["ubuntu-24.04"]
     suite = step(candidate, "run: python run_tests.py")
     assert re.findall(r"^        run: *(.+)$", suite, re.M) == [
-        'python run_tests.py --candidate "$RUNNER_TEMP/candidate" ${{ matrix.session }}'
+        'python run_tests.py --candidate "$RUNNER_TEMP/candidate"'
     ]
     assert re.findall(r"^        working-directory: *(.+)$", suite, re.M) == ["gwz-py"]
     assert not re.search(r"^ +GWZ_PY_NATIVE_MODULE:", candidate, re.M)
@@ -108,17 +108,17 @@ def test_the_candidate_job_checks_out_what_the_recipe_builds_against_beside_gwz_
     assert "ref: ${{ steps.pins.outputs.taut }}" in step(candidate, "repository: owebeeone/taut\n")
 
 
-def test_the_candidate_job_keeps_both_candidate_shapes_green() -> None:
+def test_the_candidate_job_keeps_the_candidate_shape_green() -> None:
     """Rule (a) of gwz-core dev-docs/GwzTransportReleasePlanAmendment-2.md
-    §3.13 (TR2.12): until S7.1 (1.1.0) removes gwz_transport_candidate, CI keeps
-    two candidate shapes green, the transport switch alone and both switches,
-    one leg each, as gwz-core's transport candidate job does. A leg's
-    rustflags are the switches the recipe builds it with."""
+    §3.13 (TR2.12): until S7.1 removes gwz_transport_candidate, CI keeps the
+    candidate shape green. gwz_session_candidate is retired (plan step 2.2 of
+    dev-docs/GwzTransportReleaseConvergencePlan.md), so there is one leg, built
+    with the transport switch alone."""
     candidate = job(CANDIDATE, "candidate")
-    assert re.findall(r"^ +(?:- )?leg: *(.+)$", candidate, re.M) == ["transport", "transport-and-session"]
-    assert re.findall(r"^ +(?:- )?session: *(.+)$", candidate, re.M) == ['""', "--session"]
-    assert re.findall(r"^ +(?:- )?rustflags: *(.+)$", candidate, re.M) == [f"--cfg {T}", f"--cfg {T} --cfg {S}"]
-    assert "fail-fast: false" in candidate
+    assert not re.search(r"^ +matrix:", candidate, re.M)
+    assert re.findall(r"^ +RUSTFLAGS: *(.+)$", candidate, re.M) == [f"--cfg {T}"]
+    assert "gwz_session_candidate" not in CANDIDATE.read_text(encoding="utf-8")
+    assert "--session" not in candidate
 
 
 def test_the_candidate_job_runs_the_candidate_builds_rust_unit_tests_after_the_suite() -> None:
@@ -131,7 +131,7 @@ def test_the_candidate_job_runs_the_candidate_builds_rust_unit_tests_after_the_s
     assert re.findall(r"^        run: *(.+)$", unit, re.M) == [
         'cargo test --locked --manifest-path "$RUNNER_TEMP/candidate/py/Cargo.toml"'
     ]
-    assert re.findall(r"^          RUSTFLAGS: *(.+)$", unit, re.M) == ["${{ matrix.rustflags }}"]
+    assert re.findall(r"^          RUSTFLAGS: *(.+)$", unit, re.M) == [f"--cfg {T}"]
     assert re.findall(r"^          CARGO_TARGET_DIR: *(.+)$", unit, re.M) == ["${{ runner.temp }}/candidate/target"]
     ordered = steps(candidate)
     assert ordered.index(step(candidate, "run: python run_tests.py")) < ordered.index(unit)

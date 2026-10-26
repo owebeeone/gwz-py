@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import dataclasses
+
 import pytest
+from taut.ir.model import Schema
 from taut.wire import codec as wire_codec
 
 from gwz.errors import GwzProtocolError
@@ -65,6 +68,7 @@ def _request_meta(request_id: str = "req_test") -> generated.RequestMeta:
         ),
         transport=None,
         invocation=None,
+        transport_message=None,
     )
 
 
@@ -79,6 +83,7 @@ def _response_envelope(action: generated.ActionKind) -> generated.ResponseEnvelo
                 message=None,
                 attribution=None,
                 transport=None,
+                transport_message=None,
         ),
         members=[],
         errors=[],
@@ -207,6 +212,7 @@ def test_merge_reserved_lifecycle_shape_round_trip() -> None:
                 attribution=None,
                 transport=None,
                 invocation=None,
+                transport_message=None,
         ),
         op=generated.MergeOp.start,
         source_ref="feature/x",
@@ -246,8 +252,15 @@ def test_merge_reserved_lifecycle_shape_round_trip() -> None:
     # of having two.
     #   was: "a901a901697265715f6d65726765026667777a2e763003f604f605f606f607f6"
     #        "08f609f602000369666561747572652f7804f6050006f607f608f609f6"
+    #
+    # Moved by plan step 2.2: RequestMeta gained the optional `transport_message`
+    # at tag 10 (MISSING_OK), so the nested map header grows a9 -> aa and gains
+    # exactly the trailing `0a f6`; byte-identical to gwz-core's twin pin in
+    # tests/protocol.rs.
+    #   was: "aa01a901697265715f6d65726765026667777a2e763003f604f605f606f607f608f609f6"
+    #        "02000369666561747572652f7804f6050006f607f608f609f60af6"
     assert encode_message("MergeRequest", parity_request).hex() == (
-        "aa01a901697265715f6d65726765026667777a2e763003f604f605f606f607f608f609f6"
+        "aa01aa01697265715f6d65726765026667777a2e763003f604f605f606f607f608f609f60af6"
         "02000369666561747572652f7804f6050006f607f608f609f60af6"
     )
     # LCM1.0c follow-up 2 (operator rulings 2026-09-05, gwz-dev
@@ -471,3 +484,176 @@ def test_unsupported_message_name_raises_protocol_error() -> None:
 
     with pytest.raises(GwzProtocolError, match="unsupported message"):
         decode_message("NoSuchMessage", b"")
+
+
+# The additive-decoding gate (placement design section 3), the Python half; gwz-core's
+# tests/protocol.rs has the Rust half. Plan step 2.2 added the `cli` placement and the
+# embedded message to the ordinary schema as MISSING_OK slots, so a writer that predates
+# them, or that wrote null, must still decode, and a present malformed value must not.
+_PLACEMENT_MEMBERS = {
+    "TransportOptions": ("placement", "endpoint_path_base"),
+    "RequestMeta": ("transport_message",),
+    "ResponseMeta": ("transport_message",),
+    "TransportCapabilitiesResponse": (
+        "message_versions",
+        "placements",
+        "schemes",
+        "auth_policies",
+        "message_limits",
+    ),
+}
+
+
+def _schema_without_the_placement_members() -> Schema:
+    """The schema as an older writer had it: step 2.2's members removed, nothing else."""
+    current = schema()
+    messages = dict(current.messages)
+    for message_name, members in _PLACEMENT_MEMBERS.items():
+        message = messages[message_name]
+        kept = tuple(field for field in message.fields if field.name not in members)
+        assert len(kept) == len(message.fields) - len(members), message_name
+        messages[message_name] = dataclasses.replace(message, fields=kept)
+    return Schema(
+        enums=dict(current.enums),
+        messages=messages,
+        services=dict(current.services),
+        extensions=current.extensions,
+    )
+
+
+def _older_writers_bytes(message_name: str, value: object) -> bytes:
+    older = _schema_without_the_placement_members()
+    members = _PLACEMENT_MEMBERS.get(message_name, ())
+    payload = {key: item for key, item in to_wire(value).items() if key not in members}
+    return wire_codec.encode(older, message_name, payload)
+
+
+def _envelope() -> generated.Envelope:
+    return generated.Envelope(
+        version=2,
+        session_id="session-1",
+        stream_id=0,
+        kind=generated.MessageKind.close,
+        message_seq=None,
+        bind=None,
+        bound=None,
+        bind_rejected=None,
+        open=None,
+        opened=None,
+        open_failed=None,
+        data=None,
+        window=None,
+        flush=None,
+        flushed=None,
+        end_write=None,
+        close=generated.Close(final_offset=0),
+        closed=None,
+        cancel=None,
+        failed=None,
+        check_identity=None,
+        identity_checked=None,
+        identity_check_failed=None,
+    )
+
+
+def test_placement_and_attachment_fields_round_trip_and_decode_when_the_writer_lacks_them() -> None:
+    options = generated.TransportOptions(
+        default_identity=None,
+        remote_identities=[],
+        url_scheme=None,
+        placement=generated.TransportPlacement.cli,
+        endpoint_path_base="/home/user/work",
+    )
+    _assert_cbor_round_trip("TransportOptions", options)
+    assert generated.TransportPlacement.local.value == 1
+    assert generated.TransportPlacement.cli.value == 2
+
+    request = dataclasses.replace(_request_meta("req_placement"), transport_message=_envelope())
+    _assert_cbor_round_trip("RequestMeta", request)
+    response_meta = dataclasses.replace(
+        _response_envelope(generated.ActionKind.status).meta, transport_message=_envelope()
+    )
+    _assert_cbor_round_trip("ResponseMeta", response_meta)
+    capabilities = generated.TransportCapabilitiesResponse(
+        file_identity=True,
+        exact_agent_identity=False,
+        message_versions=[2],
+        placements=[generated.TransportPlacement.local, generated.TransportPlacement.cli],
+        schemes=[generated.Scheme.ssh, generated.Scheme.https],
+        auth_policies=[generated.AuthPolicy.ssh_ambient, generated.AuthPolicy.gh],
+        message_limits=generated.Limits(
+            encoded_frame=1,
+            data_payload=1,
+            metadata_bytes=1,
+            nesting=1,
+            collection_entries=1,
+            decode_allocation=1,
+            queued_bytes=1,
+            queued_frames=1,
+            receive_window=1,
+            control_reserve_bytes=1,
+            control_reserve_frames=1,
+        ),
+    )
+    _assert_cbor_round_trip("TransportCapabilitiesResponse", capabilities)
+
+    # An older writer's bytes lack the keys: every new member reads as absent.
+    older_options = generated.TransportOptions(
+        default_identity="/tmp/key",
+        remote_identities=[],
+        url_scheme=None,
+        placement=None,
+        endpoint_path_base=None,
+    )
+    assert decode_message("TransportOptions", _older_writers_bytes("TransportOptions", older_options)) == older_options
+    older_request = _request_meta("req_older")
+    assert decode_message("RequestMeta", _older_writers_bytes("RequestMeta", older_request)) == dataclasses.replace(
+        older_request, transport_message=None
+    )
+    older_response = _response_envelope(generated.ActionKind.status).meta
+    assert decode_message("ResponseMeta", _older_writers_bytes("ResponseMeta", older_response)) == older_response
+    older_capabilities = generated.TransportCapabilitiesResponse(
+        file_identity=True,
+        exact_agent_identity=True,
+        message_versions=None,
+        placements=None,
+        schemes=None,
+        auth_policies=None,
+        message_limits=None,
+    )
+    assert (
+        decode_message(
+            "TransportCapabilitiesResponse",
+            _older_writers_bytes("TransportCapabilitiesResponse", older_capabilities),
+        )
+        == older_capabilities
+    )
+    # The older bytes are shorter than the current writer's: the keys really are absent,
+    # and they are the bytes a writer that predates step 2.2 put on the wire.
+    assert _older_writers_bytes("TransportOptions", older_options) == bytes.fromhex(
+        "a3" "01" "682f746d702f6b6579" "02" "80" "03" "f6"
+    )
+    assert _older_writers_bytes("TransportCapabilitiesResponse", older_capabilities) == bytes.fromhex(
+        "a2" "01" "f5" "02" "f5"
+    )
+    assert len(_older_writers_bytes("TransportOptions", older_options)) < len(
+        encode_message("TransportOptions", older_options)
+    )
+
+    # Null reads the same as absent.
+    assert decode_message("TransportOptions", encode_message("TransportOptions", older_options)) == older_options
+
+
+def test_a_malformed_placement_value_is_an_error_not_an_absent_field() -> None:
+    # {1: null, 2: [], 3: null, 4: "cli"}: the placement is text where an enum is wire-encoded.
+    text_placement = bytes.fromhex("a401f60280" "03f604" "63636c69")
+    with pytest.raises(GwzProtocolError):
+        decode_message("TransportOptions", text_placement)
+    # {1: null, 2: [], 3: null, 4: 3}: 3 is not a TransportPlacement.
+    unknown_placement = bytes.fromhex("a401f60280" "03f60403")
+    with pytest.raises(GwzProtocolError):
+        decode_message("TransportOptions", unknown_placement)
+    # {1: null, 2: [], 3: null, 5: 1}: the path base is text.
+    integer_path_base = bytes.fromhex("a401f60280" "03f60501")
+    with pytest.raises(GwzProtocolError):
+        decode_message("TransportOptions", integer_path_base)

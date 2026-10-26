@@ -72,6 +72,7 @@ def _response(url_resolution: MemberUrlResolution | None) -> MaterializeResponse
                 message=None,
                 attribution=None,
                 transport=None,
+                transport_message=None,
             ),
             members=[_member(url_resolution)],
             errors=[],

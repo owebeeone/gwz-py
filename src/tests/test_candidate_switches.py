@@ -15,8 +15,9 @@ def test_the_switch_sites_equal_the_inventory() -> None:
     """Every site here where a candidate switch appears in a cfg is in scripts/candidate_switch_inventory.txt.
 
     TR2.12, rule (a) of gwz-core dev-docs/GwzTransportReleasePlanAmendment-2.md §3.13: the
-    sites of `gwz_transport_candidate` and `gwz_session_candidate` equal the inventory's
-    lines, and Cargo.toml's check-cfg declares both switches.
+    sites of `gwz_transport_candidate` equal the inventory's lines, and Cargo.toml's
+    check-cfg declares it; `gwz_session_candidate` is retired (plan step 2.2) and the
+    checker refuses a site that names it.
     """
     assert CHECKER.is_file(), f"gwz-core checker not found at {CHECKER}"
     result = subprocess.run(
@@ -47,8 +48,8 @@ ROUTE_SITES = (
     "native/src/route.rs",
     "native/src/client_host.rs",
 )
-# The two arms that build a `ResponseMeta` literal differ only by the session candidate's `transport_message` slot
-# (S7.1 (1.1.0) step C3a), so they select by that switch alone: the transport switch without it is the ordinary shape.
+# The two places that build a `ResponseMeta` literal name the embedded message's slot, `transport_message`, which
+# the ordinary protocol carries since plan step 2.2 (before it the session candidate alone did): no switch selects them.
 RESPONSE_META_SITES = (
     "native/src/dispatch/merge.rs",
     "native/src/dispatch/mod.rs",
@@ -83,10 +84,11 @@ def test_the_route_sites_select_by_platform_and_the_candidate_switch_alone() -> 
         assert "all(unix, gwz_transport_candidate)" not in text, name
 
 
-def test_the_response_meta_arms_select_the_session_candidate_alone() -> None:
+def test_the_response_meta_literals_name_the_embedded_message_without_a_switch() -> None:
     for name in RESPONSE_META_SITES:
         text = (ROOT / name).read_text(encoding="utf-8")
-        assert "if #[cfg(gwz_session_candidate)]" in text, name
+        assert "transport_message: None," in text, name
+        assert "gwz_session_candidate" not in text, name
         assert "gwz_transport_candidate" not in text, name
 
 

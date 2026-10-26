@@ -47,6 +47,7 @@ def ls_request(root: Path, caller_cwd: Path | None) -> LsRequest:
             attribution=None,
             transport=None,
             invocation=None if caller_cwd is None else InvocationContext(caller_cwd=str(caller_cwd)),
+            transport_message=None,
         ),
         include_unmaterialized=True,
     )

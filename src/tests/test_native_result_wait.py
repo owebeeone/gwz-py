@@ -40,6 +40,7 @@ CHILD = textwrap.dedent(
             attribution=None,
             transport=None,
             invocation=InvocationContext(caller_cwd=str(base)),
+            transport_message=None,
         ),
         workspace_root=str(base / "workspace"),
         sources=sources([str(base / "missing-source")]),

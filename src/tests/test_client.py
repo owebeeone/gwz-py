@@ -124,6 +124,7 @@ def ok_response(response_type: type[Any]) -> Any:
                 message="ok",
                 attribution=None,
                 transport=None,
+                transport_message=None,
             ),
             members=[],
             errors=[],
@@ -712,7 +713,7 @@ def test_explicit_transport_refuses_legacy_core_before_dispatch(stream: bool) ->
 
     bridge = LegacyBridge()
     client = Client(root=Path("/tmp/workspace"), bridge=bridge)
-    transport = TransportOptions(default_identity="/tmp/key", remote_identities=[], url_scheme=None)
+    transport = TransportOptions(default_identity="/tmp/key", remote_identities=[], url_scheme=None, placement=None, endpoint_path_base=None)
 
     async def run():
         if stream:
@@ -738,6 +739,11 @@ def test_transport_capability_controls_operation_submission(supported: bool, str
                 self.calls.append((method, request_message, response_message, request))
                 return TransportCapabilitiesResponse(
                     file_identity=supported, exact_agent_identity=False,
+                                             message_versions=None,
+                                             placements=None,
+                                             schemes=None,
+                                             auth_policies=None,
+                                             message_limits=None,
                 )
             return await super().call(method, request_message, response_message, request)
 
@@ -746,7 +752,7 @@ def test_transport_capability_controls_operation_submission(supported: bool, str
 
     bridge = CapabilityBridge()
     client = Client(root=Path("/tmp/workspace"), bridge=bridge)
-    transport = TransportOptions(default_identity="/tmp/key", remote_identities=[], url_scheme=None)
+    transport = TransportOptions(default_identity="/tmp/key", remote_identities=[], url_scheme=None, placement=None, endpoint_path_base=None)
 
     async def run():
         if stream:
@@ -762,6 +768,81 @@ def test_transport_capability_controls_operation_submission(supported: bool, str
         with pytest.raises(GwzBridgeError, match="identity"):
             asyncio.run(run())
         assert [call[0] for call in bridge.calls] == ["transport_capabilities"]
+
+
+@pytest.mark.parametrize("stream", [False, True])
+@pytest.mark.parametrize(
+    "answer",
+    ["old-two-key", "cli-without-a-common-version", "local-only", "refused", "capable"],
+)
+def test_an_explicit_cli_placement_is_sent_only_to_a_core_that_advertises_it(answer: str, stream: bool) -> None:
+    """Placement design section 3: a driver asks for capabilities before it sends `cli`, and refuses locally when the
+    core's answer lacks the placement or a common message version, because an old decoder would ignore key 4 and run
+    the request on its own credentials (plan step 2.2 review, S-P3-1)."""
+    from gwz.errors import GwzBridgeError
+    from gwz.protocol.generated import (
+        Limits,
+        Scheme,
+        TransportCapabilitiesResponse,
+        TransportOptions,
+        TransportPlacement,
+    )
+
+    limits = Limits(
+        encoded_frame=1, data_payload=1, metadata_bytes=1, nesting=1, collection_entries=1,
+        decode_allocation=1, queued_bytes=1, queued_frames=1, receive_window=1,
+        control_reserve_bytes=1, control_reserve_frames=1,
+    )
+    answers = {
+        "old-two-key": dict(message_versions=None, placements=None, schemes=None, auth_policies=None, message_limits=None),
+        "cli-without-a-common-version": dict(
+            message_versions=[1], placements=[TransportPlacement.cli], schemes=[Scheme.ssh], auth_policies=None,
+            message_limits=limits,
+        ),
+        "local-only": dict(
+            message_versions=[2], placements=[TransportPlacement.local], schemes=[Scheme.ssh], auth_policies=None,
+            message_limits=limits,
+        ),
+        "capable": dict(
+            message_versions=[2], placements=[TransportPlacement.local, TransportPlacement.cli],
+            schemes=[Scheme.ssh], auth_policies=None, message_limits=limits,
+        ),
+    }
+
+    class CapabilityBridge(FakeBridge):
+        async def call(self, method, request_message, response_message, request):
+            if method == "transport_capabilities":
+                self.calls.append((method, request_message, response_message, request))
+                if answer == "refused":
+                    raise GwzBridgeError("unsupported method", code="UnsupportedOperation")
+                return TransportCapabilitiesResponse(file_identity=True, exact_agent_identity=False, **answers[answer])
+            return await super().call(method, request_message, response_message, request)
+
+        async def submit(self, method, request_message, response_message, request):
+            return await super().call(method, request_message, response_message, request)
+
+    bridge = CapabilityBridge()
+    client = Client(root=Path("/tmp/workspace"), bridge=bridge)
+    transport = TransportOptions(
+        default_identity=None, remote_identities=[], url_scheme=None,
+        placement=TransportPlacement.cli, endpoint_path_base="/client/work",
+    )
+
+    async def run():
+        if stream:
+            async for _ in client.push_stream(transport=transport):
+                pass
+        else:
+            await client.push(transport=transport)
+
+    if answer == "capable":
+        asyncio.run(run())
+        assert [call[0] for call in bridge.calls] == ["transport_capabilities", "push"]
+    else:
+        with pytest.raises(GwzBridgeError, match="cli") as raised:
+            asyncio.run(run())
+        assert raised.value.code == "UnsupportedOperation"
+        assert [call[0] for call in bridge.calls] == ["transport_capabilities"], "the operation was never sent"
 
 
 @pytest.mark.parametrize("stream", [False, True])

@@ -122,7 +122,9 @@ def stalling(tmp_path: Path, clean: pytest.MonkeyPatch) -> Any:
 
 def identity(fixture: SshFixture, path: str | None = None) -> TransportOptions:
     return TransportOptions(
-        default_identity=path or str(fixture.identity), remote_identities=[], url_scheme=None
+        default_identity=path or str(fixture.identity), remote_identities=[], url_scheme=None,
+                                                                              placement=None,
+                                                                              endpoint_path_base=None,
     )
 
 

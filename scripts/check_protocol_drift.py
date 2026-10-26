@@ -222,7 +222,59 @@ PRE_LOG_WIRE_FINGERPRINT = (
     # protocol/check_log_additive.py does. MEASURED here rather than taken on
     # gwz-core's word: with them removed, this driver's packaged IR reproduces
     # the pin below exactly; unprojected it fingerprints as sha256:cbfdfbcb....
+    #
+    # Plan step 2.2 (2026-10-25) follows gwz-core's: the `cli` placement and the
+    # embedded message join the ordinary protocol (TransportPlacement,
+    # TransportOptions.placement and .endpoint_path_base, RequestMeta and
+    # ResponseMeta .transport_message, the five TransportCapabilitiesResponse
+    # extras), each MISSING_OK, and the schema composes the transport owner's 42
+    # declarations. The projection removes exactly these, as gwz-core's
+    # protocol/check_log_additive.py does; MEASURED here: with them removed this
+    # driver's packaged IR reproduces the pin below exactly, and unprojected it
+    # fingerprints as sha256:1001a0b8....
     "sha256:4d377a496c8905293b5e9b53392b70867cf6dafccbb623841a623dbd2d555f14"
+)
+
+# What gwz-core's schema composes from gwz-transport's export (plan step 2.2): the
+# owner's declarations, none of them GWZ's own.
+OWNER_ENUMS = (
+    "MessageKind", "EndpointRole", "Scheme", "AuthPolicy", "GitService", "IdentityMode",
+    "ErrorCode", "SetupFailureCause", "HelperFailureCause", "CapacityCause", "CapacitySignal",
+    "Effect", "Disposition", "AuthMethod", "NativeSource", "NativeScheme", "NativeObservation",
+    "NativeMechanism",
+)
+OWNER_MESSAGES = (
+    "NativeFacts", "Limits", "Bind", "Bound", "RetryAttempt", "CapacityDetail", "FailureDetail",
+    "Failure", "Destination", "Identity", "Deadlines", "Open", "CheckIdentity", "IdentityChecked",
+    "Facts", "Opened", "Data", "Window", "Barrier", "EndWrite", "Close", "Closed", "Cancel",
+    "Envelope",
+)
+# The members plan step 2.2 added to the ordinary protocol: message, then (field,
+# tag, type). The projection removes exactly these.
+def _enum_list(name):
+    return {"k": "list", "elem": {"k": "enum", "name": name}}
+
+
+PLACEMENT_ADDITIONS = (
+    (
+        "TransportOptions",
+        (
+            ("placement", 4, {"k": "enum", "name": "TransportPlacement"}),
+            ("endpoint_path_base", 5, {"k": "scalar", "scalar": "str"}),
+        ),
+    ),
+    ("RequestMeta", (("transport_message", 10, {"k": "msg", "name": "Envelope"}),)),
+    ("ResponseMeta", (("transport_message", 9, {"k": "msg", "name": "Envelope"}),)),
+    (
+        "TransportCapabilitiesResponse",
+        (
+            ("message_versions", 3, {"k": "list", "elem": {"k": "scalar", "scalar": "int"}}),
+            ("placements", 4, _enum_list("TransportPlacement")),
+            ("schemes", 5, _enum_list("Scheme")),
+            ("auth_policies", 6, _enum_list("AuthPolicy")),
+            ("message_limits", 7, {"k": "msg", "name": "Limits"}),
+        ),
+    ),
 )
 
 # The members S7.1 (1.1.0) step C2 added to the ordinary protocol: message,
@@ -442,6 +494,24 @@ def pre_log_projection(value: dict[str, Any]) -> dict[str, Any]:
                     f"{message_name}.{name} must be the MISSING_OK {scalar} at tag {tag}"
                 )
             message["fields"].remove(added[0])
+    # Plan step 2.2: the placement and attachment members, then the owner's declarations.
+    for message_name, additions in PLACEMENT_ADDITIONS:
+        message = next(m for m in projected["messages"] if m["name"] == message_name)
+        for name, tag, type_ in additions:
+            expected = {"name": name, "tag": tag, "type": type_,
+                        "optional": "missing_ok", "transient": False, "merge": None}
+            added = [f for f in message["fields"] if f["name"] == name]
+            if added != [expected]:
+                raise ValueError(f"{message_name}.{name} must be the MISSING_OK field at tag {tag}")
+            message["fields"].remove(added[0])
+    placement = next((e for e in projected["enums"] if e["name"] == "TransportPlacement"), None)
+    if placement is None or placement["members"] != {"local": 1, "cli": 2}:
+        raise ValueError("TransportPlacement must be local=1, cli=2")
+    for kind, names in (("enums", {*OWNER_ENUMS, "TransportPlacement"}), ("messages", set(OWNER_MESSAGES))):
+        present = {item["name"] for item in projected[kind]}
+        if not names <= present:
+            raise ValueError(f"the composed owner declarations are missing {sorted(names - present)}")
+        projected[kind] = [item for item in projected[kind] if item["name"] not in names]
     return projected
 
 

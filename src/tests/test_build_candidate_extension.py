@@ -79,9 +79,8 @@ def test_the_recipe_refuses_a_manifest_that_names_no_gwz_core_beside_it(tmp_path
     assert not destination.exists(), "it refuses before it makes anything"
 
 
-@pytest.mark.parametrize("session", [False, True], ids=["transport", "transport-and-session"])
-def test_the_recipe_builds_with_the_switches_and_unpacks_the_module(
-    tmp_path: Path, session: bool, monkeypatch: pytest.MonkeyPatch
+def test_the_recipe_builds_with_the_switch_and_unpacks_the_module(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("RUSTFLAGS", "-C link-arg=-Wl,-dead_strip")
     destination = tmp_path / "candidate"
@@ -99,7 +98,7 @@ def test_the_recipe_builds_with_the_switches_and_unpacks_the_module(
             archive.writestr("gwz/sspi-artifact-set.json", b"receipt")
 
     wheel = recipe.build(
-        prepared, python="/venv/python", session=session, target_dir=tmp_path / "target", run=maturin
+        prepared, python="/venv/python", target_dir=tmp_path / "target", run=maturin
     )
     [(command, options)] = builds
     # No auditwheel repair: unpack keeps only the gwz/ tree, and a repaired
@@ -109,8 +108,7 @@ def test_the_recipe_builds_with_the_switches_and_unpacks_the_module(
         "--build-args", "--profile dev --locked --auditwheel skip",
     ]
     env = options["env"]
-    switches = "--cfg gwz_transport_candidate" + (" --cfg gwz_session_candidate" if session else "")
-    assert env["RUSTFLAGS"] == "-C link-arg=-Wl,-dead_strip " + switches
+    assert env["RUSTFLAGS"] == "-C link-arg=-Wl,-dead_strip --cfg gwz_transport_candidate"
     assert env["CARGO_TARGET_DIR"] == str(tmp_path / "target")
     assert options["check"] is True
 

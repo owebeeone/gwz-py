@@ -115,6 +115,7 @@ def test_a_failed_status_report_lists_each_issue_once() -> None:
             request_id="req_status", schema_version="gwz.protocol/v0", action=ActionKind.status,
             aggregate_status=AggregateStatus.failed, operation_id="op_status", message=None,
             attribution=None, transport=None,
+                              transport_message=None,
         )
         workspace = WorkspaceGitStatus(
             clean=False, file_changes=[], branches=[], branch_groups=[], branch_differences=[],

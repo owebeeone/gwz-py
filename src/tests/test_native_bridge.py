@@ -244,6 +244,7 @@ def test_native_bridge_routes_unsupported_methods_explicitly() -> None:
             attribution=None,
             transport=None,
             invocation=None,
+            transport_message=None,
         ),
         include_unmaterialized=True,
     )

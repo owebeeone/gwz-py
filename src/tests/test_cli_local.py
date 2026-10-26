@@ -105,6 +105,7 @@ class FakeClient:
             attribution=None,
             transport=None,
             invocation=None,
+            transport_message=None,
         )
 
 
@@ -119,6 +120,7 @@ def response_envelope(action: ActionKind) -> ResponseEnvelope:
             message="ok",
             attribution=None,
             transport=None,
+            transport_message=None,
         ),
         members=[],
         errors=[],

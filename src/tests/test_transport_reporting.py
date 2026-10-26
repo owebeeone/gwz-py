@@ -74,6 +74,7 @@ def test_failed_operations_keep_transport_evidence_in_error_output(streamed: boo
                 request_id="req_failure", schema_version="gwz.protocol/v0",
                 action=ActionKind.push, aggregate_status=AggregateStatus.failed,
                 operation_id="op_failure", message=None, attribution=None, transport=rows,
+                                                                           transport_message=None,
             ), members=[], errors=[],
         ))
     with pytest.raises(GwzOperationError) as caught:

@@ -208,6 +208,7 @@ def _meta() -> generated.RequestMeta:
         attribution=None,
         transport=None,
         invocation=None,
+        transport_message=None,
     )
 
 
@@ -383,5 +384,18 @@ def test_log_addition_preserves_every_pre_existing_wire_shape_and_slot() -> None
             added = [f for f in message["fields"] if f["name"] == name]
             assert [(f["tag"], f["optional"]) for f in added] == [(tag, "missing_ok")]
             message["fields"].remove(added[0])
+    # Plan step 2.2 adds the placement and the embedded message (all MISSING_OK) and composes the transport owner's
+    # declarations; remove exactly those, matching check_protocol_drift.py, whose lists these are.
+    drift = _protocol_drift()
+    for message_name, additions in drift.PLACEMENT_ADDITIONS:
+        message = next(m for m in projected["messages"] if m["name"] == message_name)
+        for name, tag, type_ in additions:
+            added = [f for f in message["fields"] if f["name"] == name]
+            assert [(f["tag"], f["optional"], f["type"]) for f in added] == [(tag, "missing_ok", type_)]
+            message["fields"].remove(added[0])
+    removed_enums = {*drift.OWNER_ENUMS, "TransportPlacement"}
+    removed_messages = set(drift.OWNER_MESSAGES)
+    projected["enums"] = [e for e in projected["enums"] if e["name"] not in removed_enums]
+    projected["messages"] = [m for m in projected["messages"] if m["name"] not in removed_messages]
     encoded = json.dumps(projected, sort_keys=True, separators=(",", ":")).encode()
     assert hashlib.sha256(encoded).hexdigest() == PRE_LOG_WIRE_SHA256

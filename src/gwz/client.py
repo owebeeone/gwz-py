@@ -22,6 +22,7 @@ from .client_helpers import (
 )
 from .protocol.generated import (
     TransportOptions,
+    TransportPlacement,
     TransportCapabilitiesRequest,
     TransportCapabilitiesResponse,
     TransportRuntimeRequest,
@@ -128,6 +129,8 @@ from .protocol.generated import (
 )
 
 SCHEMA_VERSION = "gwz.protocol/v0"
+# The transport conversation message versions this client speaks (placement design section 3; the core advertises 2).
+MESSAGE_VERSIONS = (2,)
 
 # At most one member_progress event per member per 100 ms, the default gwz-cli
 # sends too. Core applies no limit when the field is absent, and libgit2 reports
@@ -366,13 +369,16 @@ class Client:
             # or submit work to another thread.  This is transport data, not a
             # late lookup by the receiving native worker.
             invocation=InvocationContext(caller_cwd=_path_text(caller_cwd, "working directory")),
+            transport_message=None,
         )
 
     async def _require_transport_capability(self, request: Any) -> None:
         transport = getattr(getattr(request, "meta", None), "transport", None)
-        if transport is None or (
-            transport.default_identity is None and not transport.remote_identities
-        ):
+        if transport is None:
+            return
+        wants_identity = transport.default_identity is not None or bool(transport.remote_identities)
+        wants_cli = transport.placement == TransportPlacement.cli
+        if not (wants_identity or wants_cli):
             return
         try:
             capabilities = await self.bridge.call(
@@ -382,16 +388,30 @@ class Client:
                 TransportCapabilitiesRequest(schema_version=SCHEMA_VERSION),
             )
         except GwzBridgeError as exc:
+            what = "the cli placement" if wants_cli else "explicit SSH identity support"
             raise GwzBridgeError(
-                "The installed core cannot confirm explicit SSH identity support; "
-                "update the core before using transport identity options.",
+                f"The installed core cannot confirm {what}; "
+                "update the core before using transport identity or placement options.",
                 code="UnsupportedOperation",
             ) from exc
-        if not isinstance(capabilities, TransportCapabilitiesResponse) or not capabilities.file_identity:
+        if wants_identity and (
+            not isinstance(capabilities, TransportCapabilitiesResponse) or not capabilities.file_identity
+        ):
             raise GwzBridgeError(
                 "The installed core does not support explicit SSH file identity selection.",
                 code="UnsupportedOperation",
             )
+        if wants_cli:
+            # Placement design section 3: missing capability fields mean unsupported. A core that predates the
+            # placement would ignore key 4 and run the request on its own credentials, so the driver refuses here.
+            advertised = isinstance(capabilities, TransportCapabilitiesResponse) and capabilities.placements or []
+            versions = isinstance(capabilities, TransportCapabilitiesResponse) and capabilities.message_versions or []
+            if TransportPlacement.cli not in advertised or not set(versions) & set(MESSAGE_VERSIONS):
+                raise GwzBridgeError(
+                    "The installed core does not advertise the cli placement with a message version this client "
+                    "speaks; it is not sent.",
+                    code="UnsupportedOperation",
+                )
 
     async def _call(self, method: str, request: Any, response_type: type[Any]) -> Any:
         await self._require_transport_capability(request)

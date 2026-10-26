@@ -467,33 +467,17 @@ fn submit_accepted(
     // Refused before any effect while another operation with this request
     // ID is live (the core session contract, §4.3).
     let recorder = operations::begin(&operation_id).map_err(error::model)?;
-    cfg_if::cfg_if! {
-        // The session candidate's `ResponseMeta` carries an embedded message (S7.1 (1.1.0) step C3a).
-        if #[cfg(gwz_session_candidate)] {
-            let response_meta = gwz_core::ResponseMeta {
-                transport_message: None,
-                transport: None,
-                request_id: meta.request_id.clone(),
-                schema_version: meta.schema_version.clone(),
-                action,
-                aggregate_status: gwz_core::AggregateStatus::Accepted,
-                operation_id: Some(operation_id.clone()),
-                message: None,
-                attribution: meta.attribution.clone(),
-            };
-        } else {
-            let response_meta = gwz_core::ResponseMeta {
-                transport: None,
-                request_id: meta.request_id.clone(),
-                schema_version: meta.schema_version.clone(),
-                action,
-                aggregate_status: gwz_core::AggregateStatus::Accepted,
-                operation_id: Some(operation_id.clone()),
-                message: None,
-                attribution: meta.attribution.clone(),
-            };
-        }
-    }
+    let response_meta = gwz_core::ResponseMeta {
+        transport_message: None,
+        transport: None,
+        request_id: meta.request_id.clone(),
+        schema_version: meta.schema_version.clone(),
+        action,
+        aggregate_status: gwz_core::AggregateStatus::Accepted,
+        operation_id: Some(operation_id.clone()),
+        message: None,
+        attribution: meta.attribution.clone(),
+    };
     let envelope = gwz_core::ResponseEnvelope {
         meta: response_meta,
         members: Vec::new(),
