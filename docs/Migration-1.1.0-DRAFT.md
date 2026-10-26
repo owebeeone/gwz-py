@@ -12,6 +12,10 @@ The generated protocol classes are slotted dataclasses with no defaults, so a co
 |---|---|---|
 | `OperationPolicy` | `max_retries` | `int \| None` |
 | `TransportObservation` | `endpoint_id`, `connection_id`, `stream_id`, `reused` | `str \| None`, `str \| None`, `int \| None`, `bool \| None` |
+| `TransportOptions` (plan step 2.2) | `placement`, `endpoint_path_base` | `TransportPlacement \| None`, `str \| None` |
+| `RequestMeta` (plan step 2.2) | `transport_message` | `Envelope \| None` |
+| `ResponseMeta` (plan step 2.2) | `transport_message` | `Envelope \| None` |
+| `TransportCapabilitiesResponse` (plan step 2.2) | `message_versions`, `placements`, `schemes`, `auth_policies`, `message_limits` | `list[int] \| None`, `list[TransportPlacement] \| None`, `list[Scheme] \| None`, `list[AuthPolicy] \| None`, `Limits \| None` |
 
 Before:
 
@@ -33,19 +37,27 @@ policy = OperationPolicy(
 )
 ```
 
+Plan step 2.2 added the last three rows' fields (the `cli` placement and the embedded message; wire tags in `gwz-core/docs/MessageCatalog.md`). Pass `None` for each: `placement=None` is the `local` placement, and `transport_message=None` is "no attachment". `Client` methods send these as `None`, and a `Client` call that names `placement=TransportPlacement.cli` first asks the core's `transport_capabilities` and raises `UnsupportedOperation` locally when the core does not advertise `cli`.
+
 A `TransportObservation` you build for a test or a fake host needs the four receipt arguments (`None` for each when you have no transport receipt to report).
 
 What `max_retries` does: it is the number of extra attempts after a failed setup, the same setting as the Rust command's `--max-retries`. The `Client` methods send `max_retries=None`, so the default of 3 applies; the `gwz-py` command has no `--max-retries` option and `Client` has no parameter for it. *(If a Python setting is wanted it is a 1.1.0 scope question for the operator; none is built.)* The native route ignores it, and merge refuses it, as merge refuses every policy field it does not act on.
 
-## 2. `--json` and `--jsonl` rows gain four keys
+## 2. `--json` and `--jsonl` rows gain keys
 
 `gwz-py --json` and `--jsonl` render protocol objects with `dataclasses.asdict`. A `meta.transport` row (one per remote authentication attempt) therefore gains four keys: `endpoint_id`, `connection_id`, `stream_id` and `reused`. All four are always present in `gwz-py`'s output, and `null` when absent. The Rust `gwz` command builds its rows from a fixed field list and its JSON does not change, so a script that reads both commands' output must treat the four keys as optional.
+
+Plan step 2.2 adds one more: every response `meta` row carries `"transport_message": null` (the embedded transport message of the `cli` placement; always `null` in this release, because the in-process core attaches none).
 
 What the four receipts mean when they are not null: which endpoint, connection and stream carried the row's open, and whether the connection was reused from the pool.
 
 **Absence rule (use this wording).** The four receipts are absent unless the transport route reported an open for the row. They are therefore absent on the native route, on a transport-route row whose setup failed or was refused before the open, for remotes the transport does not carry (`file://` and local paths, `git://`, and Windows `http://`), and in an older writer's map. `null` does not mean "native route"; read `credential_method` and the route-selection setting for that.
 
 **HTTPS limitation.** One request row keeps only the last open's receipts: the endpoint reports an open once per libgit2 request, so a fresh connection for the GET followed by a reused connection for the POST reports `reused: true`. This is a limitation, not a defect to work around.
+
+### 1a. Two names now mean the transport's (plan step 2.2)
+
+The protocol composes the transport owner's declarations, so `gwz.protocol.generated.ErrorCode` (and `Data`, `Open`, `Close`, `Window`, `Scheme`, `Limits` and the rest of the owner's names) name the transport's types. GWZ's own error code enum is still `GwzErrorCode`. In Rust the same holds at the crate root: `gwz_core::ErrorCode` is the transport's, `gwz_core::model::ErrorCode` is GWZ's. Code that imported `ErrorCode` from the protocol for GWZ's codes should import `GwzErrorCode`.
 
 ## 3. Choosing the transport, and the defaults
 
