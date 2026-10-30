@@ -744,6 +744,7 @@ def test_transport_capability_controls_operation_submission(supported: bool, str
                                              schemes=None,
                                              auth_policies=None,
                                              message_limits=None,
+                                             cancellation=None,
                 )
             return await super().call(method, request_message, response_message, request)
 
@@ -815,7 +816,9 @@ def test_an_explicit_cli_placement_is_sent_only_to_a_core_that_advertises_it(ans
                 self.calls.append((method, request_message, response_message, request))
                 if answer == "refused":
                     raise GwzBridgeError("unsupported method", code="UnsupportedOperation")
-                return TransportCapabilitiesResponse(file_identity=True, exact_agent_identity=False, **answers[answer])
+                return TransportCapabilitiesResponse(
+                    file_identity=True, exact_agent_identity=False, cancellation=None, **answers[answer]
+                )
             return await super().call(method, request_message, response_message, request)
 
         async def submit(self, method, request_message, response_message, request):

@@ -232,6 +232,18 @@ PRE_LOG_WIRE_FINGERPRINT = (
     # protocol/check_log_additive.py does; MEASURED here: with them removed this
     # driver's packaged IR reproduces the pin below exactly, and unprojected it
     # fingerprints as sha256:1001a0b8....
+    #
+    # Plan step 2.2b (2026-10-31) follows gwz-core's 08ce3de2 and 9359a180, which
+    # append the core session's operation service: methods operation.response,
+    # operation.cancel, operation.release and session.close; enums SessionMode and
+    # LogVerb (LogVerb leaves with the `Log` prefix rule); the eleven messages in
+    # S2_2B_MESSAGES; the MISSING_OK TransportCapabilitiesResponse.cancellation
+    # (tag 8); and GwzErrorCode 77 to 86 after capacity (76). The pin is NOT moved.
+    # MEASURED here rather than taken on gwz-core's word: the regenerated IR differs
+    # from the previous packaged IR only by those additions (nothing removed or
+    # changed; the two removed diff lines are a trailing comma after capacity: 76),
+    # and with S2_2B_* removed this driver's packaged IR reproduces the pin below
+    # exactly; unprojected it fingerprints as sha256:5a368034....
     "sha256:4d377a496c8905293b5e9b53392b70867cf6dafccbb623841a623dbd2d555f14"
 )
 
@@ -290,6 +302,26 @@ C2_ADDITIONS = (
             ("reused", 12, "bool"),
         ),
     ),
+)
+
+
+# The surface step 2.2b (gwz-core 08ce3de2, 9359a180) added: the core session's
+# operation service. Whole new methods, enums and messages removed by name, the one
+# MISSING_OK TransportCapabilitiesResponse.cancellation (tag 8), and GwzErrorCode 77
+# to 86 appended after capacity (76). LogVerb leaves with the `Log` prefix rule.
+S2_2B_METHODS = {"operation.response", "operation.cancel", "operation.release", "session.close"}
+S2_2B_ENUMS = {"SessionMode"}
+S2_2B_MESSAGES = {
+    "SessionCall", "SessionReply", "SessionError", "OperationResultRequest",
+    "OperationResponseRequest", "OperationCancelRequest", "OperationReleaseRequest",
+    "SessionCloseRequest", "CleanupReport", "OperationReleaseResponse", "TransportLaneFrame",
+}
+S2_2B_CODES = (
+    ("transport_session_full", 77), ("operation_expired", 78), ("server_unavailable", 79),
+    ("server_version_mismatch", 80), ("server_environment_mismatch", 81),
+    ("server_peer_refused", 82), ("server_address_refused", 83),
+    ("server_listener_refused", 84), ("server_session_closed", 85),
+    ("server_destination_refused", 86),
 )
 
 
@@ -409,6 +441,29 @@ def pre_log_projection(value: dict[str, Any]) -> dict[str, Any]:
     service["methods"] = [
         method for method in service["methods"] if method["name"] not in {"log", "log.output"}
     ]
+    # Step 2.2b's four session methods: require all, then remove exactly them.
+    present_methods = {method["name"] for method in service["methods"]} & S2_2B_METHODS
+    if present_methods != S2_2B_METHODS:
+        raise ValueError(f"GwzCore must declare the session methods {sorted(S2_2B_METHODS)}")
+    service["methods"] = [
+        method for method in service["methods"] if method["name"] not in S2_2B_METHODS
+    ]
+    # Step 2.2b's whole enums and messages, removed by name after checking each is there.
+    for kind, names in (("enums", S2_2B_ENUMS), ("messages", S2_2B_MESSAGES)):
+        present = {item["name"] for item in projected[kind]} & names
+        if present != names:
+            raise ValueError(f"the schema must declare the session {kind} {sorted(names - present)}")
+        projected[kind] = [item for item in projected[kind] if item["name"] not in names]
+    capabilities = next(
+        m for m in projected["messages"] if m["name"] == "TransportCapabilitiesResponse"
+    )
+    cancellation = {"name": "cancellation", "tag": 8,
+                    "type": {"k": "scalar", "scalar": "bool"},
+                    "optional": "missing_ok", "transient": False, "merge": None}
+    added = [f for f in capabilities["fields"] if f["name"] == "cancellation"]
+    if added != [cancellation]:
+        raise ValueError("TransportCapabilitiesResponse.cancellation must be the MISSING_OK bool at tag 8")
+    capabilities["fields"].remove(added[0])
     # Invocation context adds one request field and one message. Keep the
     # historical projection honest by accepting only that exact allocation.
     invocation = {
@@ -477,6 +532,9 @@ def pre_log_projection(value: dict[str, Any]) -> dict[str, Any]:
     # those members to retain the prior wire pin, as gwz-core's
     # protocol/check_log_additive.py does.
     error_codes = next(enum for enum in projected["enums"] if enum["name"] == "GwzErrorCode")
+    for name, value in S2_2B_CODES:
+        if error_codes["members"].pop(name, None) != value:
+            raise ValueError(f"GwzErrorCode.{name} must occupy additive slot {value}")
     for name, value in (("cancelled", 73), ("transport_record_limit", 74),
                         ("credential_helper_timeout", 75), ("capacity", 76)):
         if error_codes["members"].pop(name, None) != value:

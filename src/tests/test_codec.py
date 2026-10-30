@@ -500,6 +500,8 @@ _PLACEMENT_MEMBERS = {
         "schemes",
         "auth_policies",
         "message_limits",
+        # Step 2.2b's MISSING_OK cancellation (tag 8): an older writer predates it too.
+        "cancellation",
     ),
 }
 
@@ -594,6 +596,7 @@ def test_placement_and_attachment_fields_round_trip_and_decode_when_the_writer_l
             control_reserve_bytes=1,
             control_reserve_frames=1,
         ),
+        cancellation=True,
     )
     _assert_cbor_round_trip("TransportCapabilitiesResponse", capabilities)
 
@@ -620,6 +623,7 @@ def test_placement_and_attachment_fields_round_trip_and_decode_when_the_writer_l
         schemes=None,
         auth_policies=None,
         message_limits=None,
+        cancellation=None,
     )
     assert (
         decode_message(

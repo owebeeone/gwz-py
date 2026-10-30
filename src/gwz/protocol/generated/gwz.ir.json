@@ -1703,7 +1703,17 @@
         "cancelled": 73,
         "transport_record_limit": 74,
         "credential_helper_timeout": 75,
-        "capacity": 76
+        "capacity": 76,
+        "transport_session_full": 77,
+        "operation_expired": 78,
+        "server_unavailable": 79,
+        "server_version_mismatch": 80,
+        "server_environment_mismatch": 81,
+        "server_peer_refused": 82,
+        "server_address_refused": 83,
+        "server_listener_refused": 84,
+        "server_session_closed": 85,
+        "server_destination_refused": 86
       },
       "member_options": {
         "ok": {},
@@ -1782,7 +1792,17 @@
         "cancelled": {},
         "transport_record_limit": {},
         "credential_helper_timeout": {},
-        "capacity": {}
+        "capacity": {},
+        "transport_session_full": {},
+        "operation_expired": {},
+        "server_unavailable": {},
+        "server_version_mismatch": {},
+        "server_environment_mismatch": {},
+        "server_peer_refused": {},
+        "server_address_refused": {},
+        "server_listener_refused": {},
+        "server_session_closed": {},
+        "server_destination_refused": {}
       }
     },
     {
@@ -2139,6 +2159,30 @@
       "member_options": {
         "changed": {},
         "always": {}
+      }
+    },
+    {
+      "name": "SessionMode",
+      "options": {},
+      "members": {
+        "unary": 0,
+        "submit": 1
+      },
+      "member_options": {
+        "unary": {},
+        "submit": {}
+      }
+    },
+    {
+      "name": "LogVerb",
+      "options": {},
+      "members": {
+        "read": 0,
+        "end_stream": 1
+      },
+      "member_options": {
+        "read": {},
+        "end_stream": {}
       }
     }
   ],
@@ -4774,6 +4818,18 @@
           "type": {
             "k": "msg",
             "name": "Limits"
+          },
+          "optional": "missing_ok",
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "cancellation",
+          "tag": 8,
+          "options": {},
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
           },
           "optional": "missing_ok",
           "transient": false,
@@ -15259,6 +15315,375 @@
           "merge": null
         }
       ]
+    },
+    {
+      "name": "SessionCall",
+      "options": {},
+      "effective": {
+        "max_depth": 32,
+        "max_encoded_len": null
+      },
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "call_id",
+          "tag": 1,
+          "options": {},
+          "type": {
+            "k": "scalar",
+            "scalar": "int"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "method",
+          "tag": 2,
+          "options": {},
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "mode",
+          "tag": 3,
+          "options": {},
+          "type": {
+            "k": "enum",
+            "name": "SessionMode"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "request",
+          "tag": 4,
+          "options": {},
+          "type": {
+            "k": "scalar",
+            "scalar": "bytes"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "log_verb",
+          "tag": 5,
+          "options": {},
+          "type": {
+            "k": "enum",
+            "name": "LogVerb"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "SessionReply",
+      "options": {},
+      "effective": {
+        "max_depth": 32,
+        "max_encoded_len": null
+      },
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "call_id",
+          "tag": 1,
+          "options": {},
+          "type": {
+            "k": "scalar",
+            "scalar": "int"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "response",
+          "tag": 2,
+          "options": {},
+          "type": {
+            "k": "scalar",
+            "scalar": "bytes"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "SessionError",
+      "options": {},
+      "effective": {
+        "max_depth": 32,
+        "max_encoded_len": null
+      },
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "call_id",
+          "tag": 1,
+          "options": {},
+          "type": {
+            "k": "scalar",
+            "scalar": "int"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "error",
+          "tag": 2,
+          "options": {},
+          "type": {
+            "k": "msg",
+            "name": "GwzError"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "response_meta",
+          "tag": 3,
+          "options": {},
+          "type": {
+            "k": "msg",
+            "name": "ResponseMeta"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "OperationResultRequest",
+      "options": {},
+      "effective": {
+        "max_depth": 32,
+        "max_encoded_len": null
+      },
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "operation_id",
+          "tag": 1,
+          "options": {},
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "OperationResponseRequest",
+      "options": {},
+      "effective": {
+        "max_depth": 32,
+        "max_encoded_len": null
+      },
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "operation_id",
+          "tag": 1,
+          "options": {},
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "OperationCancelRequest",
+      "options": {},
+      "effective": {
+        "max_depth": 32,
+        "max_encoded_len": null
+      },
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "call_id",
+          "tag": 1,
+          "options": {},
+          "type": {
+            "k": "scalar",
+            "scalar": "int"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "operation_id",
+          "tag": 2,
+          "options": {},
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": true,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "OperationReleaseRequest",
+      "options": {},
+      "effective": {
+        "max_depth": 32,
+        "max_encoded_len": null
+      },
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "operation_id",
+          "tag": 1,
+          "options": {},
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "SessionCloseRequest",
+      "options": {},
+      "effective": {
+        "max_depth": 32,
+        "max_encoded_len": null
+      },
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": []
+    },
+    {
+      "name": "CleanupReport",
+      "options": {},
+      "effective": {
+        "max_depth": 32,
+        "max_encoded_len": null
+      },
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "pending_local_work",
+          "tag": 1,
+          "options": {},
+          "type": {
+            "k": "scalar",
+            "scalar": "int"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "peer_cleanup_confirmed",
+          "tag": 2,
+          "options": {},
+          "type": {
+            "k": "scalar",
+            "scalar": "bool"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
+    },
+    {
+      "name": "OperationReleaseResponse",
+      "options": {},
+      "effective": {
+        "max_depth": 32,
+        "max_encoded_len": null
+      },
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": []
+    },
+    {
+      "name": "TransportLaneFrame",
+      "options": {},
+      "effective": {
+        "max_depth": 32,
+        "max_encoded_len": null
+      },
+      "reserved_tags": [],
+      "reserved_names": [],
+      "next_id": null,
+      "fields": [
+        {
+          "name": "request_id",
+          "tag": 1,
+          "options": {},
+          "type": {
+            "k": "scalar",
+            "scalar": "str"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        },
+        {
+          "name": "envelope",
+          "tag": 2,
+          "options": {},
+          "type": {
+            "k": "msg",
+            "name": "Envelope"
+          },
+          "optional": false,
+          "transient": false,
+          "merge": null
+        }
+      ]
     }
   ],
   "services": [
@@ -16150,6 +16575,101 @@
               "type": {
                 "k": "msg",
                 "name": "LogOutputRecord"
+              }
+            }
+          ]
+        },
+        {
+          "name": "operation.response",
+          "options": {},
+          "role": "out",
+          "shape": "unary",
+          "params": [
+            {
+              "name": "operation_id",
+              "type": {
+                "k": "scalar",
+                "scalar": "str"
+              }
+            }
+          ],
+          "out": [
+            {
+              "slot": "value",
+              "type": {
+                "k": "scalar",
+                "scalar": "bytes"
+              }
+            }
+          ]
+        },
+        {
+          "name": "operation.cancel",
+          "options": {},
+          "role": "out",
+          "shape": "unary",
+          "params": [
+            {
+              "name": "call_id",
+              "type": {
+                "k": "scalar",
+                "scalar": "int"
+              }
+            },
+            {
+              "name": "operation_id",
+              "type": {
+                "k": "scalar",
+                "scalar": "str"
+              }
+            }
+          ],
+          "out": [
+            {
+              "slot": "value",
+              "type": {
+                "k": "msg",
+                "name": "CleanupReport"
+              }
+            }
+          ]
+        },
+        {
+          "name": "operation.release",
+          "options": {},
+          "role": "out",
+          "shape": "unary",
+          "params": [
+            {
+              "name": "operation_id",
+              "type": {
+                "k": "scalar",
+                "scalar": "str"
+              }
+            }
+          ],
+          "out": [
+            {
+              "slot": "value",
+              "type": {
+                "k": "msg",
+                "name": "OperationReleaseResponse"
+              }
+            }
+          ]
+        },
+        {
+          "name": "session.close",
+          "options": {},
+          "role": "out",
+          "shape": "unary",
+          "params": [],
+          "out": [
+            {
+              "slot": "value",
+              "type": {
+                "k": "msg",
+                "name": "CleanupReport"
               }
             }
           ]

@@ -328,7 +328,22 @@ def test_log_addition_preserves_every_pre_existing_wire_shape_and_slot() -> None
     actions = next(e for e in projected["enums"] if e["name"] == "ActionKind")["members"]
     assert actions.pop("log") == 26
     service = next(s for s in projected["services"] if s["name"] == "GwzCore")
+    drift = _protocol_drift()
     service["methods"] = [m for m in service["methods"] if m["name"] not in {"log", "log.output"}]
+    # Plan step 2.2b (gwz-core 08ce3de2, 9359a180) appends the core session's operation
+    # service; remove exactly the objects check_protocol_drift.py's S2_2B_* name, after
+    # requiring each to be present. The pin is not moved.
+    assert {m["name"] for m in service["methods"]} >= drift.S2_2B_METHODS
+    service["methods"] = [m for m in service["methods"] if m["name"] not in drift.S2_2B_METHODS]
+    for kind, names in (("enums", drift.S2_2B_ENUMS), ("messages", drift.S2_2B_MESSAGES)):
+        assert {i["name"] for i in projected[kind]} >= names
+        projected[kind] = [i for i in projected[kind] if i["name"] not in names]
+    capabilities = next(m for m in projected["messages"] if m["name"] == "TransportCapabilitiesResponse")
+    added = [f for f in capabilities["fields"] if f["name"] == "cancellation"]
+    assert [(f["tag"], f["optional"], f["type"]) for f in added] == [
+        (8, "missing_ok", {"k": "scalar", "scalar": "bool"})
+    ]
+    capabilities["fields"].remove(added[0])
     # Caller context is additive request metadata.  Remove both the field and
     # its message to reproduce the pre-invocation projection this log guard owns.
     projected["messages"] = [
@@ -364,6 +379,9 @@ def test_log_addition_preserves_every_pre_existing_wire_shape_and_slot() -> None
     # Require their exact slots, then remove only these additive members to
     # retain the historical wire pin, matching check_protocol_drift.py.
     error_codes = next(enum for enum in projected["enums"] if enum["name"] == "GwzErrorCode")
+    for name, value in drift.S2_2B_CODES:
+        if error_codes["members"].pop(name, None) != value:
+            raise ValueError(f"GwzErrorCode.{name} must occupy additive slot {value}")
     for name, value in (("cancelled", 73), ("transport_record_limit", 74),
                         ("credential_helper_timeout", 75), ("capacity", 76)):
         if error_codes["members"].pop(name, None) != value:
@@ -386,7 +404,6 @@ def test_log_addition_preserves_every_pre_existing_wire_shape_and_slot() -> None
             message["fields"].remove(added[0])
     # Plan step 2.2 adds the placement and the embedded message (all MISSING_OK) and composes the transport owner's
     # declarations; remove exactly those, matching check_protocol_drift.py, whose lists these are.
-    drift = _protocol_drift()
     for message_name, additions in drift.PLACEMENT_ADDITIONS:
         message = next(m for m in projected["messages"] if m["name"] == message_name)
         for name, tag, type_ in additions:
