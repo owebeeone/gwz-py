@@ -63,7 +63,7 @@ jobs:
             artifact: macos-amd64
             auditwheel: "--auditwheel=repair"
             build-sdist: false
-          - os: macos-14
+          - os: macos-15
             artifact: macos-arm64
             auditwheel: "--auditwheel=repair"
             build-sdist: false
