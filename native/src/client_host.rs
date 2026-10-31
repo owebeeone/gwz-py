@@ -33,10 +33,13 @@ cfg_if::cfg_if! {
     if #[cfg(all(gwz_transport_candidate, any(unix, windows)))] {
         /// This Client's native route: its SSPI supervisor and the spawn gate that supervisor's worker launches take
         /// (contract C9; operator decision D31). The gate is the process's, made by gwz-core's composition
-        /// (`transport_host::process_safety`; gwz-core step 1.3a, operator decision D-E) and shared by every Client in
-        /// the process, so no Client makes a gate of its own. Each network operation takes its caller from it, and its
-        /// other operations (non-network, and under the transport off switch) take a backend from it (`own_backend`),
-        /// so every operation of a Client is on that one gate.
+        /// (`transport_host::process_safety`; gwz-core step 1.3a, operator decision D-E). What every Client in the
+        /// process shares is the named kernel object behind it (on Windows), so a creation window held for one Client's
+        /// launch excludes every other Client's spawn. The gate's in-process fairness state (the registered launches and
+        /// the waiting blocking holds) is not shared: each Client's route makes its own gate value, and that state is per
+        /// Client, so across Clients only the kernel orders the waiters. Each network operation takes its caller from it,
+        /// and its other operations (non-network, and under the transport off switch) take a backend from it
+        /// (`own_backend`), so every operation of a Client is on that one gate value.
         pub(crate) type NativeRoute = gwz_core::transport_host::NativeHost;
 
         fn native_route() -> NativeRoute {
